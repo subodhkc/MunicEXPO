@@ -15,6 +15,6 @@ export const metadata: Metadata = {
     title: 'Sample Reports | HAIEC',
     description: 'Preview enterprise-grade compliance reports, trust artifacts, and evidence bundles. See real output before you buy.',
     type: 'website',
-    url: 'https://haiec.com/sample-reports',
+    url: 'https://www.haiec.com/sample-reports',
   },
 }
