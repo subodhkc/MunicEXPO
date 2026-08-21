@@ -133,7 +133,7 @@ const artifacts: SampleArtifact[] = [
     product: 'AI Security Scanner',
     productIcon: Scan,
     category: 'report',
-    description: 'Static analysis report with executive dashboard, vulnerability findings by severity, code snippets, industry benchmarks, and remediation roadmap. Covers 78+ AI-specific security rules.',
+    description: 'Illustrative HAIEC Security Report generated through the HAIEC reporting pipeline using a synthetic demonstration scenario. Static analysis report with executive dashboard, security findings by severity, code snippets, industry risk context, and remediation roadmap. HAIEC-owned security checks executed via the Semgrep analysis engine.',
     proves: [
       'AI attack surface analysis with risk score',
       'Vulnerability findings mapped to OWASP LLM Top 10',
@@ -299,8 +299,9 @@ export default function SampleReportsContent() {
               Sample Reports & Artifacts
             </h1>
             <p className="mt-4 text-lg text-slate-400 max-w-2xl mx-auto">
-              Enterprise-grade compliance output — the same reports your auditors, board, and regulators will see. 
-              No mockups. These are real outputs from HAIEC engines.
+              Preview the structure and level of detail HAIEC can produce.
+              Each sample is labeled as a live-run output, historical example, or synthetic demonstration.
+              Structured outputs designed for technical, executive, and assurance review.
             </p>
             <div className="mt-6 flex items-center justify-center gap-6 text-sm text-slate-500">
               <span className="flex items-center gap-1.5">
