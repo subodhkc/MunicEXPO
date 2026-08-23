@@ -87,6 +87,8 @@ export interface ProducerMetadata {
   status: 'ACTIVE' | 'PARTIAL' | 'FUTURE' | 'HELD';
   /** Whether this producer is connected to the SaaS pipeline */
   connectedToPipeline: boolean;
+  /** U3-A: Whether this producer is activated to the canonical Evidence Core */
+  evidenceCoreActivated?: boolean;
   /** Legacy emitted IDs (for compatibility) */
   legacyIds: string[];
   /** Tables that store this producer's results */
@@ -106,10 +108,11 @@ export const PRODUCER_REGISTRY: Record<ProducerId, ProducerMetadata> = {
     displayName: 'SaaS Static Scanner',
     implementationModule: 'lib/ai-security/',
     status: 'ACTIVE',
-    connectedToPipeline: true,
+    connectedToPipeline: true, // LEGACY PIPELINE CONNECTED (pre-U2)
+    evidenceCoreActivated: true, // U3-A: EVIDENCE_CORE_ACTIVATED
     legacyIds: ['static', 'static-analysis', 'static_scan'],
     persistenceTables: ['ai_security_scans', 'ai_security_findings'],
-    consumers: ['audit-orchestrator', 'decision-pipeline', 'trust-artifacts'],
+    consumers: ['audit-orchestrator', 'decision-pipeline', 'trust-artifacts', 'evidence-core'],
     activationBlockers: [],
   },
   [PRODUCER_IDS.SAAS_RUNTIME]: {
@@ -118,10 +121,14 @@ export const PRODUCER_REGISTRY: Record<ProducerId, ProducerMetadata> = {
     displayName: 'SaaS Runtime Scanner',
     implementationModule: 'lib/ai-security-runtime/',
     status: 'ACTIVE',
-    connectedToPipeline: true,
+    connectedToPipeline: true, // LEGACY PIPELINE CONNECTED (pre-U2)
+    evidenceCoreActivated: true, // U3-A: EVIDENCE_CORE_ACTIVATED
     legacyIds: ['runtime', 'runtime-test', 'runtime_test'],
-    persistenceTables: ['runtime_tests', 'runtime_test_results'],
-    consumers: ['audit-orchestrator', 'decision-pipeline'],
+    // U3-A CORRECTION: runtime_test_results does NOT exist.
+    // Canonical tables: runtime_tests (execution), runtime_attacks, runtime_findings, runtime_execution_traces
+    // Legacy table: runtime_security_tests (LEGACY_CONNECTED, read by old adapter, not by U3-A adapter)
+    persistenceTables: ['runtime_tests', 'runtime_attacks', 'runtime_findings', 'runtime_execution_traces'],
+    consumers: ['audit-orchestrator', 'decision-pipeline', 'evidence-core'],
     activationBlockers: [],
   },
   [PRODUCER_IDS.SAAS_INVENTORY]: {
