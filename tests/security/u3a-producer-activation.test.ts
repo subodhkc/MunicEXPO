@@ -124,6 +124,12 @@ describe('U3-A: Evidence persistence service', () => {
     const envelope = makeStaticEnvelope();
     const digest = computeEnvelopeDigest(envelope);
 
+    // U3-A1: Atomic idempotency — create throws P2002, then findFirst returns existing
+    const uniqueError: any = new Error('Unique constraint failed');
+    uniqueError.code = 'P2002';
+    uniqueError.meta = { target: ['canonicalKey'] };
+    mockPrisma.evidence.create.mockRejectedValue(uniqueError);
+
     mockPrisma.evidence.findFirst.mockResolvedValue({
       id: 'ev-existing',
       contentHash: digest,
@@ -135,11 +141,16 @@ describe('U3-A: Evidence persistence service', () => {
     expect(result.success).toBe(true);
     expect(result.status).toBe('IDEMPOTENT_NOOP');
     expect(result.evidenceId).toBe('ev-existing');
-    expect(mockPrisma.evidence.create).not.toHaveBeenCalled();
   });
 
   it('returns CONFLICT for same run + different digest', async () => {
     const envelope = makeStaticEnvelope();
+
+    // U3-A1: Atomic idempotency — create throws P2002, then findFirst returns existing with different digest
+    const uniqueError: any = new Error('Unique constraint failed');
+    uniqueError.code = 'P2002';
+    uniqueError.meta = { target: ['canonicalKey'] };
+    mockPrisma.evidence.create.mockRejectedValue(uniqueError);
 
     mockPrisma.evidence.findFirst.mockResolvedValue({
       id: 'ev-existing',
@@ -151,8 +162,7 @@ describe('U3-A: Evidence persistence service', () => {
 
     expect(result.success).toBe(false);
     expect(result.status).toBe('CONFLICT');
-    expect(result.message).toContain('EVIDENCE_RUN_IDENTITY_CONFLICT');
-    expect(mockPrisma.evidence.create).not.toHaveBeenCalled();
+    expect(result.message).toContain('EVIDENCE_CANONICAL_IDENTITY_CONFLICT');
   });
 
   it('rejects envelope with null organizationId', async () => {
@@ -257,6 +267,7 @@ describe('U3-A: Runtime adapter reads runtime_tests (not runtime_security_tests)
           { id: 'finding-1', attackId: 'attack-1', endpoint: 'https://api.acme.com/chat', severity: 'HIGH', attackCategory: 'prompt_injection', executionTraceId: 'trace-1' },
           { id: 'finding-2', attackId: 'attack-2', endpoint: 'https://api.acme.com/chat', severity: 'MEDIUM', attackCategory: 'data_exfiltration', executionTraceId: 'trace-2' },
         ],
+        runtime_execution_traces: [],
       },
     ]);
 
@@ -292,6 +303,7 @@ describe('U3-A: Runtime adapter reads runtime_tests (not runtime_security_tests)
         createdAt: new Date('2026-08-15T10:00:00Z'),
         updatedAt: new Date('2026-08-15T10:30:00Z'),
         runtime_findings: [],
+        runtime_execution_traces: [],
       },
     ]);
 
@@ -325,6 +337,7 @@ describe('U3-A: Runtime adapter reads runtime_tests (not runtime_security_tests)
         createdAt: new Date('2026-08-15T10:00:00Z'),
         updatedAt: new Date('2026-08-15T10:30:00Z'),
         runtime_findings: [],
+        runtime_execution_traces: [],
       },
     ]);
 
@@ -388,6 +401,7 @@ describe('U3-A: Producer independence', () => {
         attacksExecuted: 10, violationsFound: 0, successfulAttacks: 0, averageSafetyScore: 1.0,
         startedAt: new Date(), completedAt: new Date(), durationMs: 1000, errorMessage: null,
         createdAt: new Date(), updatedAt: new Date(), runtime_findings: [],
+        runtime_execution_traces: [],
       },
     ]);
 
