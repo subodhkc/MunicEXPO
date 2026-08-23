@@ -323,7 +323,7 @@ describe('U3-B: Wizard adapter', () => {
     expect(hasLimitation).toBe(true);
   });
 
-  it('decryption failure produces FAILED outcome (fail closed)', async () => {
+  it('decryption failure produces adapter ERROR (not producer FAILED) — U3-B2 correction', async () => {
     mockPrisma.compliance_assessments.findMany.mockResolvedValue([
       {
         id: 'assessment-002', organizationId: 'org-A', assessmentId: 'asmt-002',
@@ -336,13 +336,12 @@ describe('U3-B: Wizard adapter', () => {
     const adapter = new WizardAdapter();
     const result = await adapter.adapt({ organizationId: 'org-A' } as any);
 
-    expect(result.envelopes[0].producerOutcome).toBe('FAILED');
-    expect(result.envelopes[0].coverage.status).toBe('NOT_ASSESSED');
-
-    const hasDecryptionFailed = result.envelopes[0].limitations?.some(
-      (l) => l.code === 'DECRYPTION_FAILED'
-    );
-    expect(hasDecryptionFailed).toBe(true);
+    // U3-B2: ADAPTER ERROR, not PRODUCER FAILED
+    // The assessment itself did not fail — the adapter cannot decrypt.
+    // No canonical self_reported_attestation is persisted for the adapter failure.
+    expect(result.status).toBe('ERROR');
+    expect(result.envelopes).toHaveLength(0);
+    expect(result.message).toContain('WIZARD_EVIDENCE_DECRYPTION_FAILED');
   });
 
   it('handles all assessment types (not just SOC2)', async () => {
