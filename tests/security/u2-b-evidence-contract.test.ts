@@ -142,10 +142,33 @@ describe('U2-B: Deterministic serialization', () => {
     expect(canonicalSerialize(obj1)).toBe(canonicalSerialize(obj2));
   });
 
-  it('sorts arrays deterministically by canonical string', () => {
+  it('REVISED_BY_U2_B1: preserves array order by default (ordered arrays NOT sorted)', () => {
+    // REVISED_BY_U2_B1: Array order is preserved by default.
+    // Only set-like fields are sorted.
     const obj1 = { items: [{ b: 2 }, { a: 1 }] };
     const obj2 = { items: [{ a: 1 }, { b: 2 }] };
 
+    // Non-set-like array — order preserved, so different
+    expect(canonicalSerialize(obj1)).not.toBe(canonicalSerialize(obj2));
+  });
+
+  it('REVISED_BY_U2_B1: sorts set-like arrays by semantic key', () => {
+    // Set-like fields (findingRefs, artifactRefs, limitations, provenanceRefs)
+    // are sorted by semantic key when passed as set-like fields
+    const obj1 = {
+      findingRefs: [
+        { findingId: 'f-003', producerId: 'saas-static' },
+        { findingId: 'f-001', producerId: 'saas-static' },
+      ],
+    };
+    const obj2 = {
+      findingRefs: [
+        { findingId: 'f-001', producerId: 'saas-static' },
+        { findingId: 'f-003', producerId: 'saas-static' },
+      ],
+    };
+
+    // findingRefs is a set-like field — sorted by semantic key
     expect(canonicalSerialize(obj1)).toBe(canonicalSerialize(obj2));
   });
 
@@ -298,9 +321,9 @@ describe('U2-B: Cross-producer independence', () => {
 // ─── Provenance Reference Tests ─────────────────────────────────────────────
 
 describe('U2-B: Provenance references', () => {
-  it('accepts CONTENT_HASH provenance', () => {
+  it('accepts CONTENT_HASH provenance with valid SHA-256', () => {
     const env = makeValidEnvelope({
-      provenanceRefs: [{ type: 'CONTENT_HASH', hash: 'abc123', algorithm: 'sha256' }],
+      provenanceRefs: [{ type: 'CONTENT_HASH', hash: 'a'.repeat(64), algorithm: 'sha256' }],
     });
     const result = validateEnvelope(env);
     expect(result.valid).toBe(true);
@@ -314,12 +337,12 @@ describe('U2-B: Provenance references', () => {
     expect(result.valid).toBe(true);
   });
 
-  it('accepts MERKLE_SNAPSHOT provenance', () => {
+  it('accepts MERKLE_SNAPSHOT provenance with valid SHA-256 root', () => {
     const env = makeValidEnvelope({
       provenanceRefs: [{
         type: 'MERKLE_SNAPSHOT',
         snapshotId: 'snap-001',
-        merkleRoot: 'root-hash',
+        merkleRoot: 'a'.repeat(64),
         algorithm: 'sha256',
         rule: 'pair-sort-concat',
         totalLeaves: 100,
@@ -329,16 +352,16 @@ describe('U2-B: Provenance references', () => {
     expect(result.valid).toBe(true);
   });
 
-  it('accepts MERKLE_INCLUSION_PROOF provenance', () => {
+  it('accepts MERKLE_INCLUSION_PROOF provenance with valid SHA-256 hashes', () => {
     const env = makeValidEnvelope({
       provenanceRefs: [{
         type: 'MERKLE_INCLUSION_PROOF',
         snapshotId: 'snap-001',
-        leaf: 'leaf-hash',
-        root: 'root-hash',
+        leaf: 'a'.repeat(64),
+        root: 'b'.repeat(64),
         index: 5,
         totalLeaves: 100,
-        path: [{ sibling: 'sibling-hash' }],
+        path: [{ sibling: 'c'.repeat(64) }],
         algorithm: 'sha256',
         rule: 'pair-sort-concat',
       }],
@@ -363,7 +386,7 @@ describe('U2-B: Provenance references', () => {
 
   it('does NOT require every provenance type', () => {
     const env = makeValidEnvelope({
-      provenanceRefs: [{ type: 'CONTENT_HASH', hash: 'abc123', algorithm: 'sha256' }],
+      provenanceRefs: [{ type: 'CONTENT_HASH', hash: 'a'.repeat(64), algorithm: 'sha256' }],
     });
     const result = validateEnvelope(env);
     expect(result.valid).toBe(true);
