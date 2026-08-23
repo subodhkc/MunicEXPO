@@ -1,4 +1,6 @@
-import { createOGImage, size, contentType } from '@/lib/og-image-template'
+﻿import { createOGImage, size, contentType } from '@/lib/og-image-template'
+
+export const dynamic = 'force-dynamic'
 
 export { size, contentType }
 
