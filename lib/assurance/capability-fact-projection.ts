@@ -163,11 +163,11 @@ const PLANE_METHODS: Record<AssurancePlane, string[]> = {
 
 /** U6: Canonical authority classes acceptable per plane. */
 const PLANE_AUTHORITIES: Record<AssurancePlane, string[]> = {
-  REQUESTED: ['VENDOR_DECLARATION', 'AUTHORITATIVE_POLICY'],
+  REQUESTED: ['VENDOR_DECLARATION', 'AUTHORITATIVE_POLICY', 'NON_AUTHORITATIVE'],
   POLICY_AUTHORIZED: ['AUTHORITATIVE_POLICY'],
   EFFECTIVELY_GRANTED: ['EFFECTIVE_GRANT'],
-  CODE_CAPABLE: ['NON_AUTHORITATIVE', 'VENDOR_DECLARATION'],
-  OBSERVED: ['RUNTIME_EMPIRICAL', 'NON_AUTHORITATIVE'],
+  CODE_CAPABLE: ['NON_AUTHORITATIVE'],
+  OBSERVED: ['NON_AUTHORITATIVE'],
 };
 
 /** U6: only these mapping strengths may create canonical CODE_CAPABLE facts. */
@@ -209,18 +209,22 @@ function buildCapabilityFact(ev: DecisionEvidenceProjection, decl: EvidenceCapab
   if (!decl.evidenceMethod) return undefined;
   return {
     capabilityId: decl.capabilityId ?? `${ev.evidenceId}:capability`,
+    capabilityFamily: decl.capabilityFamily as any,
     subject: decl.subject ?? 'system',
     action: decl.action ?? 'unknown',
     resource: decl.resource ?? 'unknown',
-    scope: decl.scope ?? 'unknown',
+    scope: decl.scope ?? 'UNKNOWN',
     dataClass: decl.dataClass,
     channel: decl.channel,
     guardRequirements: Array.isArray(decl.guardRequirements) ? decl.guardRequirements : undefined,
-    impact: decl.impact,
+    impact: decl.impact, // U6: severity is NOT impact; only set if source truth provides it
     environment: decl.environment,
     constraints: Array.isArray(decl.constraints) ? decl.constraints : undefined,
     targetCount: typeof decl.targetCount === 'number' ? decl.targetCount : undefined,
     changeMagnitude: typeof decl.changeMagnitude === 'number' ? decl.changeMagnitude : undefined,
+    sourceLocation: decl.sourceLocation,
+    discoveryBasis: (decl.discoveryBasis as any) ?? undefined,
+    capabilityCoverage: (decl.capabilityCoverage as any) ?? undefined,
     evidenceId: ev.evidenceId,
     producerRunId: ev.producerRunId ?? undefined,
     contentHash: ev.contentHash ?? undefined,
@@ -228,7 +232,7 @@ function buildCapabilityFact(ev: DecisionEvidenceProjection, decl: EvidenceCapab
     authorityClass: (decl.authorityClass as AuthorityClass) ?? 'NON_AUTHORITATIVE',
     evidenceMethod: decl.evidenceMethod as EvidenceMethod,
     sourceEvidenceIds: [ev.evidenceId, ...(Array.isArray(decl.sourceEvidenceIds) ? decl.sourceEvidenceIds : [])],
-    authoritySourceLabel: (decl.authoritySourceLabel as AuthoritySourceLabel) ?? 'REFERENCE_DEFAULT',
+    authoritySourceLabel: (decl.authoritySourceLabel as AuthoritySourceLabel) ?? 'UNKNOWN',
   };
 }
 

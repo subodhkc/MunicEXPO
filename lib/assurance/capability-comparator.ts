@@ -136,6 +136,9 @@ export function compareCapabilitySets(params: {
           if (!matchingRequested) {
             planeComparisons.push('UNDECLARED_CAPABILITY');
           }
+        } else if (cap.scope === 'UNKNOWN' || cap.scope === '') {
+          // U6: unknown scope must not be conflated with outside policy
+          planeComparisons.push('CAPABILITY_SCOPE_NOT_ESTABLISHED');
         } else if (!scopeContains(matchingPolicy.scope, cap.scope)) {
           // Capable exceeds policy scope
           planeComparisons.push('UNDECLARED_CAPABILITY');

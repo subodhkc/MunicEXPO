@@ -368,16 +368,23 @@ export type PlaneAvailabilityStatus =
   | 'NOT_SUPPORTED_BY_CURRENT_PRODUCER'
   | 'SYNTHETIC_REFERENCE';
 
+export type PlaneAvailabilityCoverage = 'COMPLETE' | 'PARTIAL' | 'UNKNOWN' | 'NOT_APPLICABLE';
+export type PlaneDiscoveryBasis = 'FINDING_DERIVED' | 'CAPABILITY_EXTRACTOR' | 'AUTHORITY_RECORD' | 'ACTION_WITNESS' | 'DECLARATION' | 'UNKNOWN';
+
 export interface PlaneAvailability {
   plane: AssurancePlane;
   status: PlaneAvailabilityStatus;
+  coverage: PlaneAvailabilityCoverage;
+  basis: PlaneDiscoveryBasis;
   sourceEvidenceIds: string[];
+  explanation?: string;
 }
 
 // ─── B6: Capability Fact ─────────────────────────────────────────────────────
 
 export interface CapabilityFact {
   capabilityId: string;
+  capabilityFamily?: CapabilityFamily;
   subject: string;
   action: string;
   resource: string;
@@ -392,6 +399,12 @@ export interface CapabilityFact {
   targetCount?: number;
   /** Structured change magnitude for policy comparison (Section 18) */
   changeMagnitude?: number;
+  /** U6: evidence/source location, not operational scope */
+  sourceLocation?: string;
+  /** U6: how the capability was discovered */
+  discoveryBasis?: PlaneDiscoveryBasis;
+  /** U6: PRESENT != COMPLETE coverage */
+  capabilityCoverage?: PlaneAvailabilityCoverage;
   /** E1 Closure Section 3: Evidence ID for traceability */
   evidenceId: string;
   /** E1 Closure Section 3: Producer run ID for traceability */
@@ -584,6 +597,7 @@ export interface ImpactVector {
 export type CapabilityComparisonResult =
   | 'OVER_PRIVILEGED_GRANT'
   | 'UNDECLARED_CAPABILITY'
+  | 'CAPABILITY_SCOPE_NOT_ESTABLISHED'
   | 'OBSERVED_OUTSIDE_OPERATING_ENVELOPE'
   | 'EXCESS_GRANTED_AUTHORITY'
   | 'UNTESTED_CAPABILITY'
@@ -808,6 +822,7 @@ export type AuthoritySourceLabel =
   | 'REFERENCE_DEFAULT'         // generic reference default — NOT authoritative
   | 'SYNTHETIC_REFERENCE_POLICY' // synthetic POC fixture — NOT authoritative
   | 'PROFILE_DEFINED'           // defined by profile but not yet backed by detector
+  | 'TECHNICAL_EVIDENCE'        // static/technical evidence — NOT an authority claim
   | 'UNKNOWN';
 
 // ─── Section 9: Normalized Capability Identity ────────────────────────────────

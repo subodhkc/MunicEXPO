@@ -38,7 +38,7 @@ export const CONTROL_CLAIM_CATALOG: ControlClaimDefinition[] = [
     relevanceSpec: {
       acceptedProducerIds: ['saas-static', 'ci-cd-scanner', 'sarif-import'],
       acceptedEvidenceTypes: [],
-      contradictingRuleIds: ['privileged_action_without_authorization', 'privileged-action-without-authorization'],
+      contradictingRuleIds: ['R2', 'R10', 'privileged_action_without_authorization', 'privileged-action-without-authorization'],
       contradictingConcernIds: ['privileged-action-without-authorization'],
       contradictingCapabilityIds: ['tool-action-execution-without-authz'],
       supportingRuleIds: [],
