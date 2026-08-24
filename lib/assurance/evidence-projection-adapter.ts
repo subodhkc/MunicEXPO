@@ -14,15 +14,22 @@ export function toAssuranceProjectedEvidence(
   projectedEvidence: DecisionEvidenceProjection[]
 ): ProjectedEvidence[] {
   return projectedEvidence.map(ev => {
-    const capabilityIds = (ev.capabilityDeclarations || [])
+    const declarations = ev.capabilityDeclarations || [];
+    const capabilityIds = declarations
       .map(d => d.capabilityId)
       .filter(Boolean);
-    const evaluatedRuleIds = (ev.capabilityDeclarations || [])
+    const evaluatedRuleIds = declarations
       .map(d => d.sourceRuleId)
       .filter((id): id is string => !!id);
-    const concernIds = (ev.capabilityDeclarations || [])
+    const concernIds = declarations
       .map(d => d.concernId)
       .filter((id): id is string => !!id);
+
+    const evidenceMethods = new Set(declarations.map(d => d.evidenceMethod).filter(Boolean));
+    const evidenceMethod = evidenceMethods.size === 1 ? Array.from(evidenceMethods)[0] : undefined;
+
+    const authorityClasses = new Set(declarations.map(d => d.authorityClass).filter(Boolean));
+    const authorityClass = authorityClasses.size === 1 ? Array.from(authorityClasses)[0] : undefined;
 
     const declarationFindings = (ev.capabilityDeclarations || [])
       .map(d => ({
@@ -53,6 +60,8 @@ export function toAssuranceProjectedEvidence(
       capabilityIds,
       evaluatedRuleIds,
       concernIds,
+      evidenceMethod,
+      authorityClass,
     };
   });
 }

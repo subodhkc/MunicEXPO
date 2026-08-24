@@ -193,7 +193,8 @@ export async function issueAssurancePackage(
     return { status: 'CREATED', packageId, package: packageCandidate };
   } catch (createError: any) {
     // Concurrent package creation with the same composite key → IDEMPOTENT or CONFLICT.
-    if (createError?.code === 'P2002' && createError?.meta?.target?.includes('assuranceEvaluationId_reportSchemaVersion_bundleSchemaVersion_receiptSchemaVersion_verificationSchemaVersion_key')) {
+    const p2002Target = Array.isArray(createError?.meta?.target) ? createError.meta.target.join(' ') : createError?.meta?.target;
+    if (createError?.code === 'P2002' && p2002Target && (p2002Target.includes('assurance_packages_evaluation_version_key') || p2002Target.includes('verificationSchemaVersion'))) {
       const existing = await (prisma as any).assurance_packages.findUnique({
         where: {
           assuranceEvaluationId_reportSchemaVersion_bundleSchemaVersion_receiptSchemaVersion_verificationSchemaVersion: {

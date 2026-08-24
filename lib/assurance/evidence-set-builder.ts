@@ -43,6 +43,10 @@ export interface ProjectedEvidence {
   concernIds?: string[];
   /** A5: Capability IDs this evidence is about */
   capabilityIds?: string[];
+  /** U6: Canonical evidence method that produced this observation */
+  evidenceMethod?: string;
+  /** U6: Authority class declared by the evidence */
+  authorityClass?: string;
 }
 
 /**
@@ -63,6 +67,8 @@ export function buildControlEvidenceSet(params: {
     const epistemicClass = classifyEvidence({
       sourceType: ev.sourceType,
       evidenceType: ev.evidenceType,
+      evidenceMethod: ev.evidenceMethod,
+      authorityClass: ev.authorityClass,
       metadata: ev.metadata,
     });
 

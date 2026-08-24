@@ -11,21 +11,52 @@ import { resolveCanonicalProducerId } from '@/lib/engine-registry/producer-id-co
 /**
  * Classify a piece of evidence into its epistemic class.
  *
- * Rules:
- * - SaaS Static / CI-CD / SARIF → HAIEC_NATIVE_TECHNICAL or EXTERNAL_TECHNICAL
- * - Runtime → RUNTIME_EMPIRICAL
- * - Inventory → OBSERVED_CONFIGURATION
- * - Wizard → SELF_REPORTED
- * - Regulatory → DERIVED
+ * Method-first rules:
+ * - SELF_REPORT, SIGNED_MANIFEST → SELF_REPORTED
+ * - APPROVED_POLICY_RECORD, POLICY_CONFIGURATION, IAM_OBSERVATION → OBSERVED_CONFIGURATION
+ * - STATIC_PATH_ANALYSIS, STATIC_STRUCTURAL_ANALYSIS from HAIEC native static source → HAIEC_NATIVE_TECHNICAL
+ * - EXTERNAL_REPORT from external/SARIF source → EXTERNAL_TECHNICAL
+ * - RUNTIME_TRACE, ACTION_WITNESS → RUNTIME_EMPIRICAL
+ * - Unknown/ambiguous → DERIVED
+ *
+ * Producer identity is provenance only; it does not override canonical method.
  */
 export function classifyEvidence(params: {
   sourceType: string;
   evidenceType?: string;
+  evidenceMethod?: string;
+  authorityClass?: string;
   metadata?: Record<string, unknown> | null;
 }): EpistemicClass {
   const canonicalProducer = resolveCanonicalProducerId(params.sourceType);
+  const method = (params.evidenceMethod ?? '').toUpperCase().trim();
 
-  // External SARIF imports are external technical
+  // Method-first precedence
+  if (method) {
+    if (method === 'SELF_REPORT' || method === 'SIGNED_MANIFEST') {
+      return 'SELF_REPORTED';
+    }
+    if (method === 'APPROVED_POLICY_RECORD' || method === 'POLICY_CONFIGURATION' || method === 'IAM_OBSERVATION') {
+      return 'OBSERVED_CONFIGURATION';
+    }
+    if (method === 'STATIC_PATH_ANALYSIS' || method === 'STATIC_STRUCTURAL_ANALYSIS') {
+      // Only native HAIEC static producers support canonical HAIEC native technical
+      if (canonicalProducer === 'saas-static' || canonicalProducer === 'ci-cd-scanner') {
+        return 'HAIEC_NATIVE_TECHNICAL';
+      }
+      return 'EXTERNAL_TECHNICAL';
+    }
+    if (method === 'EXTERNAL_REPORT') {
+      return 'EXTERNAL_TECHNICAL';
+    }
+    if (method === 'RUNTIME_TRACE' || method === 'ACTION_WITNESS') {
+      return 'RUNTIME_EMPIRICAL';
+    }
+    // Unknown method with an explicit source remains DERIVED (do not guess)
+    return 'DERIVED';
+  }
+
+  // External SARIF imports are external technical (legacy fallback)
   if (params.sourceType === 'sarif-import' || params.metadata?.importedExternally === true) {
     return 'EXTERNAL_TECHNICAL';
   }

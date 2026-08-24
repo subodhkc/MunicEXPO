@@ -116,6 +116,9 @@ export function validateWitnessSequence(witnesses: ActionWitness[]): {
     errors.push(`Witness set contains multiple actionCorrelationIds: ${Array.from(correlationIds).join(', ')}`);
   }
 
+  const logical = validateLogicalActionIdentity(witnesses);
+  errors.push(...logical.errors);
+
   return { valid: errors.length === 0, errors };
 }
 
@@ -127,6 +130,58 @@ export function shareCorrelationIdentity(witnesses: ActionWitness[]): boolean {
     witnesses.map(w => w.actionCorrelationId ?? '').filter(id => id !== '')
   );
   return correlationIds.size <= 1;
+}
+
+/**
+ * Section 15: Validate that all witnesses describe the SAME logical action.
+ *
+ * Logical identity is defined by:
+ * - actorIdentity (the logical principal)
+ * - operation
+ * - resource identity/scope compatibility
+ * - build digest (when known)
+ * - actionCorrelationId
+ *
+ * Different instrumentation sources (oTelSourceAuthority, observerIdentity)
+ * are allowed; they do not change the logical action.
+ */
+export function validateLogicalActionIdentity(witnesses: ActionWitness[]): {
+  valid: boolean;
+  errors: string[];
+} {
+  const errors: string[] = [];
+  if (witnesses.length === 0) return { valid: true, errors };
+
+  const first = witnesses[0];
+
+  const actors = new Set(witnesses.map(w => w.actorIdentity).filter(Boolean));
+  if (actors.size > 1) {
+    errors.push(`Inconsistent logical actor: ${Array.from(actors).join(', ')}`);
+  }
+
+  const operations = new Set(witnesses.map(w => w.operation).filter(Boolean));
+  if (operations.size > 1) {
+    errors.push(`Inconsistent logical operation: ${Array.from(operations).join(', ')}`);
+  }
+
+  const resourceScopes = new Set(witnesses.map(w => w.resourceScope).filter(Boolean));
+  if (resourceScopes.size > 1) {
+    errors.push(`Inconsistent logical resource scope: ${Array.from(resourceScopes).join(', ')}`);
+  }
+
+  const buildDigests = new Set(witnesses.map(w => w.buildDigest).filter(Boolean));
+  if (buildDigests.size > 1) {
+    errors.push(`Inconsistent logical build digest: ${Array.from(buildDigests).join(', ')}`);
+  }
+
+  const correlationIds = new Set(
+    witnesses.map(w => w.actionCorrelationId ?? '').filter(id => id !== '')
+  );
+  if (correlationIds.size > 1) {
+    errors.push(`Inconsistent action correlation: ${Array.from(correlationIds).join(', ')}`);
+  }
+
+  return { valid: errors.length === 0, errors };
 }
 
 /**

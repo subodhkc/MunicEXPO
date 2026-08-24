@@ -40,6 +40,7 @@ import { hashTextContent } from '@/lib/evidence/crypto-hash';
 import { resolveCanonicalProducerId } from '@/lib/engine-registry/producer-id-compatibility';
 import { compareCapabilitySets, comparisonToClaimState } from './capability-comparator';
 import { buildPlaneAvailability } from './capability-fact-projection';
+import { classifyEvidence } from './epistemic-classifier';
 
 export const ASSURANCE_METHODOLOGY_VERSION = '1.1';
 
@@ -412,39 +413,47 @@ function mergeComparisonIntoClaim(
   const mapped = comparisonToClaimState(comparison.comparisons, comparison.verdict);
 
   // Determine merged claim state (precedence)
+  // U6: Five-plane comparator is diagnostic. It can downgrade or contradict,
+  // but it must not manufacture positive SUPPORTED from NOT_ASSESSED.
   let mergedState: ClaimState = existing.claimState;
   if (existing.claimState === 'CONTRADICTED') {
-    // existing CONTRADICTED remains
     mergedState = 'CONTRADICTED';
   } else if (mapped.claimState === 'CONTRADICTED') {
     mergedState = 'CONTRADICTED';
   } else if (mapped.claimState === 'REVIEW_REQUIRED') {
     mergedState = rankState(mergedState) < rankState('REVIEW_REQUIRED') ? 'REVIEW_REQUIRED' : mergedState;
-  } else if (mapped.claimState === 'SUPPORTED' && existing.claimState === 'NOT_ASSESSED') {
-    mergedState = 'SUPPORTED';
+  } else if (mapped.claimState === 'SUPPORTED') {
+    // Preserve an already-SUPPORTED canonical result; do not create one here.
+    mergedState = existing.claimState === 'SUPPORTED' ? 'SUPPORTED' : mergedState;
   }
 
   // Merge reason codes (dedupe)
   const mergedReasonCodes = [...new Set([...existing.reasonCodes, ...mapped.reasonCodes])];
 
-  // Section 7: Add comparator evidence to the claim's evidence set
+  // Section 7: Add comparator evidence to the claim's evidence set only as diagnostic context.
+  // U6: SUPPORTING membership must originate from the canonical U5 Evidence Set builder,
+  // not from the comparator. ALIGNED comparisons are CONTEXT_ONLY, never SUPPORTING.
   const members = [...existing.evidenceSet.members];
   for (const evidenceId of comparison.evidenceIds) {
     const ev = evidence.find(e => e.id === evidenceId);
     if (!ev) continue;
-    const role = determineEvidenceRole(comparison.comparisons, ev);
-    const epistemicClass: EpistemicClass =
-      ev.sourceType === 'saas-runtime' ? 'RUNTIME_EMPIRICAL' :
-      ev.sourceType === 'saas-static' ? 'HAIEC_NATIVE_TECHNICAL' :
-      ev.sourceType === 'saas-inventory' ? 'OBSERVED_CONFIGURATION' : 'DERIVED';
-    const member: ControlEvidenceSetMember = {
-      evidenceId: ev.id,
-      role,
-      epistemicClass,
-      producerId: resolveCanonicalProducerId(ev.sourceType) ?? ev.sourceType,
-      contentHash: ev.contentHash ?? undefined,
-    };
-    if (!members.some(m => m.evidenceId === ev.id)) {
+    const role = determineEvidenceRole(comparison.comparisons, ev, members);
+    const epistemicClass = classifyEvidence({
+      sourceType: ev.sourceType,
+      evidenceType: ev.evidenceType,
+      evidenceMethod: ev.evidenceMethod,
+      authorityClass: ev.authorityClass,
+      metadata: ev.metadata,
+    });
+    const existingMember = members.find(m => m.evidenceId === ev.id);
+    if (!existingMember) {
+      const member: ControlEvidenceSetMember = {
+        evidenceId: ev.id,
+        role,
+        epistemicClass,
+        producerId: resolveCanonicalProducerId(ev.sourceType) ?? ev.sourceType,
+        contentHash: ev.contentHash ?? undefined,
+      };
       members.push(member);
     }
   }
@@ -482,7 +491,8 @@ function rankState(state: ClaimState): number {
 
 function determineEvidenceRole(
   comparisons: string[],
-  ev: ProjectedEvidence
+  ev: ProjectedEvidence,
+  members: ControlEvidenceSetMember[]
 ): EvidenceMemberRole {
   if (comparisons.includes('OBSERVED_OUTSIDE_OPERATING_ENVELOPE') ||
       comparisons.includes('OVER_PRIVILEGED_GRANT') ||
@@ -491,7 +501,11 @@ function determineEvidenceRole(
       comparisons.includes('REQUIRED_APPROVAL_STEP_MISSING')) {
     return 'CONTRADICTING';
   }
-  if (comparisons.includes('ALIGNED')) return 'SUPPORTING';
+  // U6: ALIGNED is diagnostic; do not manufacture SUPPORTING here.
+  if (comparisons.includes('ALIGNED')) return 'CONTEXT_ONLY';
+  // U6: Keep any existing canonical SUPPORTING role from the Control Evidence Set.
+  const existing = members.find(m => m.evidenceId === ev.id);
+  if (existing?.role === 'SUPPORTING') return 'SUPPORTING';
   return 'CONTEXT_ONLY';
 }
 

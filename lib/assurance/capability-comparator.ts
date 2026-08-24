@@ -429,7 +429,7 @@ export function mapComparisonToClaim(comparisons: CapabilityComparisonResult[], 
   if (!capabilityId) return undefined;
 
   const normalizedCapabilityId = capabilityId.toLowerCase();
-  const matchingClaim = CONTROL_CLAIM_CATALOG.find(claim => {
+  const matchingClaims = CONTROL_CLAIM_CATALOG.filter(claim => {
     const spec = claim.relevanceSpec;
     if (!spec) return false;
     const capIds = [
@@ -439,7 +439,12 @@ export function mapComparisonToClaim(comparisons: CapabilityComparisonResult[], 
     return capIds.includes(normalizedCapabilityId);
   });
 
-  return matchingClaim?.claimKey;
+  // U6: ambiguous capability→claim mapping must not silently choose a claim.
+  if (matchingClaims.length !== 1) {
+    return undefined;
+  }
+
+  return matchingClaims[0].claimKey;
 }
 
 /**
@@ -492,7 +497,8 @@ export function comparisonToClaimState(
   }
 
   if (verdict === 'ALLOW' || comparisons.includes('ALIGNED')) {
-    return { claimState: 'SUPPORTED', reasonCodes: ['SUPPORTED_BY_RUNTIME_EVIDENCE'] };
+    // U6: five-plane ALIGNED is diagnostic; positive SUPPORTED must come from U5 evidence qualification.
+    return { claimState: 'NOT_ASSESSED', reasonCodes: [] };
   }
 
   return { claimState: 'REVIEW_REQUIRED', reasonCodes: ['NOT_EVALUATED'] };
