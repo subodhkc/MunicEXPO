@@ -14,7 +14,7 @@ import {
   PackageVerificationResult,
   PublicVerificationResult,
 } from './u6-types';
-import { AssuranceEvaluation } from './types';
+import { AssuranceEvaluation, AssuranceEvaluationV1_1 } from './types';
 import { projectEvidenceForRun } from '@/lib/decision-pipeline/evidence-projection';
 
 export interface PackageIssueResult {
@@ -25,16 +25,105 @@ export interface PackageIssueResult {
 
 export type PublicationState = 'PRIVATE' | 'PUBLIC' | 'REVOKED';
 
-export interface PackagePublicationContext {
-  actor: string;
-  canPublish: boolean;
+export interface PackageAuthorizationContext {
+  userId: string;
+  organizationId: string;
+  canViewEvidence?: boolean;
+  canAdminister?: boolean;
 }
 
-const SCHEMA_VERSIONS = {
+const PACKAGE_SCHEMA_VERSIONS = {
   report: '1.0.0',
   bundle: '1.0.0',
   receipt: '1.0.0',
 } as const;
+
+/**
+ * Resource-first: load only ownership fields before authorization.
+ */
+export async function getEvaluationOwnership(evaluationId: string): Promise<{ id: string; organizationId: string; aiSystemId: string; orchestratorRunId: string } | null> {
+  const row = await prisma.assurance_evaluations.findUnique({
+    where: { id: evaluationId },
+    select: { id: true, organizationId: true, aiSystemId: true, orchestratorRunId: true },
+  });
+  if (!row) return null;
+  return row as any;
+}
+
+/**
+ * Load the full AssuranceEvaluation for package building after authorization.
+ *
+ * Current minimal loader: the persisted row contains JSON `fivePlaneResult` and
+ * `inputHash`/`outputHash`. A full round-trip loader should reconstruct the
+ * U5 evaluation contract. For the structural closeout the service uses the
+ * in-memory evaluation passed by the route after authorization.
+ */
+export async function loadFullAssuranceEvaluation(evaluationId: string): Promise<AssuranceEvaluation | null> {
+  const row = await prisma.assurance_evaluations.findUnique({ where: { id: evaluationId } });
+  if (!row) return null;
+  return row as any;
+}
+
+/**
+ * Load exact run Evidence from the orchestrator run associated with the evaluation.
+ */
+export async function loadExactRunEvidence(evaluation: AssuranceEvaluation): Promise<{ projectedEvidence: any[]; runRecord: any }> {
+  const run = await prisma.audit_orchestrator_runs.findUnique({
+    where: { id: evaluation.orchestratorRunId },
+    select: {
+      id: true,
+      organizationId: true,
+      aiSystemId: true,
+      staticScanId: true,
+      runtimeTestId: true,
+      wizardAssessmentId: true,
+      regulatoryReportId: true,
+      completedAt: true,
+      selectedEngines: true,
+    },
+  });
+
+  if (!run) {
+    throw new Error('ORCHESTRATOR_RUN_NOT_FOUND');
+  }
+
+  const selectedEngines = Array.isArray(run.selectedEngines)
+    ? run.selectedEngines as string[]
+    : (run.selectedEngines ? [String(run.selectedEngines)] : []);
+
+  const projectedEvidence = await projectEvidenceForRun({
+    organizationId: run.organizationId,
+    aiSystemId: run.aiSystemId,
+    orchestratorRunId: run.id,
+    staticScanId: run.staticScanId,
+    runtimeTestId: run.runtimeTestId,
+    wizardAssessmentId: run.wizardAssessmentId,
+    regulatoryReportId: run.regulatoryReportId,
+    selectedEngines,
+    completedAt: evaluation.evaluationSnapshotAt,
+  });
+
+  return { projectedEvidence, runRecord: run };
+}
+
+export async function buildPackageFromEvaluation(
+  evaluation: AssuranceEvaluation,
+): Promise<U6Package> {
+  const v1_1 = evaluation as AssuranceEvaluationV1_1;
+  const { projectedEvidence, runRecord } = await loadExactRunEvidence(evaluation);
+
+  const packageCandidate = buildAssuranceVerificationPackage({
+    evaluation,
+    projectedEvidence,
+    buildIdentity: undefined,
+    authoritySourceLabel: resolveAuthoritySourceLabel(v1_1),
+    operatingEnvelopeApprovedAt: undefined,
+    approvalReference: v1_1.operatingEnvelopeApprovalReference ?? undefined,
+    syntheticClassification: resolveSyntheticClassification(v1_1),
+  });
+
+  return packageCandidate;
+}
 
 /**
  * Issue a canonical U6 package for an Assurance evaluation.
@@ -45,32 +134,7 @@ const SCHEMA_VERSIONS = {
 export async function issueAssurancePackage(
   evaluation: AssuranceEvaluation,
 ): Promise<PackageIssueResult> {
-  const v1_1 = evaluation as any;
-
-  const projectedEvidence = await projectEvidenceForRun({
-    organizationId: evaluation.organizationId,
-    aiSystemId: evaluation.aiSystemId,
-    orchestratorRunId: evaluation.orchestratorRunId,
-    staticScanId: v1_1.staticScanId,
-    runtimeTestId: v1_1.runtimeTestId,
-    wizardAssessmentId: v1_1.wizardAssessmentId,
-    regulatoryReportId: v1_1.regulatoryReportId,
-    selectedEngines: v1_1.selectedEngines ?? [],
-    completedAt: evaluation.evaluationSnapshotAt,
-  });
-
-  const packageCandidate = buildAssuranceVerificationPackage({
-    evaluation,
-    projectedEvidence,
-    buildIdentity: undefined,
-    authoritySourceLabel: v1_1.operatingEnvelopeState === 'APPROVED' ? 'AUTHORITATIVE_POLICY' : undefined,
-    operatingEnvelopeApprovedAt: v1_1.operatingEnvelopeApprovedAt,
-    approvalReference: v1_1.operatingEnvelopeApprovalReference,
-    syntheticClassification: (v1_1.operatingEnvelopeId?.includes('synthetic') || v1_1.profileId?.includes('synthetic')) ? 'SYNTHETIC_REFERENCE' : 'NONE',
-  });
-
-  const packageId = nanoid(32);
-  packageCandidate.packageId = packageId;
+  const packageCandidate = await buildPackageFromEvaluation(evaluation);
 
   const existing = await (prisma as any).assurance_packages.findUnique({
     where: {
@@ -85,10 +149,14 @@ export async function issueAssurancePackage(
 
   if (existing) {
     if (existing.semanticPackageDigest === packageCandidate.semanticPackageDigest) {
-      return { status: 'IDEMPOTENT', packageId: existing.packageId, package: packageCandidate };
+      const persisted = await reconstructPackageFromRow(existing);
+      return { status: 'IDEMPOTENT', packageId: existing.packageId, package: persisted };
     }
     return { status: 'CONFLICT', packageId: existing.packageId, package: packageCandidate };
   }
+
+  const packageId = nanoid(32);
+  packageCandidate.packageId = packageId;
 
   await (prisma as any).assurance_packages.create({
     data: {
@@ -114,7 +182,7 @@ export async function issueAssurancePackage(
       profileIdentity: packageCandidate.profileIdentity as any,
       operatingEnvelopeIdentity: packageCandidate.operatingEnvelopeIdentity as any,
       authoritySourceLabel: packageCandidate.authoritySourceLabel,
-      operatingEnvelopeApprovedAt: packageCandidate.operatingEnvelopeApprovedAt,
+      operatingEnvelopeApprovedAt: packageCandidate.operatingEnvelopeApprovedAt ? new Date(packageCandidate.operatingEnvelopeApprovedAt) : undefined,
       approvalReference: packageCandidate.approvalReference,
       syntheticClassification: packageCandidate.syntheticClassification,
       publicationState: 'PRIVATE',
@@ -133,38 +201,7 @@ export async function getAssurancePackage(
   });
   if (!row) return null;
 
-  const pkg: U6Package = {
-    packageSchemaVersion: row.verificationSchemaVersion,
-    packageId: row.packageId,
-    assuranceEvaluationId: row.assuranceEvaluationId,
-    organizationId: row.organizationId,
-    aiSystemId: row.aiSystemId,
-    orchestratorRunId: row.orchestratorRunId,
-    reportSchemaVersion: row.reportSchemaVersion,
-    bundleSchemaVersion: row.bundleSchemaVersion,
-    receiptSchemaVersion: row.receiptSchemaVersion,
-    verificationSchemaVersion: row.verificationSchemaVersion,
-    semanticPackageDigest: row.semanticPackageDigest,
-    semanticReportDigest: row.semanticReportDigest,
-    bundleDigest: row.bundleDigest,
-    receiptHash: row.receiptHash,
-    merkleRoot: row.merkleRoot,
-    merkleStatus: row.merkleStatus,
-    report: row.reportJson as any,
-    bundle: row.bundleJson as any,
-    receipt: row.receiptJson as any,
-    buildIdentity: row.buildIdentity as any,
-    profileIdentity: row.profileIdentity as any,
-    operatingEnvelopeIdentity: row.operatingEnvelopeIdentity as any,
-    authoritySourceLabel: row.authoritySourceLabel,
-    syntheticClassification: row.syntheticClassification,
-  };
-
-  return {
-    package: pkg,
-    publicationState: row.publicationState,
-    publicVerificationId: row.publicVerificationId,
-  };
+  return { package: await reconstructPackageFromRow(row), publicationState: row.publicationState, publicVerificationId: row.publicVerificationId };
 }
 
 export async function publishAssurancePackage(
@@ -176,6 +213,12 @@ export async function publishAssurancePackage(
     where: { packageId, organizationId, publicationState: 'PRIVATE' },
   });
   if (!existing) return null;
+
+  const pkg = await reconstructPackageFromRow(existing);
+  const verify = verifyAssurancePackage(pkg);
+  if (!verify.valid) {
+    throw new Error('CANNOT_PUBLISH_INVALID_PACKAGE');
+  }
 
   const publicVerificationId = nanoid(24);
   await (prisma as any).assurance_packages.update({
@@ -234,7 +277,34 @@ export async function getPublicVerification(
 
   if (row.publicationState === 'PRIVATE') return null;
 
-  const pkg: U6Package = {
+  const pkg = await reconstructPackageFromRow(row);
+  const verify = verifyAssurancePackage(pkg);
+  const status: PublicVerificationResult['verificationStatus'] =
+    row.publicationState === 'REVOKED' ? 'REVOKED' :
+    verify.valid ? 'INTEGRITY_VERIFIED_AGAINST_HAIEC_RECORD' : 'INVALID_PACKAGE';
+
+  return {
+    publicVerificationId,
+    publicationState: row.publicationState,
+    verificationStatus: status,
+    disposition: pkg.receipt.disposition,
+    evaluatedAt: pkg.receipt.evaluationSnapshotAt,
+    methodologyVersion: pkg.receipt.assuranceMethodologyVersion,
+    reportSchemaVersion: pkg.report.reportVersion,
+    profileLabel: pkg.receipt.profileId,
+    profileVersion: pkg.receipt.profileVersion,
+    scopeSummary: pkg.report.scopeStatement,
+    receiptHash: pkg.receipt.receiptHash,
+    merkleRoot: pkg.merkleRoot,
+    merkleStatus: pkg.merkleStatus,
+    syntheticClassification: pkg.syntheticClassification,
+    publishedAt: row.publishedAt?.toISOString(),
+    revokedAt: row.revokedAt?.toISOString(),
+  };
+}
+
+async function reconstructPackageFromRow(row: any): Promise<U6Package> {
+  return {
     packageSchemaVersion: row.verificationSchemaVersion,
     packageId: row.packageId,
     assuranceEvaluationId: row.assuranceEvaluationId,
@@ -258,30 +328,21 @@ export async function getPublicVerification(
     profileIdentity: row.profileIdentity as any,
     operatingEnvelopeIdentity: row.operatingEnvelopeIdentity as any,
     authoritySourceLabel: row.authoritySourceLabel,
+    operatingEnvelopeApprovedAt: row.operatingEnvelopeApprovedAt?.toISOString(),
+    approvalReference: row.approvalReference,
     syntheticClassification: row.syntheticClassification,
   };
+}
 
-  const verification = verifyAssurancePackage(pkg);
-  const status: PublicVerificationResult['verificationStatus'] =
-    row.publicationState === 'REVOKED' ? 'REVOKED' :
-    verification.valid ? 'INTERNALLY_CONSISTENT' : 'INVALID_PACKAGE';
+function resolveSyntheticClassification(v1_1: AssuranceEvaluationV1_1): 'NONE' | 'SYNTHETIC_REFERENCE' {
+  if (v1_1.operatingEnvelopeId?.includes('synthetic') || v1_1.profileId?.includes('synthetic') || v1_1.operatingEnvelopeApprovalReference?.includes('synthetic')) {
+    return 'SYNTHETIC_REFERENCE';
+  }
+  return 'NONE';
+}
 
-  return {
-    publicVerificationId,
-    publicationState: row.publicationState,
-    verificationStatus: status,
-    disposition: pkg.receipt.disposition,
-    evaluatedAt: pkg.receipt.evaluationSnapshotAt,
-    methodologyVersion: pkg.receipt.assuranceMethodologyVersion,
-    reportSchemaVersion: pkg.report.reportVersion,
-    profileLabel: pkg.receipt.profileId,
-    profileVersion: pkg.receipt.profileVersion,
-    scopeSummary: pkg.report.scopeStatement,
-    receiptHash: pkg.receipt.receiptHash,
-    merkleRoot: pkg.merkleRoot,
-    merkleStatus: pkg.merkleStatus,
-    syntheticClassification: pkg.syntheticClassification,
-    publishedAt: row.publishedAt?.toISOString(),
-    revokedAt: row.revokedAt?.toISOString(),
-  };
+function resolveAuthoritySourceLabel(v1_1: AssuranceEvaluationV1_1): string | undefined {
+  if (v1_1.operatingEnvelopeState !== 'APPROVED') return 'UNKNOWN';
+  if (v1_1.operatingEnvelopeApprovedBy) return 'AUTHORITATIVE_POLICY';
+  return 'REFERENCE_DEFAULT';
 }

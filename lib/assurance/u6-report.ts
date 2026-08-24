@@ -46,7 +46,7 @@ function emptyBuildIdentity(): BuildIdentity {
   return { source: 'NOT_PROVIDED', explanation: 'BUILD_IDENTITY_NOT_PROVIDED' };
 }
 
-function syntheticClassification(evaluation: AssuranceEvaluationV1_1): 'NONE' | 'SYNTHETIC_REFERENCE' {
+function resolveSyntheticClassification(evaluation: AssuranceEvaluationV1_1): 'NONE' | 'SYNTHETIC_REFERENCE' {
   const isSynthetic = evaluation.operatingEnvelopeId?.includes('synthetic') || evaluation.profileId?.includes('synthetic');
   return isSynthetic ? 'SYNTHETIC_REFERENCE' : 'NONE';
 }
@@ -58,11 +58,15 @@ export function buildUnifiedAssuranceReport(
   evaluation: AssuranceEvaluation,
   bundle: EvidenceBundle,
   buildIdentity: BuildIdentity = emptyBuildIdentity(),
+  projectedEvidence: DecisionEvidenceProjection[] = [],
+  syntheticClass: 'NONE' | 'SYNTHETIC_REFERENCE' = resolveSyntheticClassification(evaluation as AssuranceEvaluationV1_1),
 ): UnifiedAssuranceReport {
   const v1_1 = evaluation as AssuranceEvaluationV1_1;
 
   const claimResults = buildReportClaimResults(evaluation.claimResults, v1_1.fivePlaneComparisons || [], v1_1.applicableClaimKeys ?? []);
   const claimSummary = buildClaimSummary(evaluation.claimResults);
+  const evidenceCoverage = buildProducerCoverageFromEvidence(projectedEvidence);
+  const limitations = buildLimitations(evaluation, projectedEvidence, v1_1.planeAvailability ?? []);
 
   const report: UnifiedAssuranceReport = {
     reportVersion: U6_REPORT_SCHEMA_VERSION,
@@ -75,7 +79,7 @@ export function buildUnifiedAssuranceReport(
     evaluationSnapshotAt: evaluation.evaluationSnapshotAt.toISOString(),
     assuranceMethodologyVersion: evaluation.assuranceMethodologyVersion,
     reportGenerationStatus: 'COMPLETE',
-    evidenceCoverageStatus: deriveEvidenceCoverageStatus(bundle),
+    evidenceCoverageStatus: deriveEvidenceCoverageStatus(projectedEvidence),
     assuranceDisposition: evaluation.disposition,
     scopeStatement: buildScopeStatement(evaluation, v1_1),
     profile: {
@@ -93,8 +97,8 @@ export function buildUnifiedAssuranceReport(
     claimSummary,
     claimResults,
     fivePlaneAnalysis: buildFivePlaneReport(v1_1),
-    evidenceCoverage: buildProducerCoverageFromBundle(bundle),
-    limitations: buildLimitations(evaluation),
+    evidenceCoverage,
+    limitations,
     frameworkAlignment: buildFrameworkAlignment(evaluation.claimResults),
     evidenceBundle: buildBundleSummary(bundle),
     decisionReceipt: {
@@ -103,7 +107,7 @@ export function buildUnifiedAssuranceReport(
       receiptHash: '',
     },
     reportDigest: '',
-    syntheticClassification: syntheticClassification(v1_1),
+    syntheticClassification: syntheticClass,
   };
 
   report.reportDigest = computeReportDigest(report);
@@ -305,6 +309,7 @@ export function computeBundleMerkleRoot(bundle: EvidenceBundle): string | null {
 export function computeReportDigest(report: UnifiedAssuranceReport): string {
   const payload = {
     reportVersion: report.reportVersion,
+    reportId: report.reportId,
     assuranceEvaluationId: report.assuranceEvaluationId,
     organizationId: report.organizationId,
     aiSystemId: report.aiSystemId,
@@ -312,9 +317,13 @@ export function computeReportDigest(report: UnifiedAssuranceReport): string {
     orchestratorRunId: report.orchestratorRunId,
     evaluationSnapshotAt: report.evaluationSnapshotAt,
     assuranceMethodologyVersion: report.assuranceMethodologyVersion,
+    reportGenerationStatus: report.reportGenerationStatus,
+    evidenceCoverageStatus: report.evidenceCoverageStatus,
     assuranceDisposition: report.assuranceDisposition,
+    scopeStatement: report.scopeStatement,
     profile: report.profile,
     operatingEnvelope: report.operatingEnvelope,
+    dispositionExplanation: report.dispositionExplanation,
     claimSummary: report.claimSummary,
     claimResults: report.claimResults.map(c => ({
       ...c,
@@ -477,7 +486,7 @@ function buildEnvelopeSection(v1_1: AssuranceEvaluationV1_1) {
     authoritySourceLabel: v1_1.operatingEnvelopeState === 'APPROVED' ? (v1_1.operatingEnvelopeApprovedBy ? 'AUTHORITATIVE_POLICY' : 'REFERENCE_DEFAULT') : 'UNKNOWN',
     approvedBy: v1_1.operatingEnvelopeApprovedBy,
     approvalReference: v1_1.operatingEnvelopeApprovalReference,
-    synthetic: syntheticClassification(v1_1) === 'SYNTHETIC_REFERENCE',
+    synthetic: resolveSyntheticClassification(v1_1) === 'SYNTHETIC_REFERENCE',
   };
 }
 
@@ -485,39 +494,54 @@ function buildScopeStatement(evaluation: AssuranceEvaluation, v1_1: AssuranceEva
   return `Assurance evaluated within the scope of profile ${v1_1.profileId} and operating envelope ${v1_1.operatingEnvelopeId ?? 'none'} at ${evaluation.evaluationSnapshotAt.toISOString()}.`;
 }
 
-function buildProducerCoverageFromBundle(bundle: EvidenceBundle): ProducerCoverageItem[] {
+function buildProducerCoverageFromEvidence(projectedEvidence: DecisionEvidenceProjection[]): ProducerCoverageItem[] {
   const groups = new Map<string, ProducerCoverageItem>();
-  for (const m of bundle.members) {
-    const key = `${m.producerId}|${m.producerRunId ?? ''}`;
+  for (const ev of projectedEvidence) {
+    const key = `${ev.producerId}|${ev.producerRunId ?? ''}`;
     const existing = groups.get(key);
     if (existing) {
       existing.evidenceCount += 1;
-      m.limitations.forEach(l => { if (!existing.limitations.includes(l)) existing.limitations.push(l); });
+      (ev.limitations ?? []).forEach(l => { if (!existing.limitations.includes(l.description ?? l)) existing.limitations.push(l.description ?? l); });
     } else {
       groups.set(key, {
-        producerId: m.producerId,
-        producerRunId: m.producerRunId ?? null,
-        producerOutcome: m.producerOutcome,
-        coverageStatus: m.coverageStatus,
-        coverageRatio: m.coverageRatio,
-        limitations: [...m.limitations],
+        producerId: ev.producerId,
+        producerRunId: ev.producerRunId ?? null,
+        producerOutcome: ev.producerOutcome ?? 'UNKNOWN',
+        coverageStatus: ev.coverageStatus ?? 'UNKNOWN',
+        coverageRatio: ev.coverageRatio ?? null,
+        limitations: (ev.limitations ?? []).map(l => (l as any).description ?? (l as any).code ?? String(l)),
         evidenceCount: 1,
+        targetSummary: ev.target ? [{ targetType: ev.target.type, targetId: ev.target.id }] : [],
       });
     }
   }
   return Array.from(groups.values()).sort((a, b) => `${a.producerId}|${a.producerRunId ?? ''}`.localeCompare(`${b.producerId}|${b.producerRunId ?? ''}`));
 }
 
-function buildLimitations(evaluation: AssuranceEvaluation): LimitationItem[] {
-  const limitations: LimitationItem[] = [];
+function buildLimitations(evaluation: AssuranceEvaluation, projectedEvidence: DecisionEvidenceProjection[] = [], planeAvailability: PlaneAvailability[] = []): LimitationItem[] {
+  const limitations: Map<string, LimitationItem> = new Map();
+  const add = (item: LimitationItem) => { if (!limitations.has(item.code)) limitations.set(item.code, item); };
+
   for (const claim of evaluation.claimResults) {
     for (const reason of claim.reasonCodes) {
       if (reason.includes('MISSING') || reason.includes('INSUFFICIENT')) {
-        limitations.push({ code: reason, explanation: reason, scope: claim.claimKey });
+        add({ code: reason, explanation: reason, scope: claim.claimKey });
       }
     }
   }
-  return limitations;
+
+  for (const ev of projectedEvidence) {
+    for (const l of ev.limitations ?? []) {
+      add({ code: (l as any).code ?? 'PRODUCER_LIMITATION', explanation: (l as any).description ?? String(l), scope: ev.producerId });
+    }
+  }
+
+  for (const plane of planeAvailability) {
+    if (plane.status === 'NOT_EVALUATED') add({ code: 'PLANE_NOT_EVALUATED', explanation: `${plane.plane} not evaluated`, scope: plane.plane });
+    if (plane.status === 'NOT_SUPPORTED_BY_CURRENT_PRODUCER') add({ code: 'PLANE_NOT_SUPPORTED', explanation: `${plane.plane} not supported by current producer`, scope: plane.plane });
+  }
+
+  return Array.from(limitations.values()).sort((a, b) => a.code.localeCompare(b.code));
 }
 
 function buildFrameworkAlignment(claimResults: ClaimEvaluationResult[]): FrameworkAlignmentItem[] {
@@ -568,9 +592,11 @@ function buildDispositionExplanation(evaluation: AssuranceEvaluation): string {
   return 'At least one mandatory or applicable Control Claim requires additional review, evidence is incomplete, or an ambiguous condition requires human judgment within the evaluated scope.';
 }
 
-function deriveEvidenceCoverageStatus(bundle: EvidenceBundle): any {
-  if (bundle.members.length === 0) return 'NOT_EVALUATED';
-  const hasPartial = bundle.members.some(m => m.coverageStatus === 'PARTIAL' || m.coverageStatus === 'UNKNOWN');
+function deriveEvidenceCoverageStatus(projectedEvidence: DecisionEvidenceProjection[]): any {
+  if (projectedEvidence.length === 0) return 'NOT_EVALUATED';
+  const hasPartial = projectedEvidence.some(ev => (ev.coverageStatus === 'PARTIAL' || ev.coverageStatus === 'UNKNOWN' || (ev.producerOutcome as any) === 'ERROR' || (ev.producerOutcome as any) === 'NOT_ASSESSED'));
+  const hasUnknown = projectedEvidence.some(ev => ev.coverageStatus === 'UNKNOWN');
+  if (hasUnknown) return 'UNKNOWN';
   return hasPartial ? 'PARTIAL' : 'COMPLETE';
 }
 
@@ -633,6 +659,10 @@ function buildBundleDigestPayload(bundle: EvidenceBundle) {
       provenanceRefs: m.provenanceRefs,
     })),
   };
+}
+
+export function computeBundleDigest(bundle: EvidenceBundle): string {
+  return hashTextContent(canonicalSerialize(buildBundleDigestPayload(bundle)));
 }
 
 function computeClaimStateSummary(claimResults: ClaimEvaluationResult[]): Record<any, number> {
