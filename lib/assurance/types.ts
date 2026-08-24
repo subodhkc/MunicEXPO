@@ -357,31 +357,8 @@ export type EvidenceMethod =
   | 'SELF_REPORT';
 
 // ─── B6: Capability Declaration (Pre-U6: structured capability projection) ─────
-
-export interface CapabilityDeclaration {
-  capabilityId: string;
-  sourcePlane: AssurancePlane;
-  subject?: string;
-  action: string;
-  resource: string;
-  scope?: string;
-  dataClass?: string;
-  channel?: string;
-  environment?: string;
-  guardRequirements?: string[];
-  impact?: string;
-  constraints?: string[];
-  targetCount?: number;
-  changeMagnitude?: number;
-  authorityClass?: AuthorityClass;
-  evidenceMethod?: EvidenceMethod;
-  authoritySourceLabel?: AuthoritySourceLabel;
-  mappingStrength: MappingStrength;
-  sourceRuleId?: string;
-  concernId?: string;
-  /** Reference to canonical evidence that produced this declaration */
-  sourceEvidenceIds: string[];
-}
+// Moved to lib/evidence/capability-declaration-contract.ts to keep U4/U2 neutral.
+// U5 imports EvidenceCapabilityDeclaration and casts semantic values to local Assurance types.
 
 export type PlaneAvailabilityStatus =
   | 'PRESENT'

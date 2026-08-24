@@ -21,15 +21,14 @@
 
 import {
   CapabilityFact,
-  CapabilityDeclaration,
   OperatingEnvelope,
   ResolvedProfile,
   EvidenceMethod,
   AuthorityClass,
   AssurancePlane,
   AuthoritySourceLabel,
-  MappingStrength,
 } from './types';
+import type { EvidenceCapabilityDeclaration, EvidenceMappingStrength } from '@/lib/evidence/capability-declaration-contract';
 import type { DecisionEvidenceProjection } from '@/lib/decision-pipeline/evidence-projection';
 import { resolveCanonicalProducerId } from '@/lib/engine-registry/producer-id-compatibility';
 
@@ -153,7 +152,7 @@ function projectObservedFacts(evidence: DecisionEvidenceProjection[]): Capabilit
 }
 
 /** Pre-U6: only these mapping strengths may create canonical CODE_CAPABLE facts. */
-const CODE_CAPABLE_MAPPING_STRENGTHS: MappingStrength[] = [
+const CODE_CAPABLE_MAPPING_STRENGTHS: EvidenceMappingStrength[] = [
   'EXACT_RULE_MAPPING',
   'EXACT_CAPABILITY_MAPPING',
   'PROFILE_MAPPING',
@@ -169,14 +168,14 @@ function extractCapabilityDeclarations(ev: DecisionEvidenceProjection, sourcePla
 
   for (const decl of declarations) {
     if (!decl || decl.sourcePlane !== sourcePlane) continue;
-    if (sourcePlane === 'CODE_CAPABLE' && !CODE_CAPABLE_MAPPING_STRENGTHS.includes(decl.mappingStrength)) continue;
+    if (sourcePlane === 'CODE_CAPABLE' && !CODE_CAPABLE_MAPPING_STRENGTHS.includes(decl.mappingStrength as EvidenceMappingStrength)) continue;
     facts.push(buildCapabilityFact(ev, decl));
   }
 
   return facts;
 }
 
-function buildCapabilityFact(ev: DecisionEvidenceProjection, decl: CapabilityDeclaration): CapabilityFact {
+function buildCapabilityFact(ev: DecisionEvidenceProjection, decl: EvidenceCapabilityDeclaration): CapabilityFact {
   return {
     capabilityId: decl.capabilityId ?? `${ev.evidenceId}:capability`,
     subject: decl.subject ?? 'system',
