@@ -127,7 +127,8 @@ function projectCapableFacts(evidence: DecisionEvidenceProjection[]): Capability
   const facts: CapabilityFact[] = [];
   for (const ev of evidence) {
     const producer = resolveCanonicalProducerId(ev.producerId) ?? ev.producerId;
-    const isStatic = producer === 'saas-static' || producer === 'saas-inventory';
+    // U6-INVENTORY-LOCK: inventory presence does not prove code capability.
+    const isStatic = producer === 'saas-static';
     if (!isStatic) continue;
 
     const caps = extractCapabilityDeclarations(ev, 'CODE_CAPABLE');
@@ -151,7 +152,25 @@ function projectObservedFacts(evidence: DecisionEvidenceProjection[]): Capabilit
   return facts;
 }
 
-/** Pre-U6: only these mapping strengths may create canonical CODE_CAPABLE facts. */
+/** U6: Canonical methods acceptable per plane. */
+const PLANE_METHODS: Record<AssurancePlane, string[]> = {
+  REQUESTED: ['SIGNED_MANIFEST', 'SELF_REPORT'],
+  POLICY_AUTHORIZED: ['APPROVED_POLICY_RECORD', 'POLICY_CONFIGURATION'],
+  EFFECTIVELY_GRANTED: ['IAM_OBSERVATION', 'POLICY_CONFIGURATION'],
+  CODE_CAPABLE: ['STATIC_PATH_ANALYSIS', 'STATIC_STRUCTURAL_ANALYSIS'],
+  OBSERVED: ['RUNTIME_TRACE', 'ACTION_WITNESS'],
+};
+
+/** U6: Canonical authority classes acceptable per plane. */
+const PLANE_AUTHORITIES: Record<AssurancePlane, string[]> = {
+  REQUESTED: ['VENDOR_DECLARATION', 'AUTHORITATIVE_POLICY'],
+  POLICY_AUTHORIZED: ['AUTHORITATIVE_POLICY'],
+  EFFECTIVELY_GRANTED: ['EFFECTIVE_GRANT'],
+  CODE_CAPABLE: ['NON_AUTHORITATIVE', 'VENDOR_DECLARATION'],
+  OBSERVED: ['RUNTIME_EMPIRICAL', 'NON_AUTHORITATIVE'],
+};
+
+/** U6: only these mapping strengths may create canonical CODE_CAPABLE facts. */
 const CODE_CAPABLE_MAPPING_STRENGTHS: EvidenceMappingStrength[] = [
   'EXACT_RULE_MAPPING',
   'EXACT_CAPABILITY_MAPPING',
@@ -159,8 +178,18 @@ const CODE_CAPABLE_MAPPING_STRENGTHS: EvidenceMappingStrength[] = [
 ];
 
 /**
+ * U6 fail-closed qualification per plane. Missing/incompatible authority or method → reject.
+ */
+function qualifyDeclaration(ev: DecisionEvidenceProjection, decl: EvidenceCapabilityDeclaration, sourcePlane: AssurancePlane): boolean {
+  if (!decl.evidenceMethod || !PLANE_METHODS[sourcePlane].includes(decl.evidenceMethod)) return false;
+  if (!decl.authorityClass || !PLANE_AUTHORITIES[sourcePlane].includes(decl.authorityClass)) return false;
+  if (sourcePlane === 'CODE_CAPABLE' && !CODE_CAPABLE_MAPPING_STRENGTHS.includes(decl.mappingStrength as EvidenceMappingStrength)) return false;
+  return true;
+}
+
+/**
  * Extract capability declarations from evidence's safe structured capability projection.
- * Returns empty if no canonical declaration exists or the mapping is not strong enough.
+ * Returns empty if no canonical declaration exists or the plane qualification fails.
  */
 function extractCapabilityDeclarations(ev: DecisionEvidenceProjection, sourcePlane: AssurancePlane): CapabilityFact[] {
   const facts: CapabilityFact[] = [];
@@ -168,14 +197,16 @@ function extractCapabilityDeclarations(ev: DecisionEvidenceProjection, sourcePla
 
   for (const decl of declarations) {
     if (!decl || decl.sourcePlane !== sourcePlane) continue;
-    if (sourcePlane === 'CODE_CAPABLE' && !CODE_CAPABLE_MAPPING_STRENGTHS.includes(decl.mappingStrength as EvidenceMappingStrength)) continue;
-    facts.push(buildCapabilityFact(ev, decl));
+    if (!qualifyDeclaration(ev, decl, sourcePlane)) continue;
+    const fact = buildCapabilityFact(ev, decl);
+    if (fact) facts.push(fact);
   }
 
   return facts;
 }
 
-function buildCapabilityFact(ev: DecisionEvidenceProjection, decl: EvidenceCapabilityDeclaration): CapabilityFact {
+function buildCapabilityFact(ev: DecisionEvidenceProjection, decl: EvidenceCapabilityDeclaration): CapabilityFact | undefined {
+  if (!decl.evidenceMethod) return undefined;
   return {
     capabilityId: decl.capabilityId ?? `${ev.evidenceId}:capability`,
     subject: decl.subject ?? 'system',
@@ -195,7 +226,7 @@ function buildCapabilityFact(ev: DecisionEvidenceProjection, decl: EvidenceCapab
     contentHash: ev.contentHash ?? undefined,
     sourcePlane: decl.sourcePlane as AssurancePlane,
     authorityClass: (decl.authorityClass as AuthorityClass) ?? 'NON_AUTHORITATIVE',
-    evidenceMethod: (decl.evidenceMethod as EvidenceMethod) ?? 'STATIC_PATH_ANALYSIS',
+    evidenceMethod: decl.evidenceMethod as EvidenceMethod,
     sourceEvidenceIds: [ev.evidenceId, ...(Array.isArray(decl.sourceEvidenceIds) ? decl.sourceEvidenceIds : [])],
     authoritySourceLabel: (decl.authoritySourceLabel as AuthoritySourceLabel) ?? 'REFERENCE_DEFAULT',
   };
