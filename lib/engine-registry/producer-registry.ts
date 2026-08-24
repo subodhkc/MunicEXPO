@@ -175,72 +175,78 @@ export const PRODUCER_REGISTRY: Record<ProducerId, ProducerMetadata> = {
     producerType: 'EXTERNAL_IMPORT',
     displayName: 'SARIF Import',
     implementationModule: 'lib/scan-import/',
-    status: 'PARTIAL',
+    status: 'ACTIVE', // U3-C: source-truth corrected — real parser + API + adapter now exist
     connectedToPipeline: false,
+    evidenceCoreActivated: true, // U3-C: EVIDENCE_CORE_ACTIVATED
     legacyIds: ['sarif', 'external'],
-    persistenceTables: ['imported_scans'],
-    consumers: [],
-    activationBlockers: ['U2 evidence envelope contract needed'],
+    persistenceTables: ['external_scan_imports', 'external_scan_findings'], // U3-C: corrected from nonexistent 'imported_scans'
+    consumers: ['evidence-core'],
+    activationBlockers: [],
   },
   [PRODUCER_IDS.CI_CD_SCANNER]: {
     producerId: PRODUCER_IDS.CI_CD_SCANNER,
     producerType: 'CI_CD',
     displayName: 'CI/CD Scanner',
-    implementationModule: 'lib/ci/',
+    implementationModule: 'app/api/ci/scan-results/', // U3-C: corrected from nonexistent 'lib/ci/'
     status: 'ACTIVE',
     connectedToPipeline: false,
+    evidenceCoreActivated: true, // U3-C: EVIDENCE_CORE_ACTIVATED
     legacyIds: ['ci-cd', 'cicd'],
-    persistenceTables: ['ci_scans'],
-    consumers: ['trust-artifacts (cicdIntegrationActive flag)'],
-    activationBlockers: ['U2 evidence envelope contract needed'],
+    persistenceTables: ['ci_scan_results'], // U3-C: corrected from nonexistent 'ci_scans'
+    consumers: ['trust-artifacts (cicdIntegrationActive flag)', 'evidence-core'],
+    activationBlockers: [],
   },
   [PRODUCER_IDS.NYC_LL144]: {
     producerId: PRODUCER_IDS.NYC_LL144,
     producerType: 'BIAS_AUDIT',
     displayName: 'NYC LL144 Bias Audit',
-    implementationModule: 'lib/nyc-*',
-    status: 'ACTIVE',
+    implementationModule: 'lib/nyc-ll144/',
+    status: 'ACTIVE', // U3-C: source-confirmed — active workflow exists
     connectedToPipeline: false,
+    evidenceCoreActivated: false, // U3-C: SPECIALIZED_WORKFLOW_KEEP_SEPARATE — deferred
     legacyIds: ['nyc-ll144', 'bias-audit'],
     persistenceTables: ['bias_audits', 'nyc_audit_engagements', 'nyc_analysis_results'],
     consumers: ['nyc-audit reports', 'public disclosure'],
-    activationBlockers: ['U2 evidence envelope contract needed'],
+    activationBlockers: ['U3-C: SPECIALIZED_WORKFLOW_KEEP_SEPARATE — bias_audits has no organizationId; nyc_audit_engagements.organizationId is nullable; specialized regulatory workflow not collapsed into generic Regulatory'],
   },
   [PRODUCER_IDS.LLVERIFY]: {
     producerId: PRODUCER_IDS.LLVERIFY,
     producerType: 'LLM_VERIFICATION',
     displayName: 'LLMVerify',
-    implementationModule: 'lib/llmverify/',
-    status: 'ACTIVE',
+    implementationModule: null, // U3-C: corrected — no lib/llmverify/ module exists; package is enablement utility, not persisted Evidence producer
+    status: 'PARTIAL', // U3-C: corrected from ACTIVE — capability exists but no persisted tenant-scoped Evidence feed
     connectedToPipeline: false,
+    evidenceCoreActivated: false, // U3-C: CAPABILITY_NOT_EVIDENCE_PRODUCER
     legacyIds: ['llmverify', 'llm-verify'],
-    persistenceTables: ['llmverify_results'],
+    persistenceTables: [], // U3-C: corrected — llmverify_results does NOT exist in schema
     consumers: [],
-    activationBlockers: ['U2 evidence envelope contract needed'],
+    activationBlockers: ['U3-C: CAPABILITY_NOT_EVIDENCE_PRODUCER — no persisted tenant-scoped results; enablement utility only'],
   },
   [PRODUCER_IDS.ISAF_LOGGER]: {
     producerId: PRODUCER_IDS.ISAF_LOGGER,
     producerType: 'LINEAGE',
     displayName: 'ISAF Logger',
-    implementationModule: 'isaf-logger/',
-    status: 'ACTIVE',
+    implementationModule: null, // U3-C: corrected — no isaf-logger/ module with persisted Evidence; standalone package capability
+    status: 'PARTIAL', // U3-C: corrected from ACTIVE — package exists but no active production Evidence feed
     connectedToPipeline: false,
+    evidenceCoreActivated: false, // U3-C: CAPABILITY_NOT_EVIDENCE_PRODUCER
     legacyIds: ['isaf', 'isaf-logger'],
-    persistenceTables: ['isaf_logs'],
+    persistenceTables: [], // U3-C: corrected — isaf_logs does NOT exist in schema
     consumers: [],
-    activationBlockers: ['U2 evidence envelope contract needed'],
+    activationBlockers: ['U3-C: CAPABILITY_NOT_EVIDENCE_PRODUCER — no persisted tenant-scoped records; standalone package capability'],
   },
   [PRODUCER_IDS.OSNIT]: {
     producerId: PRODUCER_IDS.OSNIT,
     producerType: 'OSINT',
     displayName: 'OSNIT',
-    implementationModule: 'osnit/',
+    implementationModule: 'app/api/osnit/',
     status: 'PARTIAL',
     connectedToPipeline: false,
+    evidenceCoreActivated: false, // U3-C: BLOCKED_TENANT_IDENTITY
     legacyIds: ['osnit'],
     persistenceTables: ['osnit_analyses'],
     consumers: [],
-    activationBlockers: ['U2 evidence envelope contract needed', 'completion status unclear'],
+    activationBlockers: ['U3-C: BLOCKED_TENANT_IDENTITY — osnit_analyses has no organizationId; OSINT observations do not prove internal control state'],
   },
   [PRODUCER_IDS.AIRRD]: {
     producerId: PRODUCER_IDS.AIRRD,
@@ -249,10 +255,11 @@ export const PRODUCER_REGISTRY: Record<ProducerId, ProducerMetadata> = {
     implementationModule: 'lib/airrd/',
     status: 'ACTIVE',
     connectedToPipeline: false,
+    evidenceCoreActivated: false, // U3-C: QUALIFIED_WITH_CORRECTION — deferred; airrd_scans.organizationId is nullable
     legacyIds: ['airrd'],
     persistenceTables: ['airrd_scans', 'airrd_gmi_pillars'],
     consumers: [],
-    activationBlockers: ['U2 evidence envelope contract needed'],
+    activationBlockers: ['U3-C: QUALIFIED_WITH_CORRECTION — airrd_scans.organizationId is nullable; DERIVED_READINESS not technical security verification; AIRRD score != assurance'],
   },
   [PRODUCER_IDS.COMPLIANCE_TWIN]: {
     producerId: PRODUCER_IDS.COMPLIANCE_TWIN,
