@@ -16,6 +16,7 @@
  * B31: Tenant-scoped — all records carry organizationId.
  */
 
+import { nanoid } from 'nanoid';
 import { prisma } from '@/lib/prisma';
 import {
   AssuranceEvaluation,
@@ -120,6 +121,7 @@ export async function persistAssuranceEvaluation(
     for (const claimResult of evaluation.claimResults) {
       const claimEval = await tx.control_claim_evaluations.create({
         data: {
+          id: nanoid(),
           assuranceEvaluationId: evalRecord.id,
           organizationId: evaluation.organizationId,
           claimKey: claimResult.claimKey,
@@ -137,6 +139,7 @@ export async function persistAssuranceEvaluation(
 
       const evidenceSet = await tx.control_evidence_sets.create({
         data: {
+          id: nanoid(),
           controlClaimEvaluationId: claimEval.id,
           organizationId: evaluation.organizationId,
           claimKey: claimResult.claimKey,
@@ -148,6 +151,7 @@ export async function persistAssuranceEvaluation(
       for (const member of claimResult.evidenceSet.members) {
         await tx.control_evidence_set_members.create({
           data: {
+            id: nanoid(),
             controlEvidenceSetId: evidenceSet.id,
             organizationId: evaluation.organizationId,
             evidenceId: member.evidenceId,
