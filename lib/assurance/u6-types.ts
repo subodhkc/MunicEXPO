@@ -5,15 +5,61 @@
  * Consumes U5 methodology 1.1 AssuranceEvaluation.
  */
 
-import { AssuranceDisposition, ClaimState, CapabilityComparisonRecord, PlaneAvailability, ProfileVerdict } from './types';
+import { AssuranceDisposition, ClaimState, CapabilityComparisonRecord, CapabilityFact, PlaneAvailability, ProfileVerdict } from './types';
 
 export const U6_REPORT_SCHEMA_VERSION = '1.0.0' as const;
 export const U6_BUNDLE_SCHEMA_VERSION = '1.0.0' as const;
 export const U6_RECEIPT_SCHEMA_VERSION = '1.0.0' as const;
+export const U6_VERIFICATION_SCHEMA_VERSION = '1.0.0' as const;
 
 export type ReportGenerationStatus = 'COMPLETE' | 'PENDING' | 'FAILED';
 export type EvidenceCoverageStatus = 'COMPLETE' | 'PARTIAL' | 'UNKNOWN' | 'NOT_EVALUATED';
-export type VerificationStatus = 'CRYPTOGRAPHICALLY_INTACT' | 'TAMPERED' | 'NOT_FOUND';
+export type MerkleStatus = 'AVAILABLE' | 'NOT_AVAILABLE_EMPTY_SET';
+
+export type VerificationStatus =
+  | 'INTERNALLY_CONSISTENT'
+  | 'INTEGRITY_VERIFIED_AGAINST_HAIEC_RECORD'
+  | 'INVALID_PACKAGE'
+  | 'REVOKED'
+  | 'NOT_FOUND';
+
+export interface BuildIdentity {
+  applicationVersion?: string;
+  gitCommit?: string;
+  containerDigest?: string;
+  packageDigest?: string;
+  source?: 'BUILD_PROFILE_BINDING' | 'EVIDENCE_PROVENANCE' | 'ORCHESTRATOR_CI_COMMIT' | 'NOT_PROVIDED';
+  explanation?: string;
+}
+
+export interface U6Package {
+  packageSchemaVersion: typeof U6_REPORT_SCHEMA_VERSION;
+  packageId: string;
+  assuranceEvaluationId: string;
+  organizationId: string;
+  aiSystemId: string;
+  orchestratorRunId: string;
+  reportSchemaVersion: string;
+  bundleSchemaVersion: string;
+  receiptSchemaVersion: string;
+  verificationSchemaVersion: string;
+  semanticPackageDigest: string;
+  semanticReportDigest: string;
+  bundleDigest: string;
+  receiptHash: string;
+  merkleRoot: string | null;
+  merkleStatus: MerkleStatus;
+  report: UnifiedAssuranceReport;
+  bundle: EvidenceBundle;
+  receipt: AssuranceDecisionReceipt;
+  buildIdentity: BuildIdentity;
+  profileIdentity: ReportProfileSection;
+  operatingEnvelopeIdentity?: ReportEnvelopeSection;
+  authoritySourceLabel?: string;
+  operatingEnvelopeApprovedAt?: string;
+  approvalReference?: string;
+  syntheticClassification: 'NONE' | 'SYNTHETIC_REFERENCE';
+}
 
 export interface UnifiedAssuranceReport {
   reportVersion: string;
@@ -21,7 +67,7 @@ export interface UnifiedAssuranceReport {
   assuranceEvaluationId: string;
   organizationId: string;
   aiSystemId: string;
-  buildId?: string;
+  buildIdentity: BuildIdentity;
   orchestratorRunId: string;
   evaluationSnapshotAt: string;
   assuranceMethodologyVersion: string;
@@ -36,12 +82,12 @@ export interface UnifiedAssuranceReport {
   claimResults: ReportClaimResult[];
   fivePlaneAnalysis: FivePlaneReportSection;
   evidenceCoverage: ProducerCoverageItem[];
-  limitations: string[];
+  limitations: LimitationItem[];
   frameworkAlignment: FrameworkAlignmentItem[];
   evidenceBundle: EvidenceBundleSummary;
   decisionReceipt: DecisionReceiptSummary;
   reportDigest: string;
-  syntheticMarker?: string;
+  syntheticClassification: 'NONE' | 'SYNTHETIC_REFERENCE';
 }
 
 export interface ReportProfileSection {
@@ -92,7 +138,7 @@ export interface ReportClaimResult {
   evidenceSetDigest: string;
   relevantPlaneComparisons: string[];
   frameworkMappings: FrameworkAlignmentItem[];
-  limitations: string[];
+  limitations: LimitationItem[];
 }
 
 export interface FivePlaneReportSection {
@@ -132,13 +178,22 @@ export interface ProducerCoverageItem {
   coverageRatio: number | null;
   limitations: string[];
   evidenceCount: number;
+  targetSummary?: { targetType: string; targetId?: string }[];
+}
+
+export interface LimitationItem {
+  code: string;
+  explanation: string;
+  scope?: string;
 }
 
 export interface FrameworkAlignmentItem {
   framework: string;
+  reference: string;
   control: string;
   mappingStrength: string;
   evidenceClaimKey?: string;
+  claimState?: ClaimState;
   alignmentStatement: string;
 }
 
@@ -148,7 +203,8 @@ export interface EvidenceBundleSummary {
   assuranceEvaluationId: string;
   membershipCount: number;
   bundleDigest: string;
-  merkleRoot: string;
+  merkleRoot: string | null;
+  merkleStatus: MerkleStatus;
   algorithm: string;
   rule: string;
 }
@@ -159,7 +215,8 @@ export interface EvidenceBundle {
   assuranceEvaluationId: string;
   members: EvidenceBundleMembership[];
   bundleDigest: string;
-  merkleRoot: string;
+  merkleRoot: string | null;
+  merkleStatus: MerkleStatus;
   algorithm: 'sha256';
   rule: 'pair-sort-concat';
 }
@@ -192,7 +249,7 @@ export interface AssuranceDecisionReceipt {
   assuranceEvaluationId: string;
   organizationId: string;
   aiSystemId: string;
-  buildId?: string;
+  buildIdentity: BuildIdentity;
   orchestratorRunId: string;
   evaluationSnapshotAt: string;
   assuranceMethodologyVersion: string;
@@ -202,16 +259,18 @@ export interface AssuranceDecisionReceipt {
   operatingEnvelopeId?: string;
   operatingEnvelopeVersion?: string;
   operatingEnvelopeDigest?: string;
+  authoritySourceLabel?: string;
+  syntheticClassification: 'NONE' | 'SYNTHETIC_REFERENCE';
   disposition: AssuranceDisposition;
   claimStateSummary: Record<ClaimState, number>;
   inputHash: string;
   outputHash: string;
   evidenceSetDigest: string;
   evidenceBundleDigest: string;
-  evidenceMerkleRoot: string;
-  reportDigest: string;
+  evidenceMerkleRoot: string | null;
+  merkleStatus: MerkleStatus;
+  semanticReportDigest: string;
   limitations: string[];
-  syntheticMarker?: string;
   receiptHash: string;
 }
 
@@ -228,17 +287,39 @@ export interface VerificationPackage {
   proofs: { leafHash: string; proof: any }[];
 }
 
+export interface PackageVerificationResult {
+  reportDigestValid: boolean;
+  receiptHashValid: boolean;
+  bundleDigestValid: boolean;
+  merkleRootValid: boolean;
+  allMerkleProofsValid: boolean;
+  reportReceiptBindingValid: boolean;
+  receiptBundleBindingValid: boolean;
+  evaluationIdentityValid: boolean;
+  profileIdentityValid: boolean;
+  envelopeIdentityValid: boolean;
+  buildIdentityValid: boolean;
+  syntheticIdentityValid: boolean;
+  publicationState?: 'PRIVATE' | 'PUBLIC' | 'REVOKED';
+  valid: boolean;
+  integrityStatus: VerificationStatus;
+}
+
 export interface PublicVerificationResult {
-  receiptId: string;
+  publicVerificationId: string;
+  publicationState: 'PUBLIC' | 'REVOKED';
   verificationStatus: VerificationStatus;
   disposition?: AssuranceDisposition;
   evaluatedAt?: string;
   methodologyVersion?: string;
+  reportSchemaVersion?: string;
   profileLabel?: string;
   profileVersion?: string;
   scopeSummary?: string;
-  merkleRoot?: string;
   receiptHash?: string;
-  syntheticMarker?: string;
-  revoked: boolean;
+  merkleRoot?: string | null;
+  merkleStatus?: MerkleStatus;
+  syntheticClassification?: 'NONE' | 'SYNTHETIC_REFERENCE';
+  publishedAt?: string;
+  revokedAt?: string;
 }
