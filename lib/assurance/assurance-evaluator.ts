@@ -250,7 +250,7 @@ export function evaluateAssurance(params: {
     fivePlaneOverallVerdict,
     fivePlaneComparisons,
     capabilityFacts,
-    planeAvailability: capabilityFacts ? buildPlaneAvailability(capabilityFacts) : undefined,
+    planeAvailability: capabilityFacts ? buildPlaneAvailability(capabilityFacts, availableProducerIds) : undefined,
   };
 
   return evaluation;

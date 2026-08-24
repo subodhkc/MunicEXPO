@@ -32,6 +32,7 @@ import {
 import type { EvidenceCapabilityDeclaration, EvidenceMappingStrength } from '@/lib/evidence/capability-declaration-contract';
 import type { DecisionEvidenceProjection } from '@/lib/decision-pipeline/evidence-projection';
 import { resolveCanonicalProducerId } from '@/lib/engine-registry/producer-id-compatibility';
+import { PRODUCER_IDS } from '@/lib/engine-registry/producer-registry';
 
 export interface CapabilityFactProjectionInput {
   organizationId: string;
@@ -250,13 +251,26 @@ function extractResourceFromOperation(operation: string): string {
 
 const PLANE_ORDER: AssurancePlane[] = ['REQUESTED', 'POLICY_AUTHORIZED', 'EFFECTIVELY_GRANTED', 'CODE_CAPABLE', 'OBSERVED'];
 
+/** U6: canonical producers that can support each capability plane. */
+const PLANE_PRODUCERS: Record<AssurancePlane, string[]> = {
+  REQUESTED: [PRODUCER_IDS.SAAS_WIZARD],
+  POLICY_AUTHORIZED: [], // operating envelope / policy record
+  EFFECTIVELY_GRANTED: [PRODUCER_IDS.SAAS_INVENTORY],
+  CODE_CAPABLE: [PRODUCER_IDS.SAAS_STATIC, PRODUCER_IDS.CI_CD_SCANNER, PRODUCER_IDS.SARIF_IMPORT],
+  OBSERVED: [PRODUCER_IDS.SAAS_RUNTIME],
+};
+
 /**
  * U6: Build a plane availability snapshot from the projected capability facts.
  *
  * PRESENT != COMPLETE. A finding-derived CODE_CAPABLE fact is PRESENT but coverage is PARTIAL.
  * Missing planes are reported as NOT_PROVIDED rather than invented.
  */
-export function buildPlaneAvailability(facts: CapabilityFactProjectionResult): PlaneAvailability[] {
+export function buildPlaneAvailability(
+  facts: CapabilityFactProjectionResult,
+  availableProducerIds: string[] = [],
+): PlaneAvailability[] {
+  const canonicalAvailable = new Set(availableProducerIds.map(resolveCanonicalProducerId).filter(Boolean) as string[]);
   const factMap: Record<AssurancePlane, CapabilityFact[]> = {
     REQUESTED: facts.requested,
     POLICY_AUTHORIZED: facts.policy,
@@ -277,17 +291,30 @@ export function buildPlaneAvailability(facts: CapabilityFactProjectionResult): P
     else if (coverages.has('COMPLETE')) coverage = 'COMPLETE';
     else if (coverages.has('NOT_APPLICABLE')) coverage = 'NOT_APPLICABLE';
 
-    const basis = Array.from(bases)[0] ?? 'UNKNOWN';
+    const basisList = Array.from(bases).sort();
+    const basis = basisList.length > 1 ? 'MIXED' : basisList[0] ?? 'UNKNOWN';
+    const exactBasis = basisList;
+
+    let status: PlaneAvailability['status'] = present ? 'PRESENT' : 'NOT_PROVIDED';
+    if (!present && canonicalAvailable.size > 0) {
+      const planeProducers = new Set(PLANE_PRODUCERS[plane]);
+      if (Array.from(canonicalAvailable).some(p => planeProducers.has(p))) {
+        status = 'EVALUATED_NO_QUALIFYING_FACTS';
+      }
+    }
 
     return {
       plane,
-      status: present ? 'PRESENT' : 'NOT_PROVIDED',
+      status,
       coverage,
       basis,
+      exactBasis,
       sourceEvidenceIds,
       explanation: present
         ? `Plane supported by ${planeFacts.length} capability fact(s); coverage ${coverage.toLowerCase()}.`
-        : 'No qualifying capability evidence was provided for this plane.',
+        : status === 'EVALUATED_NO_QUALIFYING_FACTS'
+          ? `No qualifying capability fact was produced by the currently supported ${plane.toLowerCase().replace(/_/g, ' ')} mappings; this does not prove absence of other capabilities.`
+          : 'No qualifying capability evidence was provided for this plane.',
     };
   });
 }

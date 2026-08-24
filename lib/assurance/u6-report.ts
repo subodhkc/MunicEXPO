@@ -282,10 +282,7 @@ function buildReportClaimResults(
     const def = CONTROL_CLAIM_CATALOG.find(x => x.claimKey === c.claimKey);
     const isApplicable = applicableClaimKeys.includes(c.claimKey);
     const isMandatory = !!def?.mandatory;
-    const criticalityRaw = def?.criticality ?? (isMandatory ? 'critical' : 'high');
-    const criticality: 'CRITICAL' | 'REQUIRED' | 'INFORMATIONAL' =
-      criticalityRaw === 'critical' ? 'CRITICAL' :
-      criticalityRaw === 'high' || criticalityRaw === 'medium' ? 'REQUIRED' : 'INFORMATIONAL';
+    const criticality = def?.criticality ?? (isMandatory ? 'critical' : 'high');
     const applicability = isApplicable ? 'APPLICABLE' : 'NOT_APPLICABLE';
     return {
       claimKey: c.claimKey,
@@ -313,7 +310,7 @@ function buildClaimSummary(claimResults: ClaimEvaluationResult[]): ClaimSummaryI
     claimKey: c.claimKey,
     claimVersion: c.claimVersion,
     claimState: c.claimState,
-    criticality: defMap.get(c.claimKey)?.mandatory ? 'CRITICAL' : 'REQUIRED',
+    criticality: defMap.get(c.claimKey)?.criticality ?? (defMap.get(c.claimKey)?.mandatory ? 'critical' : 'high'),
     supporting: c.supportingCount,
     contradicting: c.contradictingCount,
     excluded: c.excludedCount,

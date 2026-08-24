@@ -363,19 +363,23 @@ export type EvidenceMethod =
 
 export type PlaneAvailabilityStatus =
   | 'PRESENT'
+  | 'EVALUATED_NO_QUALIFYING_FACTS'
   | 'NOT_PROVIDED'
   | 'NOT_EVALUATED'
   | 'NOT_SUPPORTED_BY_CURRENT_PRODUCER'
   | 'SYNTHETIC_REFERENCE';
 
 export type PlaneAvailabilityCoverage = 'COMPLETE' | 'PARTIAL' | 'UNKNOWN' | 'NOT_APPLICABLE';
-export type PlaneDiscoveryBasis = 'FINDING_DERIVED' | 'CAPABILITY_EXTRACTOR' | 'AUTHORITY_RECORD' | 'ACTION_WITNESS' | 'DECLARATION' | 'UNKNOWN';
+export type PlaneDiscoveryBasis = 'FINDING_DERIVED' | 'CAPABILITY_EXTRACTOR' | 'AUTHORITY_RECORD' | 'ACTION_WITNESS' | 'DECLARATION' | 'MIXED' | 'UNKNOWN';
 
 export interface PlaneAvailability {
   plane: AssurancePlane;
   status: PlaneAvailabilityStatus;
   coverage: PlaneAvailabilityCoverage;
+  /** Primary or MIXED basis for this plane */
   basis: PlaneDiscoveryBasis;
+  /** Exact ordered list of all discovery bases present in this plane */
+  exactBasis?: PlaneDiscoveryBasis[];
   sourceEvidenceIds: string[];
   explanation?: string;
 }
@@ -852,6 +856,20 @@ export interface CapabilityKey {
 }
 
 /**
+ * U6: Semantic capability identity — excludes operational scope and quantitative bounds.
+ * Used for matching capability facts across planes before comparing scope/constraints.
+ */
+export interface SemanticCapabilityKey {
+  capabilityFamily?: string;
+  subject: string;
+  action: string;
+  resource: string;
+  dataClass: string;
+  channel: string;
+  environment: string;
+}
+
+/**
  * Normalize a CapabilityFact into a deterministic CapabilityKey.
  */
 export function normalizeCapabilityKey(fact: {
@@ -875,10 +893,41 @@ export function normalizeCapabilityKey(fact: {
 }
 
 /**
+ * U6: Normalize a CapabilityFact to its semantic identity for matching.
+ */
+export function normalizeSemanticCapabilityKey(fact: {
+  capabilityFamily?: string;
+  subject: string;
+  action: string;
+  resource: string;
+  dataClass?: string;
+  channel?: string;
+  environment?: string;
+}): SemanticCapabilityKey {
+  return {
+    capabilityFamily: (fact.capabilityFamily ?? '').toLowerCase().trim(),
+    subject: (fact.subject ?? '').toLowerCase().trim(),
+    action: (fact.action ?? '').toLowerCase().trim(),
+    resource: (fact.resource ?? '').toLowerCase().trim(),
+    dataClass: (fact.dataClass ?? '').toLowerCase().trim(),
+    channel: (fact.channel ?? '').toLowerCase().trim(),
+    environment: (fact.environment ?? '').toLowerCase().trim(),
+  };
+}
+
+/**
  * Serialize a CapabilityKey to a deterministic string for comparison.
  */
 export function capabilityKeyToString(key: CapabilityKey): string {
   return [key.subject, key.action, key.resource, key.scope, key.dataClass, key.channel, key.environment]
+    .join('|');
+}
+
+/**
+ * U6: Serialize a SemanticCapabilityKey to a deterministic string for matching.
+ */
+export function semanticCapabilityKeyToString(key: SemanticCapabilityKey): string {
+  return [key.capabilityFamily ?? '', key.subject, key.action, key.resource, key.dataClass, key.channel, key.environment]
     .join('|');
 }
 

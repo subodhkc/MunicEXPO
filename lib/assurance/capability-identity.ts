@@ -13,16 +13,19 @@ import {
   CapabilityKey,
   normalizeCapabilityKey,
   capabilityKeyToString,
+  normalizeSemanticCapabilityKey,
+  semanticCapabilityKeyToString,
 } from './types';
 
 /**
- * Check if two capability facts represent the SAME capability
- * (same subject, action, resource, scope, data class, channel, environment).
+ * U6: Check if two capability facts represent the SAME capability semantically
+ * (same capability family, subject, action, resource, data class, channel, environment).
+ * Operational scope and quantitative bounds are compared separately via scopeContains/constraintsContain.
  */
 export function sameCapability(a: CapabilityFact, b: CapabilityFact): boolean {
-  const keyA = normalizeCapabilityKey(a);
-  const keyB = normalizeCapabilityKey(b);
-  return capabilityKeyToString(keyA) === capabilityKeyToString(keyB);
+  const keyA = normalizeSemanticCapabilityKey(a);
+  const keyB = normalizeSemanticCapabilityKey(b);
+  return semanticCapabilityKeyToString(keyA) === semanticCapabilityKeyToString(keyB);
 }
 
 /**
@@ -77,6 +80,12 @@ export function capabilityContains(
   container: CapabilityFact,
   contained: CapabilityFact,
 ): boolean {
+  // U6: capability family must match when both sides provide it
+  if (container.capabilityFamily &&
+      contained.capabilityFamily &&
+      container.capabilityFamily.toLowerCase() !== contained.capabilityFamily.toLowerCase()) {
+    return false;
+  }
   // Must be same action and resource (or container has wildcard)
   if (container.action.toLowerCase() !== '*' &&
       container.action.toLowerCase() !== contained.action.toLowerCase()) {

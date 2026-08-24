@@ -180,8 +180,7 @@ function buildDefaultPlaneAvailability(): PlaneAvailability[] {
 }
 
 function buildPersistedFivePlaneResult(evaluation: AssuranceEvaluationV1_1): PersistedFivePlaneResult | null {
-  const comparisons = evaluation.fivePlaneComparisons;
-  if (!comparisons || comparisons.length === 0) return null;
+  const comparisons = evaluation.fivePlaneComparisons ?? [];
 
   const capFacts = evaluation.capabilityFacts ?? {
     requested: [],

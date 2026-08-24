@@ -71,7 +71,7 @@ export interface ClaimSummaryItem {
   claimKey: string;
   claimVersion: string;
   claimState: ClaimState;
-  criticality: 'CRITICAL' | 'REQUIRED' | 'INFORMATIONAL';
+  criticality: 'critical' | 'high' | 'medium' | 'low';
   supporting: number;
   contradicting: number;
   excluded: number;
@@ -83,7 +83,7 @@ export interface ReportClaimResult {
   statement: string;
   claimState: ClaimState;
   reasonCodes: string[];
-  criticality: 'CRITICAL' | 'REQUIRED' | 'INFORMATIONAL';
+  criticality: 'critical' | 'high' | 'medium' | 'low';
   mandatory: boolean;
   applicability: string;
   supportingCount: number;
