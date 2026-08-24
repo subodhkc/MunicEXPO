@@ -32,6 +32,18 @@ export const CONTROL_CLAIM_CATALOG: ControlClaimDefinition[] = [
       { framework: 'OWASP_LLM', controlIds: ['LLM01', 'LLM06'] },
     ],
     mandatory: true,
+    // E1 1.1 extensions
+    coveragePolicy: 'MIN_RATIO',
+    coverageRatioThreshold: 0.8,
+    relevanceSpec: {
+      acceptedProducerIds: ['saas-static', 'ci-cd-scanner', 'sarif-import'],
+      acceptedEvidenceTypes: [],
+      contradictingRuleIds: ['privileged_action_without_authorization', 'privileged-action-without-authorization'],
+      contradictingConcernIds: ['privileged-action-without-authorization'],
+      contradictingCapabilityIds: ['tool-action-execution-without-authz'],
+      supportingRuleIds: [],
+      claimCapabilityIds: ['tool-action-execution'],
+    },
   },
 
   // ─── 2. Untrusted Input Boundary ─────────────────────────────────────────
@@ -56,6 +68,18 @@ export const CONTROL_CLAIM_CATALOG: ControlClaimDefinition[] = [
       { framework: 'OWASP_LLM', controlIds: ['LLM01'] },
     ],
     mandatory: true,
+    // E1 1.1 extensions
+    coveragePolicy: 'MIN_RATIO',
+    coverageRatioThreshold: 0.8,
+    relevanceSpec: {
+      acceptedProducerIds: ['saas-static', 'ci-cd-scanner', 'sarif-import'],
+      acceptedEvidenceTypes: [],
+      contradictingRuleIds: ['unconstrained_input_to_privileged_path', 'unconstrained-input-to-privileged-path'],
+      contradictingConcernIds: ['unconstrained-input-to-privileged-path'],
+      contradictingCapabilityIds: ['untrusted-input-to-privileged-path'],
+      supportingRuleIds: [],
+      claimCapabilityIds: ['input-boundary-enforcement'],
+    },
   },
 
   // ─── 3. Secret Exposure Prevention ───────────────────────────────────────
@@ -80,6 +104,18 @@ export const CONTROL_CLAIM_CATALOG: ControlClaimDefinition[] = [
       { framework: 'NIST_AI_RMF', controlIds: ['MEASURE-1.1'] },
     ],
     mandatory: true,
+    // E1 1.1 extensions
+    coveragePolicy: 'MIN_RATIO',
+    coverageRatioThreshold: 0.95,
+    relevanceSpec: {
+      acceptedProducerIds: ['saas-static', 'ci-cd-scanner', 'sarif-import'],
+      acceptedEvidenceTypes: [],
+      contradictingRuleIds: ['hardcoded_secret_detected', 'hardcoded-secret-detected'],
+      contradictingConcernIds: ['hardcoded-secret-detected'],
+      contradictingCapabilityIds: ['secret-exposure'],
+      supportingRuleIds: [],
+      claimCapabilityIds: ['secret-exposure-prevention'],
+    },
   },
 
   // ─── 4. Tenant Boundary Enforcement ──────────────────────────────────────
@@ -104,6 +140,18 @@ export const CONTROL_CLAIM_CATALOG: ControlClaimDefinition[] = [
       { framework: 'NIST_AI_RMF', controlIds: ['MEASURE-1.3'] },
     ],
     mandatory: true,
+    // E1 1.1 extensions
+    coveragePolicy: 'MIN_RATIO',
+    coverageRatioThreshold: 0.8,
+    relevanceSpec: {
+      acceptedProducerIds: ['saas-static'],
+      acceptedEvidenceTypes: [],
+      contradictingRuleIds: ['cross_tenant_access_without_check', 'cross-tenant-access-without-check'],
+      contradictingConcernIds: ['cross-tenant-access-without-check'],
+      contradictingCapabilityIds: ['cross-tenant-access'],
+      supportingRuleIds: [],
+      claimCapabilityIds: ['tenant-boundary-enforcement'],
+    },
   },
 
   // ─── 5. Runtime Safety Property Observation ──────────────────────────────
@@ -127,6 +175,18 @@ export const CONTROL_CLAIM_CATALOG: ControlClaimDefinition[] = [
       { framework: 'NIST_AI_RMF', controlIds: ['MEASURE-2.7'] },
     ],
     mandatory: false,
+    // E1 1.1 extensions
+    coveragePolicy: 'MIN_RATIO',
+    coverageRatioThreshold: 0.7,
+    relevanceSpec: {
+      acceptedProducerIds: ['saas-runtime'],
+      acceptedEvidenceTypes: [],
+      contradictingRuleIds: ['runtime_safety_violation_observed', 'runtime-safety-violation-observed'],
+      contradictingConcernIds: ['runtime-safety-violation-observed'],
+      contradictingCapabilityIds: ['runtime-safety-violation'],
+      supportingRuleIds: [],
+      claimCapabilityIds: ['runtime-safety-observation'],
+    },
   },
 
   // ─── 6. AI System Inventory Completeness ─────────────────────────────────
@@ -151,6 +211,17 @@ export const CONTROL_CLAIM_CATALOG: ControlClaimDefinition[] = [
       { framework: 'ISO_42001', controlIds: ['5.2'] },
     ],
     mandatory: true,
+    // E1 1.1 extensions
+    coveragePolicy: 'NO_COVERAGE_REQUIREMENT',
+    relevanceSpec: {
+      acceptedProducerIds: ['saas-inventory'],
+      acceptedEvidenceTypes: [],
+      contradictingRuleIds: ['system_not_in_inventory', 'system-not-in-inventory'],
+      contradictingConcernIds: ['system-not-in-inventory'],
+      contradictingCapabilityIds: ['inventory-completeness'],
+      supportingRuleIds: [],
+      claimCapabilityIds: ['ai-inventory-completeness'],
+    },
   },
 
   // ─── 7. Governance Declaration Presence ──────────────────────────────────
@@ -175,6 +246,17 @@ export const CONTROL_CLAIM_CATALOG: ControlClaimDefinition[] = [
       { framework: 'ISO_42001', controlIds: ['5.1'] },
     ],
     mandatory: false,
+    // E1 1.1 extensions
+    coveragePolicy: 'NO_COVERAGE_REQUIREMENT',
+    relevanceSpec: {
+      acceptedProducerIds: ['saas-wizard'],
+      acceptedEvidenceTypes: [],
+      contradictingRuleIds: [],
+      contradictingConcernIds: [],
+      contradictingCapabilityIds: [],
+      supportingRuleIds: [],
+      claimCapabilityIds: ['governance-declaration'],
+    },
   },
 
   // ─── 8. Regulatory Applicability Evaluation ──────────────────────────────
@@ -199,6 +281,17 @@ export const CONTROL_CLAIM_CATALOG: ControlClaimDefinition[] = [
       { framework: 'NYC_LL144', controlIds: ['§20-05'] },
     ],
     mandatory: false,
+    // E1 1.1 extensions
+    coveragePolicy: 'NO_COVERAGE_REQUIREMENT',
+    relevanceSpec: {
+      acceptedProducerIds: ['saas-regulatory', 'nyc-ll144'],
+      acceptedEvidenceTypes: [],
+      contradictingRuleIds: ['applicable_regulation_not_assessed', 'applicable-regulation-not-assessed'],
+      contradictingConcernIds: ['applicable-regulation-not-assessed'],
+      contradictingCapabilityIds: ['regulatory-applicability'],
+      supportingRuleIds: [],
+      claimCapabilityIds: ['regulatory-applicability-evaluation'],
+    },
   },
 ];
 
@@ -225,3 +318,4 @@ export function getApplicableClaims(availableProducerIds: string[]): ControlClai
     claim.requiredProducerCapabilities.some(req => availableProducerIds.includes(req))
   );
 }
+

@@ -16,6 +16,9 @@ import {
   EpistemicClass,
 } from './types';
 import { classifyEvidence, isSelfReportedClass, isExternalClass } from './epistemic-classifier';
+import { canonicalSerialize } from '@/lib/evidence/deterministic-serialization';
+import { hashTextContent } from '@/lib/evidence/crypto-hash';
+import { resolveCanonicalProducerId } from '@/lib/engine-registry/producer-id-compatibility';
 
 /**
  * Projected evidence row — minimal shape needed for evidence set building.
@@ -24,6 +27,7 @@ export interface ProjectedEvidence {
   id: string;
   sourceType: string;
   sourceId: string | null;
+  producerRunId?: string | null;
   evidenceType: string;
   metadata: Record<string, unknown> | null;
   evidenceDate: Date;
@@ -31,7 +35,14 @@ export interface ProjectedEvidence {
   contentHash?: string | null;
   findings?: unknown[];
   coverageStatus?: string;
+  coverageRatio?: number | null;
   producerOutcome?: string;
+  /** A5: Rule IDs evaluated by this evidence's producer */
+  evaluatedRuleIds?: string[];
+  /** A5: Security concern IDs detected */
+  concernIds?: string[];
+  /** A5: Capability IDs this evidence is about */
+  capabilityIds?: string[];
 }
 
 /**
@@ -85,7 +96,177 @@ export function buildControlEvidenceSet(params: {
 }
 
 /**
+ * A5: Check if evidence is relevant to a claim via exact semantic qualification.
+ *
+ * A piece of evidence can support or contradict a claim only when the claim's
+ * semantic requirements match that evidence. Unrelated evidence is EXCLUDED
+ * with NOT_RELEVANT_TO_CLAIM.
+ *
+ * Qualification considers:
+ * - canonical producer ID (A6: acceptedProducerIds)
+ * - evidenceType (A6: acceptedEvidenceTypes)
+ * - evaluated rule/capability identifiers (A5)
+ * - claim-specific capability requirements
+ *
+ * A scanner proves absence only for the security capability it actually evaluated.
+ * Example: dependency-only SARIF cannot support privileged-action-authorization.
+ */
+function isEvidenceRelevantToClaim(
+  claim: ControlClaimDefinition,
+  ev: ProjectedEvidence,
+  epistemicClass: EpistemicClass
+): boolean {
+  const spec = claim.relevanceSpec;
+  if (!spec) {
+    // 1.0 claims without relevanceSpec fall back to producer capability check
+    return claim.requiredProducerCapabilities.some(rp =>
+      rp === ev.sourceType || rp === resolveCanonicalProducerId(ev.sourceType)
+    );
+  }
+
+  // A6: Check accepted producer IDs (canonical)
+  const canonicalProducer = resolveCanonicalProducerId(ev.sourceType) ?? '';
+  if (spec.acceptedProducerIds.length > 0) {
+    if (!spec.acceptedProducerIds.includes(ev.sourceType) &&
+        !spec.acceptedProducerIds.includes(canonicalProducer)) {
+      return false;
+    }
+  }
+
+  // A6: Check accepted evidence types
+  if (spec.acceptedEvidenceTypes.length > 0) {
+    if (!spec.acceptedEvidenceTypes.includes(ev.evidenceType)) {
+      return false;
+    }
+  }
+
+  // A5: Check capability IDs — if claim specifies capabilities, evidence must match
+  if (spec.claimCapabilityIds.length > 0) {
+    const evCapabilityIds = ev.capabilityIds ?? [];
+    if (evCapabilityIds.length === 0) {
+      // Evidence doesn't declare capabilities — can't prove relevance
+      // Fall back to producer capability check
+      return claim.requiredProducerCapabilities.some(rp =>
+        rp === ev.sourceType || rp === resolveCanonicalProducerId(ev.sourceType)
+      );
+    }
+    const hasRelevantCapability = spec.claimCapabilityIds.some(cap =>
+      evCapabilityIds.includes(cap)
+    );
+    if (!hasRelevantCapability) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
+ * A8: Check for contradicting findings using EXACT matching only.
+ *
+ * Removes fuzzy includes() matching from canonical contradiction decisions.
+ * Uses exact normalized rule ID, exact Security Concern ID, or exact
+ * capability invariant.
+ *
+ * No BLOCK may originate solely from fuzzy substring matching.
+ */
+function hasExactContradictingFinding(
+  claim: ControlClaimDefinition,
+  ev: ProjectedEvidence
+): boolean {
+  const spec = claim.relevanceSpec;
+  const rawFindings = Array.isArray(ev.findings) ? ev.findings : [];
+  const findings = rawFindings as Array<{ ruleId?: string; concernId?: string; capabilityId?: string }>;
+
+  // A8: Exact rule ID matching
+  const contradictingRuleIds = spec?.contradictingRuleIds ?? claim.contradictionConditions;
+  if (contradictingRuleIds.length > 0) {
+    const hasExactRuleMatch = findings.some(f => {
+      const fRule = (f.ruleId ?? '').toLowerCase();
+      return contradictingRuleIds.some(cond => {
+        const condLower = cond.toLowerCase();
+        // EXACT match only (normalized for case + separator variants)
+        return fRule === condLower ||
+          fRule === condLower.replace(/_/g, '-') ||
+          fRule === condLower.replace(/-/g, '_');
+      });
+    });
+    if (hasExactRuleMatch) return true;
+  }
+
+  // A8: Exact concern ID matching
+  if (spec?.contradictingConcernIds && spec.contradictingConcernIds.length > 0) {
+    const hasExactConcernMatch = findings.some(f => {
+      const fConcern = (f.concernId ?? '').toLowerCase();
+      return spec.contradictingConcernIds.some(c => fConcern === c.toLowerCase());
+    });
+    if (hasExactConcernMatch) return true;
+  }
+
+  // A8: Exact capability ID matching
+  if (spec?.contradictingCapabilityIds && spec.contradictingCapabilityIds.length > 0) {
+    const hasExactCapabilityMatch = findings.some(f => {
+      const fCap = (f.capabilityId ?? '').toLowerCase();
+      return spec.contradictingCapabilityIds.some(c => fCap === c.toLowerCase());
+    });
+    if (hasExactCapabilityMatch) return true;
+  }
+
+  return false;
+}
+
+/**
+ * A9: Check coverage policy satisfaction.
+ *
+ * UNKNOWN → never meets numeric requirement
+ * PARTIAL with known ratio → meets requirement only if policy allows numeric
+ *   partial coverage AND ratio >= threshold
+ * COMPLETE → can satisfy semantic-completeness requirements
+ */
+function checkCoveragePolicy(
+  claim: ControlClaimDefinition,
+  ev: ProjectedEvidence
+): { satisfied: boolean; reason?: ExclusionReason } {
+  const policy = claim.coveragePolicy;
+  if (!policy || policy === 'NO_COVERAGE_REQUIREMENT') {
+    return { satisfied: true };
+  }
+
+  if (policy === 'COMPLETE_REQUIRED') {
+    if (ev.coverageStatus === 'COMPLETE') return { satisfied: true };
+    if (ev.coverageStatus === 'UNKNOWN' || !ev.coverageStatus) {
+      return { satisfied: false, reason: 'COVERAGE_INSUFFICIENT' };
+    }
+    // PARTIAL cannot satisfy COMPLETE_REQUIRED
+    return { satisfied: false, reason: 'COVERAGE_INSUFFICIENT' };
+  }
+
+  if (policy === 'MIN_RATIO') {
+    const threshold = claim.coverageRatioThreshold ?? 0;
+    if (ev.coverageStatus === 'UNKNOWN' || !ev.coverageStatus) {
+      return { satisfied: false, reason: 'COVERAGE_INSUFFICIENT' };
+    }
+    if (ev.coverageStatus === 'COMPLETE') return { satisfied: true };
+    // PARTIAL with known ratio
+    if (ev.coverageStatus === 'PARTIAL') {
+      const ratio = ev.coverageRatio ?? 0;
+      if (ratio >= threshold) return { satisfied: true };
+      return { satisfied: false, reason: 'COVERAGE_INSUFFICIENT' };
+    }
+    return { satisfied: false, reason: 'COVERAGE_INSUFFICIENT' };
+  }
+
+  return { satisfied: true };
+}
+
+/**
  * Determine the role of a piece of evidence for a claim.
+ *
+ * A5: Evidence qualification is checked BEFORE role assignment.
+ * A8: Contradiction matching is EXACT only — no fuzzy includes().
+ * A9: Coverage policy replaces ambiguous numeric thresholds.
+ * A10: PARTIAL + zero findings requires exact coverage policy satisfaction.
+ * A11: Unrelated evidence cannot affect a claim.
  */
 function determineMemberRole(
   claim: ControlClaimDefinition,
@@ -100,6 +281,11 @@ function determineMemberRole(
 
   // EXCLUDED: Inactive evidence
   if (ev.status !== 'active') {
+    return { role: 'EXCLUDED', exclusionReason: 'NOT_RELEVANT_TO_CLAIM' };
+  }
+
+  // A5: Evidence qualification — is this evidence relevant to this claim?
+  if (!isEvidenceRelevantToClaim(claim, ev, epistemicClass)) {
     return { role: 'EXCLUDED', exclusionReason: 'NOT_RELEVANT_TO_CLAIM' };
   }
 
@@ -123,34 +309,13 @@ function determineMemberRole(
     }
   }
 
-  // EXCLUDED: Producer failed
+  // EXCLUDED: Producer failed (A11: only for relevant producers)
   if (ev.producerOutcome === 'FAILED' || ev.producerOutcome === 'TIMEOUT' || ev.producerOutcome === 'ERROR') {
     return { role: 'EXCLUDED', exclusionReason: 'PRODUCER_FAILED' };
   }
 
-  // EXCLUDED: Coverage insufficient
-  if (claim.coverageRequirement !== null && ev.coverageStatus === 'UNKNOWN') {
-    return { role: 'EXCLUDED', exclusionReason: 'COVERAGE_INSUFFICIENT' };
-  }
-
-  // Check if evidence has contradicting findings
-  const rawFindings = Array.isArray(ev.findings) ? ev.findings : [];
-  const findings = rawFindings as Array<{ ruleId?: string; severity?: string }>;
-  const hasContradictingFinding = findings.some(f =>
-    claim.contradictionConditions.some(cond => {
-      const fRule = (f.ruleId ?? '').toLowerCase()
-      const condLower = cond.toLowerCase()
-      // Match exact, with dashes, or with underscores
-      return fRule === condLower ||
-        fRule === condLower.replace(/_/g, '-') ||
-        fRule === condLower.replace(/-/g, '_') ||
-        fRule.includes(condLower) ||
-        fRule.includes(condLower.replace(/_/g, '-')) ||
-        fRule.includes(condLower.replace(/-/g, '_'))
-    })
-  );
-
-  if (hasContradictingFinding) {
+  // A8: Check for contradicting findings using EXACT matching only
+  if (hasExactContradictingFinding(claim, ev)) {
     return { role: 'CONTRADICTING' };
   }
 
@@ -161,14 +326,15 @@ function determineMemberRole(
     const isFindingsBased = epistemicClass === 'HAIEC_NATIVE_TECHNICAL' ||
       epistemicClass === 'EXTERNAL_TECHNICAL' || epistemicClass === 'RUNTIME_EMPIRICAL';
 
-    // Check coverage requirement
-    if (claim.coverageRequirement !== null && ev.coverageStatus === 'PARTIAL') {
-      // Partial coverage evidence is CONTEXT_ONLY unless it has zero findings
-      if (findings.length === 0 && claim.zeroFindingsCanSupport) {
-        return { role: 'SUPPORTING' };
-      }
-      return { role: 'CONTEXT_ONLY' };
+    // A9/A10: Check coverage policy
+    const coverageCheck = checkCoveragePolicy(claim, ev);
+    if (!coverageCheck.satisfied) {
+      // A10: PARTIAL + zero findings cannot be SUPPORTING unless coverage policy is satisfied
+      return { role: 'EXCLUDED', exclusionReason: coverageCheck.reason ?? 'COVERAGE_INSUFFICIENT' };
     }
+
+    const rawFindings = Array.isArray(ev.findings) ? ev.findings : [];
+    const findings = rawFindings as Array<{ ruleId?: string; severity?: string }>;
 
     // Zero findings handling
     if (findings.length === 0) {
@@ -197,28 +363,39 @@ function determineMemberRole(
 }
 
 /**
- * B20: Compute deterministic Evidence Set digest.
- * Commits to: claim key/version, methodology, ordered member IDs, content hashes, roles.
+ * A2: Compute deterministic Evidence Set digest using existing canonicalSerialize.
+ * Commits to: claim key/version, methodology, member evidenceId, role, contentHash,
+ * epistemicClass, exclusionReason.
+ *
+ * Uses canonicalSerialize from lib/evidence/deterministic-serialization.ts
+ * which properly sorts object keys recursively and handles nested structures.
+ *
+ * The members array is SET-LIKE (sorted by evidenceId) so reordering does not
+ * change the digest, but any semantic field change DOES change the digest.
  */
 export function computeEvidenceSetDigest(
   claimKey: string,
   claimVersion: string,
   members: ControlEvidenceSetMember[]
 ): string {
+  // Sort members by evidenceId for deterministic ordering (set-like)
+  const sortedMembers = [...members].sort((a, b) => a.evidenceId.localeCompare(b.evidenceId));
+
   const digestInput = {
     claimKey,
     claimVersion,
-    members: members.map(m => ({
-      id: m.evidenceId,
+    members: sortedMembers.map(m => ({
+      evidenceId: m.evidenceId,
       role: m.role,
-      hash: m.contentHash ?? '',
-      class: m.epistemicClass,
-      exclusion: m.exclusionReason ?? '',
+      contentHash: m.contentHash ?? '',
+      epistemicClass: m.epistemicClass,
+      exclusionReason: m.exclusionReason ?? '',
+      producerId: m.producerId,
     })),
   };
 
-  // Canonical sorted JSON
-  const canonical = JSON.stringify(digestInput, Object.keys(digestInput).sort());
+  // Use existing HAIEC canonical serialization (sorts keys recursively)
+  const canonical = canonicalSerialize(digestInput, new Set(['members']));
 
-  return createHash('sha256').update(canonical).digest('hex');
+  return hashTextContent(canonical);
 }

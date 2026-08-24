@@ -21,19 +21,55 @@ import {
   DimensionResult,
   ThreeDimensionResult,
 } from './types';
-import { buildControlEvidenceSet, ProjectedEvidence } from './evidence-set-builder';
+import { buildControlEvidenceSet, ProjectedEvidence, computeEvidenceSetDigest } from './evidence-set-builder';
 import { isSelfReportedClass, isExternalClass, isTechnicalClass } from './epistemic-classifier';
 import { resolveCanonicalProducerId } from '@/lib/engine-registry/producer-id-compatibility';
 
 /**
  * Evaluate a single claim against projected evidence.
+ *
+ * A11: Unrelated evidence cannot affect a claim. Producer failure, UNKNOWN coverage,
+ *      external-only, and self-reported checks apply only to evidence/producers
+ *      relevant to that claim.
+ * A12: NOT_APPLICABLE requires deterministic scope proof (from profile applicability).
+ *      Missing producer evidence → NOT_ASSESSED, not NOT_APPLICABLE.
  */
 export function evaluateClaim(params: {
   claim: ControlClaimDefinition;
   evidence: ProjectedEvidence[];
   evaluationSnapshotAt: Date;
+  /** A12: Profile-driven applicability keys */
+  applicableClaimKeys?: string[];
 }): ClaimEvaluationResult {
-  const { claim, evidence, evaluationSnapshotAt } = params;
+  const { claim, evidence, evaluationSnapshotAt, applicableClaimKeys } = params;
+
+  // A12: Check if claim is NOT_APPLICABLE via profile applicability
+  if (applicableClaimKeys && applicableClaimKeys.length > 0) {
+    if (!applicableClaimKeys.includes(claim.claimKey) && !claim.mandatory) {
+      // Non-mandatory claim not in applicable set → NOT_APPLICABLE
+      return {
+        claimKey: claim.claimKey,
+        claimVersion: claim.version,
+        claimState: 'NOT_APPLICABLE',
+        reasonCodes: ['NOT_APPLICABLE_TO_ARCHITECTURE'],
+        dimensionResult: {
+          authorizedScope: 'NOT_REQUIRED',
+          codeCapability: 'NOT_REQUIRED',
+          observedRuntime: 'NOT_REQUIRED',
+        },
+        evidenceSet: {
+          claimKey: claim.claimKey,
+          claimVersion: claim.version,
+          members: [],
+          setDigest: computeEvidenceSetDigest(claim.claimKey, claim.version, []),
+        },
+        supportingCount: 0,
+        contradictingCount: 0,
+        excludedCount: 0,
+        explanation: 'Claim is not applicable to this system architecture/profile.',
+      };
+    }
+  }
 
   // Build the evidence set
   const evidenceSet = buildControlEvidenceSet({ claim, evidence, evaluationSnapshotAt });
@@ -43,7 +79,6 @@ export function evaluateClaim(params: {
   const excluded = evidenceSet.members.filter(m => m.role === 'EXCLUDED');
 
   // ─── B13: Contradiction precedence ──────────────────────────────────────
-  // Contradicting qualifying evidence takes precedence over supportive absence
   if (contradicting.length > 0) {
     return {
       claimKey: claim.claimKey,
@@ -59,12 +94,16 @@ export function evaluateClaim(params: {
     };
   }
 
-  // ─── B12: Producer failure ──────────────────────────────────────────────
-  const failedProducers = evidence.filter(
+  // ─── A11: Producer failure — only for RELEVANT producers ────────────────
+  // A failed unrelated producer must not make an unrelated claim INSUFFICIENT_EVIDENCE.
+  const relevantEvidence = evidence.filter(ev =>
+    isEvidenceRelevantToClaimByProducer(claim, ev)
+  );
+  const failedRelevantProducers = relevantEvidence.filter(
     ev => ev.producerOutcome === 'FAILED' || ev.producerOutcome === 'TIMEOUT' || ev.producerOutcome === 'ERROR'
   );
-  if (failedProducers.length > 0 && supporting.length === 0) {
-    const reason: ClaimReasonCode = failedProducers.some(ev => ev.producerOutcome === 'TIMEOUT')
+  if (failedRelevantProducers.length > 0 && supporting.length === 0) {
+    const reason: ClaimReasonCode = failedRelevantProducers.some(ev => ev.producerOutcome === 'TIMEOUT')
       ? 'PRODUCER_TIMEOUT'
       : 'PRODUCER_FAILED';
     return {
@@ -77,13 +116,11 @@ export function evaluateClaim(params: {
       supportingCount: supporting.length,
       contradictingCount: contradicting.length,
       excludedCount: excluded.length,
-      explanation: `Required producer(s) failed: ${failedProducers.map(ev => ev.sourceType).join(', ')}`,
+      explanation: `Required producer(s) failed: ${failedRelevantProducers.map(ev => ev.sourceType).join(', ')}`,
     };
   }
 
   // ─── B28: Self-reported only ────────────────────────────────────────────
-  // Check if the only evidence available is self-reported (even if excluded)
-  // This takes precedence over coverage unknown and not-assessed checks
   const selfReportedExcluded = excluded.filter(m => m.exclusionReason === 'SELF_REPORTED_NOT_ALLOWED');
   const selfReportedSupporting = supporting.filter(m => isSelfReportedClass(m.epistemicClass));
   const technicalSupporting = supporting.filter(m => isTechnicalClass(m.epistemicClass));
@@ -107,7 +144,6 @@ export function evaluateClaim(params: {
   }
 
   // ─── B29: External evidence only ────────────────────────────────────────
-  // Check supporting AND context_only for external evidence
   const contextOnly = evidenceSet.members.filter(m => m.role === 'CONTEXT_ONLY');
   const externalInAny = [...supporting, ...contextOnly].filter(m => isExternalClass(m.epistemicClass));
   const nativeSupporting = supporting.filter(m => m.epistemicClass === 'HAIEC_NATIVE_TECHNICAL');
@@ -126,13 +162,12 @@ export function evaluateClaim(params: {
     };
   }
 
-  // ─── B11/B27: Zero findings + UNKNOWN coverage ──────────────────────────
+  // ─── A11: UNKNOWN coverage — only for RELEVANT evidence ─────────────────
   if (supporting.length === 0 && claim.coverageRequirement !== null) {
-    // Check if any evidence had UNKNOWN coverage
-    const unknownCoverageEvidence = evidence.filter(
+    const unknownCoverageRelevant = relevantEvidence.filter(
       ev => ev.coverageStatus === 'UNKNOWN' || !ev.coverageStatus
     );
-    if (unknownCoverageEvidence.length > 0) {
+    if (unknownCoverageRelevant.length > 0) {
       return {
         claimKey: claim.claimKey,
         claimVersion: claim.version,
@@ -150,15 +185,11 @@ export function evaluateClaim(params: {
 
   // ─── No supporting evidence at all ──────────────────────────────────────
   if (supporting.length === 0) {
-    // Check if any evidence exists for the required producers (using canonical IDs)
-    const requiredProducerEvidence = evidence.filter(ev =>
-      claim.requiredProducerCapabilities.some(rp =>
-        rp === ev.sourceType || rp === resolveCanonicalProducerId(ev.sourceType)
-      )
-    );
+    // A12: Check if any evidence exists for the required producers
+    const requiredProducerEvidence = relevantEvidence;
 
     if (requiredProducerEvidence.length === 0) {
-      // No evidence from required producers at all
+      // No evidence from required producers at all → NOT_ASSESSED (not NOT_APPLICABLE)
       return {
         claimKey: claim.claimKey,
         claimVersion: claim.version,
@@ -194,7 +225,6 @@ export function evaluateClaim(params: {
     .map(([dim]) => dim);
 
   if (missingDimensions.length > 0 && claim.requiredDimensions.length > 0) {
-    // Check if all required dimensions are satisfied
     const requiredDimsMissing = claim.requiredDimensions.some(dim => {
       const result = dimensionResult[dimToKey(dim)];
       return result === 'MISSING';
@@ -224,8 +254,7 @@ export function evaluateClaim(params: {
     });
 
     if (supportingWithCoverage.length === 0) {
-      // Check if coverage is insufficient
-      const partialCoverageEvidence = evidence.filter(ev => ev.coverageStatus === 'PARTIAL');
+      const partialCoverageEvidence = relevantEvidence.filter(ev => ev.coverageStatus === 'PARTIAL');
       if (partialCoverageEvidence.length > 0) {
         return {
           claimKey: claim.claimKey,
@@ -287,6 +316,26 @@ export function evaluateClaim(params: {
     excludedCount: excluded.length,
     explanation: `Claim supported by ${supporting.length} piece(s) of qualifying evidence within evaluated scope.`,
   };
+}
+
+/**
+ * A11: Check if evidence is from a producer relevant to this claim.
+ * Used to filter producer failure / coverage checks to relevant evidence only.
+ */
+function isEvidenceRelevantToClaimByProducer(
+  claim: ControlClaimDefinition,
+  ev: ProjectedEvidence
+): boolean {
+  const spec = claim.relevanceSpec;
+  if (spec && spec.acceptedProducerIds.length > 0) {
+    const canonicalProducer = resolveCanonicalProducerId(ev.sourceType) ?? '';
+    return spec.acceptedProducerIds.includes(ev.sourceType) ||
+      spec.acceptedProducerIds.includes(canonicalProducer);
+  }
+  // Fallback: check requiredProducerCapabilities
+  return claim.requiredProducerCapabilities.some(rp =>
+    rp === ev.sourceType || rp === resolveCanonicalProducerId(ev.sourceType)
+  );
 }
 
 /**

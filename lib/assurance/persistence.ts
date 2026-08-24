@@ -1,40 +1,58 @@
 /**
- * U5 B32 — Assurance Persistence Service
+ * U5 B32 / E1 A13-A15 — Assurance Persistence Service
  *
  * Persists Assurance Evaluation results to the database.
- * B30: Idempotent — duplicate evaluations for same run+methodology are rejected.
+ *
+ * A13: Idempotency distinguishes same-input vs changed-input conflict.
+ *   - same run + same methodology + same inputHash → IDEMPOTENT
+ *   - same run + same methodology + different inputHash → CONFLICT (fail closed)
+ *   - Do NOT overwrite the historical evaluation.
+ * A14: All lookup/idempotency checks include authoritative tenant ownership.
  * B31: Tenant-scoped — all records carry organizationId.
  */
 
 import { prisma } from '@/lib/prisma';
-import { AssuranceEvaluation, ClaimEvaluationResult } from './types';
+import { AssuranceEvaluation, ClaimEvaluationResult, PersistenceResult } from './types';
 
 /**
  * Persist an Assurance Evaluation to the database.
  *
- * B30: Idempotent — if an evaluation with the same orchestratorRunId + methodology
- * version already exists, return it (do not overwrite).
+ * A13: Idempotency/conflict semantics:
+ *   - same run + same methodology + same inputHash → IDEMPOTENT (return existing)
+ *   - same run + same methodology + different inputHash → CONFLICT (fail closed, do NOT overwrite)
+ *   - no existing → CREATE
+ *
+ * A14: All checks include organizationId for tenant safety.
  */
 export async function persistAssuranceEvaluation(
   evaluation: AssuranceEvaluation
-): Promise<{ id: string; created: boolean; existing: boolean }> {
-  // B30: Check for existing evaluation (idempotency)
+): Promise<PersistenceResult> {
+  // A14: Check for existing evaluation WITH tenant ownership
   const existing = await prisma.assurance_evaluations.findFirst({
     where: {
       orchestratorRunId: evaluation.orchestratorRunId,
       assuranceMethodologyVersion: evaluation.assuranceMethodologyVersion,
+      organizationId: evaluation.organizationId, // A14: tenant safety
     },
-    select: { id: true, outputHash: true },
+    select: { id: true, inputHash: true, outputHash: true },
   });
 
   if (existing) {
-    // B30: Do not overwrite — return existing
-    return { id: existing.id, created: false, existing: true };
+    // A13: Check inputHash to distinguish idempotent from conflict
+    if (existing.inputHash === evaluation.inputHash) {
+      // Same input → IDEMPOTENT
+      return { status: 'IDEMPOTENT', id: existing.id };
+    }
+    // A13: Different input → CONFLICT (fail closed, do NOT overwrite)
+    return {
+      status: 'CONFLICT',
+      id: existing.id,
+      conflictReason: 'ASSURANCE_EVALUATION_INPUT_CONFLICT',
+    };
   }
 
   // Create the evaluation with all related records in a transaction
   const result = await prisma.$transaction(async (tx: any) => {
-    // Create assurance evaluation
     const evalRecord = await tx.assurance_evaluations.create({
       data: {
         id: evaluation.id,
@@ -54,7 +72,6 @@ export async function persistAssuranceEvaluation(
       },
     });
 
-    // Create claim evaluations + evidence sets + members
     for (const claimResult of evaluation.claimResults) {
       const claimEval = await tx.control_claim_evaluations.create({
         data: {
@@ -102,11 +119,12 @@ export async function persistAssuranceEvaluation(
     return evalRecord;
   });
 
-  return { id: result.id, created: true, existing: false };
+  return { status: 'CREATED', id: result.id };
 }
 
 /**
  * Retrieve an Assurance Evaluation by orchestrator run ID.
+ * A14: organizationId is required for tenant safety.
  */
 export async function getAssuranceEvaluation(
   orchestratorRunId: string,
@@ -130,12 +148,13 @@ export async function getAssuranceEvaluation(
 
   if (!record) return null;
 
-  // Reconstruct the AssuranceEvaluation object
   return reconstructEvaluation(record);
 }
 
 /**
- * Reconstruct an AssuranceEvaluation from DB records.
+ * A15: Reconstruct an AssuranceEvaluation from DB records.
+ * Verifies roundtrip preserves all Evidence Set members, roles, hashes, reason codes,
+ * claim states, dimension results, and overall digest.
  */
 function reconstructEvaluation(record: any): AssuranceEvaluation {
   const claimResults: ClaimEvaluationResult[] = record.control_claim_evaluations.map((ce: any) => ({
