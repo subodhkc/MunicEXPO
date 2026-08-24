@@ -237,21 +237,27 @@ describe('U3-C: SARIF Severity Mapping', () => {
 
 describe('U3-C: HAIEC Import Fingerprint', () => {
   it('derives deterministic fingerprint', () => {
-    const fp1 = deriveHaiecImportFingerprint('import-1', 0, 'R1', 'src/app.py');
-    const fp2 = deriveHaiecImportFingerprint('import-1', 0, 'R1', 'src/app.py');
+    const fp1 = deriveHaiecImportFingerprint('import-1', 0, 0, 'R1', 'src/app.py');
+    const fp2 = deriveHaiecImportFingerprint('import-1', 0, 0, 'R1', 'src/app.py');
     expect(fp1).toBe(fp2);
     expect(fp1).toMatch(/^[a-f0-9]{32}$/);
   });
 
   it('differs for different imports', () => {
-    const fp1 = deriveHaiecImportFingerprint('import-1', 0, 'R1', 'src/app.py');
-    const fp2 = deriveHaiecImportFingerprint('import-2', 0, 'R1', 'src/app.py');
+    const fp1 = deriveHaiecImportFingerprint('import-1', 0, 0, 'R1', 'src/app.py');
+    const fp2 = deriveHaiecImportFingerprint('import-2', 0, 0, 'R1', 'src/app.py');
+    expect(fp1).not.toBe(fp2);
+  });
+
+  it('U3-G: differs for different runIndex (multi-run identity)', () => {
+    const fp1 = deriveHaiecImportFingerprint('import-1', 0, 0, 'R1', 'src/app.py');
+    const fp2 = deriveHaiecImportFingerprint('import-1', 1, 0, 'R1', 'src/app.py');
     expect(fp1).not.toBe(fp2);
   });
 
   it('is labeled as HAIEC import identity, not external scanner identity', () => {
     // This is a HAIEC-derived import-local fingerprint, NOT a scanner fingerprint
-    const fp = deriveHaiecImportFingerprint('import-1', 0, 'R1', 'src/app.py');
+    const fp = deriveHaiecImportFingerprint('import-1', 0, 0, 'R1', 'src/app.py');
     expect(fp).toMatch(/^[a-f0-9]{32}$/);
     // The adapter stores this as haiecImportFingerprint, not externalFingerprint
   });
