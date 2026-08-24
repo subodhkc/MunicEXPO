@@ -306,12 +306,20 @@ function comparisonToVerdict(
 }
 
 /**
- * Check if a capability fact is high-impact (privileged or high blast radius).
+ * Check if a capability fact is high-impact using source-backed impact metadata first.
+ * Generic action-substring heuristic is NOT sufficient for production BLOCK.
  */
 function isHighImpact(fact: CapabilityFact): boolean {
-  const action = fact.action.toLowerCase();
-  const highImpactActions = ['write', 'delete', 'deploy', 'update', 'modify', 'create', 'actuate'];
-  return highImpactActions.some(a => action.includes(a));
+  const impact = (fact.impact ?? '').toUpperCase();
+  if (impact === 'HIGH' || impact === 'CRITICAL') return true;
+  const blastRadius = (fact.impact ?? '').toUpperCase();
+  if (blastRadius === 'HIGH' || blastRadius === 'CRITICAL') return true;
+
+  // Structured constraints such as large target count or high change magnitude
+  if (fact.targetCount !== undefined && fact.targetCount > 100) return true;
+  if (fact.changeMagnitude !== undefined && fact.changeMagnitude > 100) return true;
+
+  return false;
 }
 
 /**
@@ -328,15 +336,31 @@ function isWithinEnvelope(fact: CapabilityFact, envelope: OperatingEnvelope): bo
     }
   }
 
-  // Check maxTargetCount
+  // Check maxTargetCount — structured value preferred over string parsing
   if (constraints.maxTargetCount !== undefined) {
-    // This is a simplified check — real implementation would count targets
-    // For POC, we check if the fact's scope implies exceeding the target count
-    const scopeMatch = fact.scope.match(/(\d+)\s*targets?/i);
-    if (scopeMatch) {
-      const targetCount = parseInt(scopeMatch[1], 10);
-      if (targetCount > constraints.maxTargetCount) {
-        return false;
+    const targetCount = fact.targetCount;
+    if (targetCount !== undefined) {
+      if (targetCount > constraints.maxTargetCount) return false;
+    } else {
+      // REFERENCE_ONLY fallback for synthetic/legacy fixtures — marked, not canonical
+      const scopeMatch = fact.scope.match(/(\d+)\s*targets?/i);
+      if (scopeMatch) {
+        const parsedTargetCount = parseInt(scopeMatch[1], 10);
+        if (parsedTargetCount > constraints.maxTargetCount) return false;
+      }
+    }
+  }
+
+  // Check maxChangeMagnitude — structured value preferred
+  if (constraints.maxChangeMagnitude !== undefined) {
+    const changeMagnitude = fact.changeMagnitude;
+    if (changeMagnitude !== undefined) {
+      if (changeMagnitude > constraints.maxChangeMagnitude) return false;
+    } else {
+      const scopeMatch = fact.scope.match(/(\d+)\s*%/i);
+      if (scopeMatch) {
+        const parsedMagnitude = parseInt(scopeMatch[1], 10);
+        if (parsedMagnitude > constraints.maxChangeMagnitude) return false;
       }
     }
   }

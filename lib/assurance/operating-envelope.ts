@@ -115,25 +115,21 @@ export function approveEnvelope(
 
 /**
  * Section 5: Create a new version of an envelope with modified constraints.
- * The old envelope becomes SUPERSEDED. The new envelope is DRAFT.
- * Does NOT mutate the original — returns the new version.
+ * The prior APPROVED envelope remains APPROVED while the new version is DRAFT.
+ * Supersession happens only when the new version is approved.
+ * Does NOT mutate the original — returns the new DRAFT version.
  */
 export function createNewEnvelopeVersion(
   envelope: OperatingEnvelope,
   newConstraints: OperatingEnvelopeConstraints,
-): { superseded: OperatingEnvelope; newVersion: OperatingEnvelope } {
+): OperatingEnvelope {
   if (envelope.state !== 'APPROVED') {
     throw new Error(`Cannot version envelope in state ${envelope.state} — only APPROVED envelopes can be superseded`);
   }
 
-  // Parse current version and increment
+  // Parse current version and increment (Section 16: numeric ordering)
   const currentVersionNum = parseInt(envelope.envelopeVersion, 10) || 1;
   const newVersionNum = currentVersionNum + 1;
-
-  const superseded: OperatingEnvelope = {
-    ...envelope,
-    state: 'SUPERSEDED',
-  };
 
   const newDraft: Omit<OperatingEnvelope, 'envelopeDigest'> = {
     envelopeId: envelope.envelopeId,
@@ -149,11 +145,8 @@ export function createNewEnvelopeVersion(
   };
 
   return {
-    superseded,
-    newVersion: {
-      ...newDraft,
-      envelopeDigest: computeEnvelopeDigest(newDraft),
-    },
+    ...newDraft,
+    envelopeDigest: computeEnvelopeDigest(newDraft),
   };
 }
 

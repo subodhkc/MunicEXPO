@@ -45,9 +45,13 @@ export async function persistDraftEnvelope(envelope: OperatingEnvelope): Promise
 }
 
 /**
- * Section 5: Approve a DRAFT envelope in the database.
- * Sets state to APPROVED, records approvedBy/approvedAt/approvalReference.
- * Does NOT modify the envelope digest (semantic constraints unchanged).
+ * Section 5/15: Approve a DRAFT envelope in the database.
+ * Atomic transaction:
+ *   - verify v2 is still DRAFT and owned by tenant
+ *   - mark prior APPROVED version SUPERSEDED
+ *   - mark v2 APPROVED and record approval identity
+ * This prevents an authorization gap where the prior envelope is invalidated
+ * before the new envelope has been approved.
  */
 export async function approveEnvelopeInDb(
   envelopeId: string,
@@ -57,36 +61,55 @@ export async function approveEnvelopeInDb(
   approvedAt: Date,
   approvalReference?: string,
 ): Promise<OperatingEnvelope | null> {
-  // Verify ownership and current state
-  const existing = await (prisma as any).operating_envelopes.findFirst({
-    where: {
-      envelopeId,
-      envelopeVersion,
-      organizationId, // Section 28: tenant safety
-    },
+  return await prisma.$transaction(async (tx: any) => {
+    // Verify ownership and current state of the draft to approve
+    const draft = await tx.operating_envelopes.findFirst({
+      where: {
+        envelopeId,
+        envelopeVersion,
+        organizationId, // Section 28: tenant safety
+      },
+    });
+
+    if (!draft) return null;
+    if (draft.state !== 'DRAFT') {
+      throw new Error(`Cannot approve envelope in state ${draft.state}`);
+    }
+
+    // Supersede the currently APPROVED version (if any) for the same envelope
+    const priorApproved = await tx.operating_envelopes.findFirst({
+      where: {
+        envelopeId,
+        organizationId,
+        state: 'APPROVED',
+      },
+    });
+
+    if (priorApproved) {
+      await tx.operating_envelopes.update({
+        where: { id: priorApproved.id },
+        data: { state: 'SUPERSEDED' },
+      });
+    }
+
+    const updated = await tx.operating_envelopes.update({
+      where: { id: draft.id },
+      data: {
+        state: 'APPROVED',
+        approvedBy,
+        approvedAt,
+        approvalReference: approvalReference ?? null,
+      },
+    });
+
+    return dbRecordToEnvelope(updated);
   });
-
-  if (!existing) return null;
-  if (existing.state !== 'DRAFT') {
-    throw new Error(`Cannot approve envelope in state ${existing.state}`);
-  }
-
-  const updated = await (prisma as any).operating_envelopes.update({
-    where: { id: existing.id },
-    data: {
-      state: 'APPROVED',
-      approvedBy,
-      approvedAt,
-      approvalReference: approvalReference ?? null,
-    },
-  });
-
-  return dbRecordToEnvelope(updated);
 }
 
 /**
- * Section 5: Create a new version of an envelope.
- * The old APPROVED version becomes SUPERSEDED. The new version is DRAFT.
+ * Section 5/15: Create a new version of an envelope.
+ * The prior APPROVED version stays APPROVED. The new version is DRAFT.
+ * Supersession of the prior version happens only when this DRAFT is later approved.
  * Does NOT overwrite approved history.
  */
 export async function createNewEnvelopeVersionInDb(
@@ -94,7 +117,7 @@ export async function createNewEnvelopeVersionInDb(
   currentVersion: string,
   organizationId: string,
   newConstraints: OperatingEnvelopeConstraints,
-): Promise<{ superseded: OperatingEnvelope; newVersion: OperatingEnvelope } | null> {
+): Promise<OperatingEnvelope | null> {
   // Verify ownership and current state
   const existing = await (prisma as any).operating_envelopes.findFirst({
     where: {
@@ -109,7 +132,7 @@ export async function createNewEnvelopeVersionInDb(
     throw new Error(`Cannot version envelope in state ${existing.state} — only APPROVED can be superseded`);
   }
 
-  // Parse current version and increment
+  // Parse current version and increment (Section 16: numeric ordering)
   const currentVersionNum = parseInt(currentVersion, 10) || 1;
   const newVersionNum = currentVersionNum + 1;
   const newVersionStr = String(newVersionNum);
@@ -129,32 +152,22 @@ export async function createNewEnvelopeVersionInDb(
   };
   const newDigest = computeEnvelopeDigest(newDraft);
 
-  // Transaction: supersede old + create new
-  const [supersededRecord, newRecord] = await prisma.$transaction([
-    (prisma as any).operating_envelopes.update({
-      where: { id: existing.id },
-      data: { state: 'SUPERSEDED' },
-    }),
-    (prisma as any).operating_envelopes.create({
-      data: {
-        envelopeId,
-        envelopeVersion: newVersionStr,
-        organizationId,
-        aiSystemId: existing.aiSystemId,
-        profileId: existing.profileId,
-        profileVersion: existing.profileVersion,
-        state: 'DRAFT',
-        constraints: newConstraints as any,
-        envelopeDigest: newDigest,
-        authoritySourceLabel: existing.authoritySourceLabel ?? null,
-      },
-    }),
-  ]);
+  const newRecord = await (prisma as any).operating_envelopes.create({
+    data: {
+      envelopeId,
+      envelopeVersion: newVersionStr,
+      organizationId,
+      aiSystemId: existing.aiSystemId,
+      profileId: existing.profileId,
+      profileVersion: existing.profileVersion,
+      state: 'DRAFT',
+      constraints: newConstraints as any,
+      envelopeDigest: newDigest,
+      authoritySourceLabel: existing.authoritySourceLabel ?? null,
+    },
+  });
 
-  return {
-    superseded: dbRecordToEnvelope(supersededRecord),
-    newVersion: dbRecordToEnvelope(newRecord),
-  };
+  return dbRecordToEnvelope(newRecord);
 }
 
 /**
@@ -189,22 +202,29 @@ export async function revokeEnvelopeInDb(
 /**
  * Get the latest APPROVED envelope for an org + AI system.
  * Section 6: Only APPROVED envelope may provide POLICY_AUTHORIZED evidence.
+ * Section 16: Numeric version ordering — do not rely on lexical string ordering.
  */
 export async function getApprovedEnvelope(
   organizationId: string,
   aiSystemId: string,
 ): Promise<OperatingEnvelope | null> {
-  const record = await (prisma as any).operating_envelopes.findFirst({
+  const records = await (prisma as any).operating_envelopes.findMany({
     where: {
       organizationId, // Section 28: tenant safety
       aiSystemId,
       state: 'APPROVED',
     },
-    orderBy: { envelopeVersion: 'desc' },
   });
 
-  if (!record) return null;
-  return dbRecordToEnvelope(record);
+  if (records.length === 0) return null;
+
+  const sorted = records.sort((a: any, b: any) => {
+    const aNum = parseInt(a.envelopeVersion, 10) || 0;
+    const bNum = parseInt(b.envelopeVersion, 10) || 0;
+    return bNum - aNum;
+  });
+
+  return dbRecordToEnvelope(sorted[0]);
 }
 
 /**
@@ -219,10 +239,15 @@ export async function getEnvelopeHistory(
       organizationId, // Section 28: tenant safety
       aiSystemId,
     },
-    orderBy: { envelopeVersion: 'desc' },
   });
 
-  return records.map(dbRecordToEnvelope);
+  return records
+    .sort((a: any, b: any) => {
+      const aNum = parseInt(a.envelopeVersion, 10) || 0;
+      const bNum = parseInt(b.envelopeVersion, 10) || 0;
+      return bNum - aNum;
+    })
+    .map(dbRecordToEnvelope);
 }
 
 /**

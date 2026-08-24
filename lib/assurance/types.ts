@@ -109,6 +109,14 @@ export type ClaimReasonCode =
   | 'OVER_PRIVILEGED_GRANT_DETECTED'
   | 'UNDECLARED_CAPABILITY_DETECTED'
   | 'OBSERVED_OUTSIDE_OPERATING_ENVELOPE'
+  | 'CAPABILITY_OUTSIDE_POLICY'
+  | 'EXCESS_GRANTED_AUTHORITY'
+  | 'UNTESTED_CAPABILITY'
+  | 'UNEXPLAINED_RUNTIME_BEHAVIOR'
+  | 'REQUESTED_NOT_AUTHORIZED'
+  | 'SCOPE_EXCEEDS_POLICY'
+  | 'TARGET_COUNT_EXCEEDS_POLICY'
+  | 'CHANGE_MAGNITUDE_EXCEEDS_POLICY'
   | 'UNKNOWN_OPERATION_REVIEW';
 
 // ─── B22: Three-Dimension Result ─────────────────────────────────────────────
@@ -360,6 +368,16 @@ export interface CapabilityFact {
   impact?: string;
   environment?: string;
   constraints?: string[];
+  /** Structured target count for policy comparison (Section 18) */
+  targetCount?: number;
+  /** Structured change magnitude for policy comparison (Section 18) */
+  changeMagnitude?: number;
+  /** E1 Closure Section 3: Evidence ID for traceability */
+  evidenceId: string;
+  /** E1 Closure Section 3: Producer run ID for traceability */
+  producerRunId?: string;
+  /** E1 Closure Section 3: Content hash for traceability */
+  contentHash?: string;
   sourcePlane: AssurancePlane;
   authorityClass: AuthorityClass;
   evidenceMethod: EvidenceMethod;
@@ -695,7 +713,10 @@ export interface AssuranceEvaluationV1_1 extends AssuranceEvaluation {
   assuranceMethodologyVersion: '1.1';
   profileId: string;
   profileVersion: string;
+  /** Base profile digest from profile-hierarchy */
   profileDigest: string;
+  /** Resolved profile digest committing to effective packs and applicability (Section 11) */
+  profileDigestResolved: string;
   operatingEnvelopeId?: string;
   operatingEnvelopeVersion?: string;
   operatingEnvelopeDigest?: string;
@@ -705,6 +726,8 @@ export interface AssuranceEvaluationV1_1 extends AssuranceEvaluation {
   claimPackVersions: Record<string, string>;
   rulePackVersions: Record<string, string>;
   applicableClaimKeys?: string[];
+  /** Deterministic overall five-plane comparator verdict (Section 10) */
+  fivePlaneOverallVerdict?: ProfileVerdict;
   planeResults?: FivePlaneResult[];
   fivePlaneComparisons?: CapabilityComparisonRecord[];
   buildBinding?: BuildProfileBinding;

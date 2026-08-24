@@ -96,7 +96,7 @@ export async function persistAssuranceEvaluation(
           profileId: v1_1.profileId,
           profileVersion: v1_1.profileVersion,
           profileDigest: v1_1.profileDigest,
-          profileDigestResolved: v1_1.profileId ? v1_1.profileDigest : null,
+          profileDigestResolved: v1_1.profileDigestResolved ?? v1_1.profileDigest ?? null,
           claimPackVersions: v1_1.claimPackVersions as any,
           rulePackVersions: v1_1.rulePackVersions as any,
           operatingEnvelopeId: v1_1.operatingEnvelopeId ?? null,
@@ -184,7 +184,7 @@ function buildPersistedFivePlaneResult(evaluation: AssuranceEvaluationV1_1): Per
         observed: c.observed,
       },
     })),
-    overallVerdict: 'ALLOW',
+    overallVerdict: evaluation.fivePlaneOverallVerdict ?? 'REVIEW',
   };
 }
 
@@ -281,6 +281,7 @@ function reconstructEvaluation(record: any): AssuranceEvaluation {
       profileId: binding.profileId,
       profileVersion: binding.profileVersion,
       profileDigest: binding.profileDigest,
+      profileDigestResolved: binding.profileDigestResolved ?? binding.profileDigest ?? '',
       operatingEnvelopeId: binding.operatingEnvelopeId ?? undefined,
       operatingEnvelopeVersion: binding.operatingEnvelopeVersion ?? undefined,
       operatingEnvelopeDigest: binding.operatingEnvelopeDigest ?? undefined,
@@ -290,6 +291,7 @@ function reconstructEvaluation(record: any): AssuranceEvaluation {
       applicableClaimKeys: binding.applicableClaimKeys as string[] ?? [],
       claimPackVersions: binding.claimPackVersions as Record<string, string> ?? {},
       rulePackVersions: binding.rulePackVersions as Record<string, string> ?? {},
+      fivePlaneOverallVerdict: (binding.fivePlaneResult as any)?.overallVerdict ?? 'REVIEW',
     };
     return v1_1;
   }

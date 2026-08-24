@@ -172,6 +172,7 @@ function makeCapability(
   evidenceIds: string[],
   options: Partial<CapabilityFact> = {},
 ): CapabilityFact {
+  const primaryEvidenceId = evidenceIds[0] ?? `synthetic-evidence-${capabilityId}`;
   return {
     capabilityId,
     subject: 'rapp-service-account',
@@ -181,11 +182,15 @@ function makeCapability(
     dataClass: 'INTERNAL',
     channel: 'r1',
     environment: 'sandbox',
+    evidenceId: primaryEvidenceId,
+    producerRunId: 'synthetic-producer-run',
+    contentHash: 'sha256:synthetic',
     sourcePlane,
     authorityClass: authority,
     evidenceMethod: sourcePlane === 'OBSERVED' ? 'RUNTIME_TRACE' : sourcePlane === 'EFFECTIVELY_GRANTED' ? 'IAM_OBSERVATION' : 'STATIC_PATH_ANALYSIS',
     sourceEvidenceIds: evidenceIds,
     authoritySourceLabel: 'SYNTHETIC_REFERENCE_POLICY',
+    impact: ['write', 'delete', 'deploy', 'modify', 'update', 'create'].some(a => action.includes(a)) ? 'HIGH' : 'LOW',
     ...options,
   };
 }

@@ -1,13 +1,10 @@
 /**
- * U5 B17-B34 / E1 Closure Sections 1,2,12 — Assurance Evaluator
+ * U5 B17-B34 / E1 Closure Sections 1,2,5,9,12 — Assurance Evaluator
  *
- * Orchestrates claim evaluations and computes system-level disposition.
+ * Orchestrates claim evaluations, five-plane capability comparison,
+ * comparator → U5 claim merge, and final U5 disposition.
  *
- * Section 1: Every methodology 1.1 evaluation must resolve an explicit profile.
- * Section 2: Methodology 1.1 cannot use producer-based applicability fallback.
- *            Claim applicability from selected profile, system facts, envelope, predicates.
- *            Producer availability determines SUPPORTED/INSUFFICIENT_EVIDENCE/NOT_ASSESSED.
- * Section 12: Capability comparator results feed canonical U5 claims.
+ * U5 remains the canonical Assurance engine. No parallel "profile verdict" bypasses it.
  *
  * B19: Deterministic — no Date.now(), uses evaluationSnapshotAt
  * B30: Idempotent — same input → same output
@@ -15,7 +12,6 @@
  * B41: No LLM — deterministic code only
  */
 
-import { createHash } from 'crypto';
 import {
   AssuranceEvaluation,
   AssuranceEvaluationV1_1,
@@ -26,39 +22,39 @@ import {
   ControlClaimDefinition,
   ResolvedProfile,
   OperatingEnvelope,
+  ControlEvidenceSet,
+  ControlEvidenceSetMember,
+  CapabilityFact,
+  CapabilityComparisonRecord,
+  ProfileVerdict,
+  FivePlaneResult,
+  EvidenceMemberRole,
+  EpistemicClass,
 } from './types';
-import {
-  ASSURANCE_METHODOLOGY_VERSION,
-  ASSURANCE_METHODOLOGY_VERSION_1_0,
-  ASSURANCE_METHODOLOGY_VERSION_1_1,
-} from './types';
-import { CONTROL_CLAIM_CATALOG, getApplicableClaims, getMandatoryClaims } from './claim-catalog';
+import { ASSURANCE_METHODOLOGY_VERSION_1_1 } from './types';
+import { CONTROL_CLAIM_CATALOG, getMandatoryClaims } from './claim-catalog';
 import { evaluateClaim } from './claim-evaluator';
 import { ProjectedEvidence, computeEvidenceSetDigest } from './evidence-set-builder';
 import { canonicalSerialize } from '@/lib/evidence/deterministic-serialization';
 import { hashTextContent } from '@/lib/evidence/crypto-hash';
 import { resolveCanonicalProducerId } from '@/lib/engine-registry/producer-id-compatibility';
-import { compareCapabilitySets } from './capability-comparator';
+import { compareCapabilitySets, comparisonToClaimState } from './capability-comparator';
+
+export const ASSURANCE_METHODOLOGY_VERSION = '1.1';
 
 /**
  * Evaluate assurance for a completed pipeline run.
  *
- * This is the main entry point for U5/U5.1 assurance evaluation.
+ * Methodology 1.1 requires a successfully resolved profile and approved envelope.
+ * No producer-based applicability fallback.
  *
- * A12: Claim applicability is separated from producer availability.
- *      Applicability comes from system architecture, capability facts,
- *      operating envelope, selected profile, and claim applicability predicate.
- *      Missing producer evidence affects NOT_ASSESSED / INSUFFICIENT_EVIDENCE,
- *      not NOT_APPLICABLE.
- *
- * Section 2: For methodology 1.1, applicableClaimKeys must be provided.
- *            If not, evaluation returns REVIEW with reason.
- *            Producer-based applicability fallback is only for 1.0.
- *
- * B28: Uses the SAME deterministic evidence snapshot concept as U4.
- * B19: No Date.now() — uses evaluationSnapshotAt.
- * B30: Idempotent — same input produces same output.
- * B41: No LLM — deterministic code only.
+ * Sequence:
+ *   base evidence-backed claim evaluation
+ *   five-plane capability comparison
+ *   exact comparison → claim mapping
+ *   merge comparator outcome into affected Control Claim
+ *   final claim state
+ *   computeDisposition(final claimResults)
  */
 export function evaluateAssurance(params: {
   organizationId: string;
@@ -68,27 +64,25 @@ export function evaluateAssurance(params: {
   evaluationSnapshotAt: Date;
   evidence: ProjectedEvidence[];
   availableProducerIds: string[];
-  /** Section 1/3: Explicit resolved profile for 1.1 */
+  /** Section 1/3: Explicit resolved profile for 1.1 — required */
   resolvedProfile?: ResolvedProfile;
   /** Section 5/6: Approved operating envelope for 1.1 */
   operatingEnvelope?: OperatingEnvelope;
-  /** A12: Profile-driven applicability — required for 1.1 */
-  applicableClaimKeys?: string[];
-  /** C1: Profile identity for 1.1 evaluations */
+  /** Section 1: Five-plane capability facts — evidence-backed */
+  capabilityFacts?: {
+    requested: CapabilityFact[];
+    policy: CapabilityFact[];
+    granted: CapabilityFact[];
+    capable: CapabilityFact[];
+    observed: CapabilityFact[];
+  };
+  /** C1: Explicit profile identity (optional override) */
   profileId?: string;
   profileVersion?: string;
   profileDigest?: string;
   operatingEnvelopeId?: string;
   operatingEnvelopeVersion?: string;
   operatingEnvelopeDigest?: string;
-  /** Section 12: Five-plane capability facts for comparator → claim mapping */
-  capabilityFacts?: {
-    requested: import('./types').CapabilityFact[];
-    policy: import('./types').CapabilityFact[];
-    granted: import('./types').CapabilityFact[];
-    capable: import('./types').CapabilityFact[];
-    observed: import('./types').CapabilityFact[];
-  };
 }): AssuranceEvaluation | AssuranceEvaluationV1_1 {
   const {
     organizationId,
@@ -100,135 +94,45 @@ export function evaluateAssurance(params: {
     availableProducerIds,
     resolvedProfile,
     operatingEnvelope,
-    applicableClaimKeys,
+    capabilityFacts,
     profileId,
     profileVersion,
     profileDigest,
     operatingEnvelopeId,
     operatingEnvelopeVersion,
     operatingEnvelopeDigest,
-    capabilityFacts,
   } = params;
 
-  const isV1_1 = true; // Default methodology is 1.1
-
-  // Section 2: For methodology 1.1, applicableClaimKeys must be explicitly provided
-  // when resolvedProfile is present (automatic execution). Producer-based applicability
-  // fallback is retained only when neither resolvedProfile nor applicableClaimKeys is
-  // provided (historical 1.0 / direct-call compatibility).
-  const effectiveApplicableClaimKeys = applicableClaimKeys ??
-    resolvedProfile?.applicableClaimKeys ?? [];
-
-  let allClaimsToEvaluate: ControlClaimDefinition[];
-  if (effectiveApplicableClaimKeys.length > 0) {
-    // A12: Profile-driven applicability
-    allClaimsToEvaluate = CONTROL_CLAIM_CATALOG.filter(claim =>
-      effectiveApplicableClaimKeys.includes(claim.claimKey)
-    );
-    // A12: ALL mandatory claims are still included even if not in applicableClaimKeys
-    const mandatoryNotListed = getMandatoryClaims().filter(
-      claim => !effectiveApplicableClaimKeys.includes(claim.claimKey)
-    );
-    allClaimsToEvaluate = [...allClaimsToEvaluate, ...mandatoryNotListed];
-  } else {
-    // Historical 1.0 fallback: producer-based applicability
-    const applicableClaims = getApplicableClaims(availableProducerIds);
-    const mandatoryClaimsNotApplicable = CONTROL_CLAIM_CATALOG.filter(
-      claim => claim.mandatory && !applicableClaims.some(a => a.claimKey === claim.claimKey)
-    );
-    allClaimsToEvaluate = [...applicableClaims, ...mandatoryClaimsNotApplicable];
-  }
-
-  // Section 2: If resolvedProfile is provided but effective applicable keys are empty,
-  // and no evidence, this is an unknown/inconsistent profile → REVIEW/UNAVAILABLE
-  if (resolvedProfile && effectiveApplicableClaimKeys.length === 0) {
-    const unavailableResult: AssuranceEvaluationV1_1 = {
-      id: `${orchestratorRunId}:assurance:${ASSURANCE_METHODOLOGY_VERSION_1_1}`,
+  // Section 13: Methodology 1.1 requires an explicit successfully resolved profile.
+  // No producer-based applicability fallback.
+  if (!resolvedProfile) {
+    return buildUnavailableEvaluation({
       organizationId,
       aiSystemId,
       orchestratorRunId,
       pipelineAggregationId,
-      assuranceMethodologyVersion: ASSURANCE_METHODOLOGY_VERSION_1_1,
       evaluationSnapshotAt,
-      disposition: 'REVIEW',
-      evaluationStatus: 'COMPLETED',
-      claimResults: [],
-      claimCounts: {
-        SUPPORTED: 0,
-        PARTIALLY_SUPPORTED: 0,
-        INSUFFICIENT_EVIDENCE: 0,
-        CONTRADICTED: 0,
-        REVIEW_REQUIRED: 0,
-        NOT_ASSESSED: 0,
-        NOT_APPLICABLE: 0,
-      },
-      reasonCodes: ['NOT_EVALUATED'],
-      evidenceSetDigest: computeEvidenceSetDigest('_aggregate', ASSURANCE_METHODOLOGY_VERSION_1_1, []),
-      inputHash: computeInputHash({
-        organizationId,
-        aiSystemId,
-        orchestratorRunId,
-        pipelineAggregationId,
-        evidence,
-        availableProducerIds,
-        evaluationSnapshotAt,
-      }),
-      outputHash: hashTextContent(canonicalSerialize({
-        methodologyVersion: ASSURANCE_METHODOLOGY_VERSION_1_1,
-        profileId: profileId ?? '',
-        profileVersion: profileVersion ?? '',
-        profileDigest: profileDigest ?? '',
-        operatingEnvelopeDigest: operatingEnvelopeDigest ?? '',
-        disposition: 'REVIEW',
-        claims: [],
-      }, new Set(['claims']))),
-      createdAt: evaluationSnapshotAt,
-      // 1.1 fields
+      evidence,
+      availableProducerIds,
+      operatingEnvelope,
       profileId: profileId ?? '',
       profileVersion: profileVersion ?? '',
       profileDigest: profileDigest ?? '',
-      operatingEnvelopeId,
-      operatingEnvelopeVersion,
-      operatingEnvelopeDigest,
-      operatingEnvelopeState: operatingEnvelope?.state,
-      operatingEnvelopeApprovedBy: operatingEnvelope?.approvedBy,
-      operatingEnvelopeApprovalReference: operatingEnvelope?.approvalReference,
-      applicableClaimKeys: effectiveApplicableClaimKeys,
-      claimPackVersions: resolvedProfile?.effectiveClaimPackVersions ?? {},
-      rulePackVersions: resolvedProfile?.effectiveRulePackVersions ?? {},
-      planeResults: [],
-      fivePlaneComparisons: [],
-    };
-    return unavailableResult;
-  }
-
-  // Section 12: Evaluate five-plane capability facts and map to canonical claims
-  let comparatorReasonCodes: ClaimReasonCode[] = [];
-  if (capabilityFacts) {
-    const fivePlaneResult = compareCapabilitySets({
-      requested: capabilityFacts.requested,
-      policy: capabilityFacts.policy,
-      granted: capabilityFacts.granted,
-      capable: capabilityFacts.capable,
-      observed: capabilityFacts.observed,
-      envelope: operatingEnvelope,
+      reason: 'ASSURANCE_PROFILE_NOT_RESOLVED',
     });
-
-    // Map comparator results to canonical claim reason codes
-    for (const comp of fivePlaneResult.comparisons) {
-      if (comp.mappedClaimKey) {
-        // Will be applied to the relevant claim evaluation
-        // This is a hint; actual claim state is determined by claim evaluator
-      }
-      for (const result of comp.comparisons) {
-        const mapped = mapComparisonResultToReason(result);
-        if (mapped) comparatorReasonCodes.push(mapped);
-      }
-    }
   }
 
-  // Evaluate each claim
-  const claimResults: ClaimEvaluationResult[] = allClaimsToEvaluate.map(claim =>
+  const effectiveApplicableClaimKeys = resolvedProfile.applicableClaimKeys;
+
+  // Section 14: Determine applicable claims from profile. Mandatory claims are evaluated
+  // only when applicable under the resolved profile/system scope.
+  const allClaimsToEvaluate = CONTROL_CLAIM_CATALOG.filter(claim =>
+    effectiveApplicableClaimKeys.includes(claim.claimKey) ||
+    claim.mandatory && effectiveApplicableClaimKeys.includes(claim.claimKey)
+  );
+
+  // Base evidence-backed claim evaluation
+  let claimResults: ClaimEvaluationResult[] = allClaimsToEvaluate.map(claim =>
     evaluateClaim({
       claim,
       evidence,
@@ -237,20 +141,51 @@ export function evaluateAssurance(params: {
     })
   );
 
-  // Section 12: If comparator found contradictions, mark relevant claims
-  // This is handled by including the reason codes in the evaluation's reasonCodes
-  // and ensuring the disposition logic sees them
+  let fivePlaneResult: ReturnType<typeof compareCapabilitySets> | undefined;
+  let fivePlaneComparisons: CapabilityComparisonRecord[] = [];
+  let fivePlaneOverallVerdict: ProfileVerdict = 'ALLOW';
+
+  if (capabilityFacts) {
+    fivePlaneResult = compareCapabilitySets({
+      requested: capabilityFacts.requested,
+      policy: capabilityFacts.policy,
+      granted: capabilityFacts.granted,
+      capable: capabilityFacts.capable,
+      observed: capabilityFacts.observed,
+      envelope: operatingEnvelope,
+    });
+
+    fivePlaneComparisons = fivePlaneResult.comparisons;
+    fivePlaneOverallVerdict = fivePlaneResult.overallVerdict;
+
+    // Section 5: Merge comparator outcomes into canonical U5 claim results
+    for (const comparison of fivePlaneComparisons) {
+      if (comparison.mappedClaimKey) {
+        claimResults = mergeComparisonIntoClaim(
+          claimResults,
+          comparison,
+          evidence,
+          effectiveApplicableClaimKeys
+        );
+      }
+    }
+  }
+
+  // Section 12: All comparator reason codes are also retained on the evaluation
+  const comparatorReasonCodes = fivePlaneComparisons.flatMap(c =>
+    c.comparisons.flatMap(comp => mapComparisonResultToReason(comp))
+  );
   const allReasonCodes = [
     ...new Set([...claimResults.flatMap(r => r.reasonCodes), ...comparatorReasonCodes]),
   ] as ClaimReasonCode[];
 
-  // B34: Compute system-level disposition
+  // B34: Compute system-level disposition from final U5 claim states
   const disposition = computeDisposition(claimResults);
 
   // Compute claim counts by state
   const claimCounts = computeClaimCounts(claimResults);
 
-  // A2: Compute evidence set digest (aggregate of all claim evidence sets)
+  // A2: Compute aggregate evidence set digest (over final claim evidence sets)
   const allMembers = claimResults.flatMap(r => r.evidenceSet.members);
   const evidenceSetDigest = computeEvidenceSetDigest('_aggregate', ASSURANCE_METHODOLOGY_VERSION, allMembers);
 
@@ -263,19 +198,20 @@ export function evaluateAssurance(params: {
     evidence,
     availableProducerIds,
     evaluationSnapshotAt,
-    profileId,
-    profileVersion,
-    profileDigest,
-    operatingEnvelopeDigest,
+    resolvedProfile,
+    operatingEnvelope,
+    capabilityFacts,
   });
 
   // A3: Compute deterministic output hash
-  const outputHash = computeOutputHash(claimResults, disposition, ASSURANCE_METHODOLOGY_VERSION, {
-    profileId,
-    profileVersion,
-    profileDigest,
-    operatingEnvelopeDigest,
-  });
+  const outputHash = computeOutputHash(
+    claimResults,
+    disposition,
+    ASSURANCE_METHODOLOGY_VERSION,
+    resolvedProfile,
+    operatingEnvelope,
+    fivePlaneOverallVerdict
+  );
 
   const evaluationId = `${orchestratorRunId}:assurance:${ASSURANCE_METHODOLOGY_VERSION}`;
 
@@ -297,120 +233,312 @@ export function evaluateAssurance(params: {
     inputHash,
     outputHash,
     createdAt: evaluationSnapshotAt,
-    // 1.1 fields
-    profileId: resolvedProfile?.profileId ?? profileId ?? '',
-    profileVersion: resolvedProfile?.profileVersion ?? profileVersion ?? '',
-    profileDigest: resolvedProfile?.profileDigest ?? profileDigest ?? '',
+    profileId: resolvedProfile.profileId,
+    profileVersion: resolvedProfile.profileVersion,
+    profileDigest: resolvedProfile.profileDigest,
+    profileDigestResolved: resolvedProfile.profileDigestResolved,
     operatingEnvelopeId,
     operatingEnvelopeVersion,
     operatingEnvelopeDigest,
     operatingEnvelopeState: operatingEnvelope?.state,
     operatingEnvelopeApprovedBy: operatingEnvelope?.approvedBy,
     operatingEnvelopeApprovalReference: operatingEnvelope?.approvalReference,
+    claimPackVersions: resolvedProfile.effectiveClaimPackVersions,
+    rulePackVersions: resolvedProfile.effectiveRulePackVersions,
     applicableClaimKeys: effectiveApplicableClaimKeys,
-    claimPackVersions: resolvedProfile?.effectiveClaimPackVersions ?? {},
-    rulePackVersions: resolvedProfile?.effectiveRulePackVersions ?? {},
-    planeResults: [],
-    fivePlaneComparisons: [],
+    fivePlaneOverallVerdict,
+    fivePlaneComparisons,
   };
 
   return evaluation;
 }
 
-/**
- * Section 12: Map comparator results to claim reason codes.
- */
-function mapComparisonResultToReason(result: import('./types').CapabilityComparisonResult): ClaimReasonCode | null {
-  switch (result) {
-    case 'OBSERVED_OUTSIDE_OPERATING_ENVELOPE':
-      return 'OBSERVED_OUTSIDE_OPERATING_ENVELOPE';
-    case 'OVER_PRIVILEGED_GRANT':
-      return 'OVER_PRIVILEGED_GRANT_DETECTED';
-    case 'EXCESS_GRANTED_AUTHORITY':
-      return 'OVER_PRIVILEGED_GRANT_DETECTED';
-    case 'UNDECLARED_CAPABILITY':
-      return 'UNDECLARED_CAPABILITY_DETECTED';
-    case 'REQUIRED_APPROVAL_STEP_MISSING':
-      return 'REQUIRED_APPROVAL_STEP_MISSING';
-    case 'UNTESTED_CAPABILITY':
-      return 'NOT_EVALUATED';
-    case 'UNEXPLAINED_RUNTIME_BEHAVIOR':
-      return 'NOT_EVALUATED';
-    case 'REQUESTED_NOT_AUTHORIZED':
-      return 'NOT_EVALUATED';
-    default:
-      return null;
-  }
+function buildUnavailableEvaluation(params: {
+  organizationId: string;
+  aiSystemId: string;
+  orchestratorRunId: string;
+  pipelineAggregationId: string | null;
+  evaluationSnapshotAt: Date;
+  evidence: ProjectedEvidence[];
+  availableProducerIds: string[];
+  operatingEnvelope?: OperatingEnvelope;
+  profileId: string;
+  profileVersion: string;
+  profileDigest: string;
+  reason: string;
+}): AssuranceEvaluationV1_1 {
+  const {
+    organizationId,
+    aiSystemId,
+    orchestratorRunId,
+    pipelineAggregationId,
+    evaluationSnapshotAt,
+    evidence,
+    availableProducerIds,
+    operatingEnvelope,
+    profileId,
+    profileVersion,
+    profileDigest,
+    reason,
+  } = params;
+
+  const emptyCounts: Record<ClaimState, number> = {
+    SUPPORTED: 0,
+    PARTIALLY_SUPPORTED: 0,
+    INSUFFICIENT_EVIDENCE: 0,
+    CONTRADICTED: 0,
+    REVIEW_REQUIRED: 0,
+    NOT_ASSESSED: 0,
+    NOT_APPLICABLE: 0,
+  };
+
+  return {
+    id: `${orchestratorRunId}:assurance:${ASSURANCE_METHODOLOGY_VERSION_1_1}:unavailable`,
+    organizationId,
+    aiSystemId,
+    orchestratorRunId,
+    pipelineAggregationId,
+    assuranceMethodologyVersion: ASSURANCE_METHODOLOGY_VERSION_1_1,
+    evaluationSnapshotAt,
+    disposition: 'REVIEW',
+    evaluationStatus: 'COMPLETED',
+    claimResults: [],
+    claimCounts: emptyCounts,
+    reasonCodes: ['NOT_EVALUATED', reason as ClaimReasonCode],
+    evidenceSetDigest: computeEvidenceSetDigest('_aggregate', ASSURANCE_METHODOLOGY_VERSION_1_1, []),
+    inputHash: computeInputHash({
+      organizationId, aiSystemId, orchestratorRunId, pipelineAggregationId, evidence, availableProducerIds,
+      evaluationSnapshotAt,
+    }),
+    outputHash: hashTextContent(canonicalSerialize({
+      methodologyVersion: ASSURANCE_METHODOLOGY_VERSION_1_1,
+      profileId,
+      profileVersion,
+      profileDigest,
+      operatingEnvelopeDigest: operatingEnvelope?.envelopeDigest ?? '',
+      disposition: 'REVIEW',
+      claims: [],
+    }, new Set(['claims']))),
+    createdAt: evaluationSnapshotAt,
+    profileId,
+    profileVersion,
+    profileDigest,
+    profileDigestResolved: profileDigest,
+    operatingEnvelopeId: operatingEnvelope?.envelopeId,
+    operatingEnvelopeVersion: operatingEnvelope?.envelopeVersion,
+    operatingEnvelopeDigest: operatingEnvelope?.envelopeDigest,
+    operatingEnvelopeState: operatingEnvelope?.state,
+    operatingEnvelopeApprovedBy: operatingEnvelope?.approvedBy,
+    operatingEnvelopeApprovalReference: operatingEnvelope?.approvalReference,
+    claimPackVersions: {},
+    rulePackVersions: {},
+    applicableClaimKeys: [],
+    fivePlaneOverallVerdict: 'REVIEW',
+    planeResults: [],
+    fivePlaneComparisons: [],
+  };
 }
 
 /**
- * B34: Compute system-level ALLOW/REVIEW/BLOCK disposition.
+ * Section 5: Merge a five-plane capability comparison into the affected U5 claim.
+ *
+ * Precedence:
+ * - existing CONTRADICTED remains CONTRADICTED
+ * - comparator BLOCK-level contradiction → CONTRADICTED
+ * - comparator REVIEW-level result → REVIEW_REQUIRED unless existing is stronger
+ * - SUPPORTED must never overwrite a contradiction
+ * - NOT_ASSESSED + qualifying contradiction → CONTRADICTED
  */
+function mergeComparisonIntoClaim(
+  claimResults: ClaimEvaluationResult[],
+  comparison: CapabilityComparisonRecord,
+  evidence: ProjectedEvidence[],
+  applicableClaimKeys: string[]
+): ClaimEvaluationResult[] {
+  const claimKey = comparison.mappedClaimKey!;
+  const claim = CONTROL_CLAIM_CATALOG.find(c => c.claimKey === claimKey);
+  if (!claim) return claimResults;
+
+  const existingIndex = claimResults.findIndex(r => r.claimKey === claimKey);
+
+  // If claim not yet in results, create an initial NOT_ASSESSED result
+  let existing: ClaimEvaluationResult;
+  if (existingIndex === -1) {
+    existing = {
+      claimKey: claim.claimKey,
+      claimVersion: claim.version,
+      claimState: 'NOT_ASSESSED',
+      reasonCodes: [],
+      dimensionResult: {
+        authorizedScope: 'MISSING',
+        codeCapability: 'MISSING',
+        observedRuntime: 'MISSING',
+      },
+      evidenceSet: {
+        claimKey: claim.claimKey,
+        claimVersion: claim.version,
+        setDigest: computeEvidenceSetDigest(claim.claimKey, claim.version, []),
+        members: [],
+      },
+      supportingCount: 0,
+      contradictingCount: 0,
+      excludedCount: 0,
+      explanation: '',
+    };
+  } else {
+    existing = claimResults[existingIndex];
+  }
+
+  // Get claim state + reason codes from comparator
+  const mapped = comparisonToClaimState(comparison.comparisons);
+
+  // Determine merged claim state (precedence)
+  let mergedState: ClaimState = existing.claimState;
+  if (existing.claimState === 'CONTRADICTED') {
+    // existing CONTRADICTED remains
+    mergedState = 'CONTRADICTED';
+  } else if (mapped.claimState === 'CONTRADICTED') {
+    mergedState = 'CONTRADICTED';
+  } else if (mapped.claimState === 'REVIEW_REQUIRED') {
+    mergedState = rankState(mergedState) < rankState('REVIEW_REQUIRED') ? 'REVIEW_REQUIRED' : mergedState;
+  } else if (mapped.claimState === 'SUPPORTED' && existing.claimState === 'NOT_ASSESSED') {
+    mergedState = 'SUPPORTED';
+  }
+
+  // Merge reason codes (dedupe)
+  const mergedReasonCodes = [...new Set([...existing.reasonCodes, ...mapped.reasonCodes])];
+
+  // Section 7: Add comparator evidence to the claim's evidence set
+  const members = [...existing.evidenceSet.members];
+  for (const evidenceId of comparison.evidenceIds) {
+    const ev = evidence.find(e => e.id === evidenceId);
+    if (!ev) continue;
+    const role = determineEvidenceRole(comparison.comparisons, ev);
+    const epistemicClass: EpistemicClass =
+      ev.sourceType === 'saas-runtime' ? 'RUNTIME_EMPIRICAL' :
+      ev.sourceType === 'saas-static' ? 'HAIEC_NATIVE_TECHNICAL' :
+      ev.sourceType === 'saas-inventory' ? 'OBSERVED_CONFIGURATION' : 'DERIVED';
+    const member: ControlEvidenceSetMember = {
+      evidenceId: ev.id,
+      role,
+      epistemicClass,
+      producerId: resolveCanonicalProducerId(ev.sourceType) ?? ev.sourceType,
+      contentHash: ev.contentHash ?? undefined,
+    };
+    if (!members.some(m => m.evidenceId === ev.id)) {
+      members.push(member);
+    }
+  }
+
+  const updated: ClaimEvaluationResult = {
+    ...existing,
+    claimState: mergedState,
+    reasonCodes: mergedReasonCodes as ClaimReasonCode[],
+    evidenceSet: {
+      ...existing.evidenceSet,
+      setDigest: computeEvidenceSetDigest(claim.claimKey, claim.version, members),
+      members,
+    },
+    contradictingCount: mergedState === 'CONTRADICTED' ? (existing.contradictingCount + 1) : existing.contradictingCount,
+  };
+
+  if (existingIndex === -1) {
+    return [...claimResults, updated];
+  }
+  return claimResults.map((r, i) => (i === existingIndex ? updated : r));
+}
+
+function rankState(state: ClaimState): number {
+  const ranks: Record<ClaimState, number> = {
+    NOT_APPLICABLE: 0,
+    SUPPORTED: 1,
+    PARTIALLY_SUPPORTED: 2,
+    NOT_ASSESSED: 3,
+    INSUFFICIENT_EVIDENCE: 4,
+    REVIEW_REQUIRED: 5,
+    CONTRADICTED: 6,
+  };
+  return ranks[state] ?? 0;
+}
+
+function determineEvidenceRole(
+  comparisons: string[],
+  ev: ProjectedEvidence
+): EvidenceMemberRole {
+  if (comparisons.includes('OBSERVED_OUTSIDE_OPERATING_ENVELOPE') ||
+      comparisons.includes('OVER_PRIVILEGED_GRANT') ||
+      comparisons.includes('UNDECLARED_CAPABILITY') ||
+      comparisons.includes('EXCESS_GRANTED_AUTHORITY') ||
+      comparisons.includes('REQUIRED_APPROVAL_STEP_MISSING')) {
+    return 'CONTRADICTING';
+  }
+  if (comparisons.includes('ALIGNED')) return 'SUPPORTING';
+  return 'CONTEXT_ONLY';
+}
+
+function mapComparisonResultToReason(result: string): ClaimReasonCode[] {
+  switch (result) {
+    case 'OBSERVED_OUTSIDE_OPERATING_ENVELOPE':
+      return ['OBSERVED_OUTSIDE_OPERATING_ENVELOPE', 'CAPABILITY_CONTRADICTION'];
+    case 'OVER_PRIVILEGED_GRANT':
+      return ['OVER_PRIVILEGED_GRANT_DETECTED'];
+    case 'EXCESS_GRANTED_AUTHORITY':
+      return ['EXCESS_GRANTED_AUTHORITY'];
+    case 'UNDECLARED_CAPABILITY':
+      return ['UNDECLARED_CAPABILITY_DETECTED'];
+    case 'REQUIRED_APPROVAL_STEP_MISSING':
+      return ['REQUIRED_APPROVAL_STEP_MISSING', 'CAPABILITY_CONTRADICTION'];
+    case 'UNTESTED_CAPABILITY':
+      return ['UNTESTED_CAPABILITY'];
+    case 'UNEXPLAINED_RUNTIME_BEHAVIOR':
+      return ['UNEXPLAINED_RUNTIME_BEHAVIOR'];
+    case 'REQUESTED_NOT_AUTHORIZED':
+      return ['REQUESTED_NOT_AUTHORIZED'];
+    case 'CAPABILITY_OUTSIDE_POLICY':
+      return ['CAPABILITY_OUTSIDE_POLICY'];
+    case 'SCOPE_EXCEEDS_POLICY':
+      return ['SCOPE_EXCEEDS_POLICY'];
+    case 'TARGET_COUNT_EXCEEDS_POLICY':
+      return ['TARGET_COUNT_EXCEEDS_POLICY'];
+    case 'CHANGE_MAGNITUDE_EXCEEDS_POLICY':
+      return ['CHANGE_MAGNITUDE_EXCEEDS_POLICY'];
+    case 'ALIGNED':
+      return ['SUPPORTED_BY_RUNTIME_EVIDENCE'];
+    default:
+      return [];
+  }
+}
+
 export function computeDisposition(claimResults: ClaimEvaluationResult[]): AssuranceDisposition {
-  // Check for BLOCK: critical/mandatory claim contradicted
   const mandatoryResults = claimResults.filter(r => {
     const claim = CONTROL_CLAIM_CATALOG.find(c => c.claimKey === r.claimKey);
     return claim?.mandatory === true;
   });
 
-  const blockingContradictions = mandatoryResults.filter(
-    r => r.claimState === 'CONTRADICTED'
-  );
+  const blockingContradictions = mandatoryResults.filter(r => r.claimState === 'CONTRADICTED');
+  if (blockingContradictions.length > 0) return 'BLOCK';
 
-  if (blockingContradictions.length > 0) {
-    return 'BLOCK';
-  }
-
-  // Check for REVIEW: mandatory claim not fully supported
   const reviewStates: ClaimState[] = [
     'PARTIALLY_SUPPORTED',
     'INSUFFICIENT_EVIDENCE',
     'REVIEW_REQUIRED',
     'NOT_ASSESSED',
   ];
+  const mandatoryNeedsReview = mandatoryResults.filter(r => reviewStates.includes(r.claimState));
+  if (mandatoryNeedsReview.length > 0) return 'REVIEW';
 
-  const mandatoryNeedsReview = mandatoryResults.filter(
-    r => reviewStates.includes(r.claimState)
-  );
+  const selfReportedOnly = mandatoryResults.filter(r => r.reasonCodes.includes('SELF_REPORTED_ONLY'));
+  if (selfReportedOnly.length > 0) return 'REVIEW';
 
-  if (mandatoryNeedsReview.length > 0) {
-    return 'REVIEW';
-  }
+  const staleEvidence = mandatoryResults.filter(r => r.reasonCodes.includes('STALE_EVIDENCE'));
+  if (staleEvidence.length > 0) return 'REVIEW';
 
-  // Check for self-reported only on technical mandatory claims
-  const selfReportedOnly = mandatoryResults.filter(
-    r => r.reasonCodes.includes('SELF_REPORTED_ONLY')
-  );
+  const conflictingProducers = mandatoryResults.filter(r => r.reasonCodes.includes('CONFLICTING_PRODUCERS'));
+  if (conflictingProducers.length > 0) return 'REVIEW';
 
-  if (selfReportedOnly.length > 0) {
-    return 'REVIEW';
-  }
-
-  // Check for stale evidence on mandatory claims
-  const staleEvidence = mandatoryResults.filter(
-    r => r.reasonCodes.includes('STALE_EVIDENCE')
-  );
-
-  if (staleEvidence.length > 0) {
-    return 'REVIEW';
-  }
-
-  // Check for conflicting producers
-  const conflictingProducers = mandatoryResults.filter(
-    r => r.reasonCodes.includes('CONFLICTING_PRODUCERS')
-  );
-
-  if (conflictingProducers.length > 0) {
-    return 'REVIEW';
-  }
-
-  // All mandatory claims supported → ALLOW
   return 'ALLOW';
 }
 
-/**
- * Compute claim counts by state.
- */
 function computeClaimCounts(results: ClaimEvaluationResult[]): Record<ClaimState, number> {
   const counts: Record<ClaimState, number> = {
     SUPPORTED: 0,
@@ -421,17 +549,10 @@ function computeClaimCounts(results: ClaimEvaluationResult[]): Record<ClaimState
     NOT_ASSESSED: 0,
     NOT_APPLICABLE: 0,
   };
-
-  for (const r of results) {
-    counts[r.claimState]++;
-  }
-
+  for (const r of results) counts[r.claimState]++;
   return counts;
 }
 
-/**
- * A4: Compute deterministic input hash.
- */
 function computeInputHash(params: {
   organizationId: string;
   aiSystemId: string;
@@ -440,15 +561,23 @@ function computeInputHash(params: {
   evidence: ProjectedEvidence[];
   availableProducerIds: string[];
   evaluationSnapshotAt: Date;
+  resolvedProfile?: ResolvedProfile;
   profileId?: string;
   profileVersion?: string;
   profileDigest?: string;
-  operatingEnvelopeDigest?: string;
+  operatingEnvelope?: OperatingEnvelope;
+  capabilityFacts?: {
+    requested: CapabilityFact[];
+    policy: CapabilityFact[];
+    granted: CapabilityFact[];
+    capable: CapabilityFact[];
+    observed: CapabilityFact[];
+  };
 }): string {
   const evidenceEntries = params.evidence
     .map(e => ({
       evidenceId: e.id,
-      producerId: e.sourceType,
+      producerId: resolveCanonicalProducerId(e.sourceType) ?? e.sourceType,
       producerRunId: e.producerRunId ?? e.sourceId ?? '',
       contentHash: e.contentHash ?? '',
     }))
@@ -461,38 +590,50 @@ function computeInputHash(params: {
     pipelineAggregationId: params.pipelineAggregationId,
     methodologyVersion: ASSURANCE_METHODOLOGY_VERSION_1_1,
     snapshotAt: params.evaluationSnapshotAt.toISOString(),
-    profileId: params.profileId ?? '',
-    profileVersion: params.profileVersion ?? '',
-    profileDigest: params.profileDigest ?? '',
-    operatingEnvelopeDigest: params.operatingEnvelopeDigest ?? '',
+    profileId: params.resolvedProfile?.profileId ?? params.profileId ?? '',
+    profileVersion: params.resolvedProfile?.profileVersion ?? params.profileVersion ?? '',
+    profileDigest: params.resolvedProfile?.profileDigest ?? params.profileDigest ?? '',
+    profileDigestResolved: params.resolvedProfile?.profileDigestResolved ?? '',
+    claimPackVersions: params.resolvedProfile?.effectiveClaimPackVersions ?? {},
+    rulePackVersions: params.resolvedProfile?.effectiveRulePackVersions ?? {},
+    operatingEnvelopeDigest: params.operatingEnvelope?.envelopeDigest ?? '',
+    operatingEnvelopeApprovedBy: params.operatingEnvelope?.approvedBy ?? '',
+    operatingEnvelopeState: params.operatingEnvelope?.state ?? '',
+    fivePlaneRequested: params.capabilityFacts?.requested.map(f => f.evidenceId).sort() ?? [],
+    fivePlanePolicy: params.capabilityFacts?.policy.map(f => f.evidenceId).sort() ?? [],
+    fivePlaneGranted: params.capabilityFacts?.granted.map(f => f.evidenceId).sort() ?? [],
+    fivePlaneCapable: params.capabilityFacts?.capable.map(f => f.evidenceId).sort() ?? [],
+    fivePlaneObserved: params.capabilityFacts?.observed.map(f => f.evidenceId).sort() ?? [],
     evidenceEntries,
     producerIds: [...params.availableProducerIds].sort(),
   };
 
-  const canonical = canonicalSerialize(input, new Set(['evidenceEntries', 'producerIds']));
+  const canonical = canonicalSerialize(input, new Set([
+    'evidenceEntries', 'producerIds', 'fivePlaneRequested', 'fivePlanePolicy',
+    'fivePlaneGranted', 'fivePlaneCapable', 'fivePlaneObserved',
+  ]));
   return hashTextContent(canonical);
 }
 
-/**
- * A3: Compute deterministic output hash.
- */
 function computeOutputHash(
   claimResults: ClaimEvaluationResult[],
   disposition: AssuranceDisposition,
   methodologyVersion: string,
-  profile?: {
-    profileId?: string;
-    profileVersion?: string;
-    profileDigest?: string;
-    operatingEnvelopeDigest?: string;
-  }
+  resolvedProfile?: ResolvedProfile,
+  operatingEnvelope?: OperatingEnvelope,
+  fivePlaneOverallVerdict?: ProfileVerdict,
 ): string {
   const output = {
     methodologyVersion,
-    profileId: profile?.profileId ?? '',
-    profileVersion: profile?.profileVersion ?? '',
-    profileDigest: profile?.profileDigest ?? '',
-    operatingEnvelopeDigest: profile?.operatingEnvelopeDigest ?? '',
+    profileId: resolvedProfile?.profileId ?? '',
+    profileVersion: resolvedProfile?.profileVersion ?? '',
+    profileDigest: resolvedProfile?.profileDigest ?? '',
+    profileDigestResolved: resolvedProfile?.profileDigestResolved ?? '',
+    claimPackVersions: resolvedProfile?.effectiveClaimPackVersions ?? {},
+    rulePackVersions: resolvedProfile?.effectiveRulePackVersions ?? {},
+    operatingEnvelopeDigest: operatingEnvelope?.envelopeDigest ?? '',
+    operatingEnvelopeApprovedBy: operatingEnvelope?.approvedBy ?? '',
+    fivePlaneOverallVerdict: fivePlaneOverallVerdict ?? 'ALLOW',
     disposition,
     claims: claimResults
       .sort((a, b) => a.claimKey.localeCompare(b.claimKey))
@@ -512,9 +653,6 @@ function computeOutputHash(
   return hashTextContent(canonical);
 }
 
-/**
- * B30: Check if two evaluations are idempotent.
- */
 export function isIdempotent(
   eval1: AssuranceEvaluation,
   eval2: AssuranceEvaluation
