@@ -5,7 +5,7 @@
  * Consumes U5 methodology 1.1 AssuranceEvaluation.
  */
 
-import { AssuranceDisposition, ClaimState, CapabilityComparisonRecord, ProfileVerdict } from './types';
+import { AssuranceDisposition, ClaimState, CapabilityComparisonRecord, PlaneAvailability, ProfileVerdict } from './types';
 
 export const U6_REPORT_SCHEMA_VERSION = '1.0.0' as const;
 export const U6_BUNDLE_SCHEMA_VERSION = '1.0.0' as const;
@@ -84,6 +84,7 @@ export interface ReportClaimResult {
   claimState: ClaimState;
   reasonCodes: string[];
   criticality: 'CRITICAL' | 'REQUIRED' | 'INFORMATIONAL';
+  mandatory: boolean;
   applicability: string;
   supportingCount: number;
   contradictingCount: number;
@@ -102,18 +103,24 @@ export interface FivePlaneReportSection {
   observed: PlaneReportItem[];
   comparisons: CapabilityComparisonRecord[];
   overallVerdict: ProfileVerdict;
-  availability: { plane: string; status: string; explanation: string }[];
+  availability: PlaneAvailability[];
 }
 
 export interface PlaneReportItem {
   capabilityId: string;
+  capabilityFamily?: string;
   action: string;
   resource: string;
   scope: string;
+  sourceLocation?: string;
   constraints?: string[];
   impact?: string;
+  discoveryBasis?: string;
+  capabilityCoverage?: string;
   evidenceIds: string[];
-  sourceMethod: string;
+  evidenceMethod: string;
+  authorityClass: string;
+  authoritySourceLabel?: string;
   availability: string;
 }
 

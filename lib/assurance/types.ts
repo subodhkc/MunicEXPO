@@ -764,6 +764,16 @@ export interface AssuranceEvaluationV1_1 extends AssuranceEvaluation {
   fivePlaneOverallVerdict?: ProfileVerdict;
   planeResults?: FivePlaneResult[];
   fivePlaneComparisons?: CapabilityComparisonRecord[];
+  /** U6: actual five-plane capability facts used by comparator */
+  capabilityFacts?: {
+    requested: CapabilityFact[];
+    policy: CapabilityFact[];
+    granted: CapabilityFact[];
+    capable: CapabilityFact[];
+    observed: CapabilityFact[];
+  };
+  /** U6: plane availability snapshot at evaluation time */
+  planeAvailability?: PlaneAvailability[];
   buildBinding?: BuildProfileBinding;
 }
 
@@ -1128,5 +1138,15 @@ export interface PersistedFivePlaneResult {
       observed: boolean;
     };
   }>;
+  /** U6: evaluation-time plane availability snapshot */
+  planeAvailability: PlaneAvailability[];
+  /** U6: actual five-plane capability facts captured at evaluation time */
+  capabilityFacts: {
+    requested: CapabilityFact[];
+    policy: CapabilityFact[];
+    granted: CapabilityFact[];
+    capable: CapabilityFact[];
+    observed: CapabilityFact[];
+  };
   overallVerdict: ProfileVerdict;
 }

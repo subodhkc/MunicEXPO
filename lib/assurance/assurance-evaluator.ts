@@ -39,6 +39,7 @@ import { canonicalSerialize } from '@/lib/evidence/deterministic-serialization';
 import { hashTextContent } from '@/lib/evidence/crypto-hash';
 import { resolveCanonicalProducerId } from '@/lib/engine-registry/producer-id-compatibility';
 import { compareCapabilitySets, comparisonToClaimState } from './capability-comparator';
+import { buildPlaneAvailability } from './capability-fact-projection';
 
 export const ASSURANCE_METHODOLOGY_VERSION = '1.1';
 
@@ -248,6 +249,8 @@ export function evaluateAssurance(params: {
     applicableClaimKeys: effectiveApplicableClaimKeys,
     fivePlaneOverallVerdict,
     fivePlaneComparisons,
+    capabilityFacts,
+    planeAvailability: capabilityFacts ? buildPlaneAvailability(capabilityFacts) : undefined,
   };
 
   return evaluation;
@@ -336,6 +339,20 @@ function buildUnavailableEvaluation(params: {
     fivePlaneOverallVerdict: 'REVIEW',
     planeResults: [],
     fivePlaneComparisons: [],
+    capabilityFacts: {
+      requested: [],
+      policy: [],
+      granted: [],
+      capable: [],
+      observed: [],
+    },
+    planeAvailability: buildPlaneAvailability({
+      requested: [],
+      policy: [],
+      granted: [],
+      capable: [],
+      observed: [],
+    }),
   };
 }
 

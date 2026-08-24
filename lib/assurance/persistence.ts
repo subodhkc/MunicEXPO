@@ -20,9 +20,11 @@ import { prisma } from '@/lib/prisma';
 import {
   AssuranceEvaluation,
   AssuranceEvaluationV1_1,
+  AssurancePlane,
   ClaimEvaluationResult,
   PersistenceResult,
   PersistedFivePlaneResult,
+  PlaneAvailability,
   ASSURANCE_METHODOLOGY_VERSION_1_1,
 } from './types';
 
@@ -165,9 +167,29 @@ export async function persistAssuranceEvaluation(
 /**
  * Section 13: Build concise five-plane result JSON for persistence.
  */
+function buildDefaultPlaneAvailability(): PlaneAvailability[] {
+  const planes: AssurancePlane[] = ['REQUESTED', 'POLICY_AUTHORIZED', 'EFFECTIVELY_GRANTED', 'CODE_CAPABLE', 'OBSERVED'];
+  return planes.map(plane => ({
+    plane,
+    status: 'NOT_PROVIDED',
+    coverage: 'UNKNOWN',
+    basis: 'UNKNOWN',
+    sourceEvidenceIds: [],
+    explanation: 'Plane not evaluated',
+  }));
+}
+
 function buildPersistedFivePlaneResult(evaluation: AssuranceEvaluationV1_1): PersistedFivePlaneResult | null {
   const comparisons = evaluation.fivePlaneComparisons;
   if (!comparisons || comparisons.length === 0) return null;
+
+  const capFacts = evaluation.capabilityFacts ?? {
+    requested: [],
+    policy: [],
+    granted: [],
+    capable: [],
+    observed: [],
+  };
 
   return {
     comparisons: comparisons.map(c => ({
@@ -184,6 +206,8 @@ function buildPersistedFivePlaneResult(evaluation: AssuranceEvaluationV1_1): Per
         observed: c.observed,
       },
     })),
+    planeAvailability: evaluation.planeAvailability ?? buildDefaultPlaneAvailability(),
+    capabilityFacts: capFacts,
     overallVerdict: evaluation.fivePlaneOverallVerdict ?? 'REVIEW',
   };
 }
@@ -293,6 +317,14 @@ function reconstructEvaluation(record: any): AssuranceEvaluation {
       rulePackVersions: binding.rulePackVersions as Record<string, string> ?? {},
       fivePlaneOverallVerdict: (binding.fivePlaneResult as any)?.overallVerdict ?? 'REVIEW',
       fivePlaneComparisons: (binding.fivePlaneResult as any)?.comparisons ?? [],
+      planeAvailability: (binding.fivePlaneResult as any)?.planeAvailability ?? buildDefaultPlaneAvailability(),
+      capabilityFacts: (binding.fivePlaneResult as any)?.capabilityFacts ?? {
+        requested: [],
+        policy: [],
+        granted: [],
+        capable: [],
+        observed: [],
+      },
     };
     return v1_1;
   }

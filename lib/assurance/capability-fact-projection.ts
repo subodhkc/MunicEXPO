@@ -27,6 +27,7 @@ import {
   AuthorityClass,
   AssurancePlane,
   AuthoritySourceLabel,
+  PlaneAvailability,
 } from './types';
 import type { EvidenceCapabilityDeclaration, EvidenceMappingStrength } from '@/lib/evidence/capability-declaration-contract';
 import type { DecisionEvidenceProjection } from '@/lib/decision-pipeline/evidence-projection';
@@ -245,4 +246,48 @@ function extractResourceFromOperation(operation: string): string {
   if (operation.includes('callback')) return 'callback';
   if (operation.includes('service')) return 'service';
   return 'resource';
+}
+
+const PLANE_ORDER: AssurancePlane[] = ['REQUESTED', 'POLICY_AUTHORIZED', 'EFFECTIVELY_GRANTED', 'CODE_CAPABLE', 'OBSERVED'];
+
+/**
+ * U6: Build a plane availability snapshot from the projected capability facts.
+ *
+ * PRESENT != COMPLETE. A finding-derived CODE_CAPABLE fact is PRESENT but coverage is PARTIAL.
+ * Missing planes are reported as NOT_PROVIDED rather than invented.
+ */
+export function buildPlaneAvailability(facts: CapabilityFactProjectionResult): PlaneAvailability[] {
+  const factMap: Record<AssurancePlane, CapabilityFact[]> = {
+    REQUESTED: facts.requested,
+    POLICY_AUTHORIZED: facts.policy,
+    EFFECTIVELY_GRANTED: facts.granted,
+    CODE_CAPABLE: facts.capable,
+    OBSERVED: facts.observed,
+  };
+
+  return PLANE_ORDER.map(plane => {
+    const planeFacts = factMap[plane];
+    const present = planeFacts.length > 0;
+    const sourceEvidenceIds = Array.from(new Set(planeFacts.flatMap(f => f.sourceEvidenceIds ?? [])));
+    const coverages = new Set(planeFacts.map(f => f.capabilityCoverage ?? 'UNKNOWN'));
+    const bases = new Set(planeFacts.map(f => f.discoveryBasis ?? 'UNKNOWN'));
+
+    let coverage: 'COMPLETE' | 'PARTIAL' | 'UNKNOWN' | 'NOT_APPLICABLE' = 'UNKNOWN';
+    if (coverages.has('PARTIAL') || coverages.size > 1) coverage = 'PARTIAL';
+    else if (coverages.has('COMPLETE')) coverage = 'COMPLETE';
+    else if (coverages.has('NOT_APPLICABLE')) coverage = 'NOT_APPLICABLE';
+
+    const basis = Array.from(bases)[0] ?? 'UNKNOWN';
+
+    return {
+      plane,
+      status: present ? 'PRESENT' : 'NOT_PROVIDED',
+      coverage,
+      basis,
+      sourceEvidenceIds,
+      explanation: present
+        ? `Plane supported by ${planeFacts.length} capability fact(s); coverage ${coverage.toLowerCase()}.`
+        : 'No qualifying capability evidence was provided for this plane.',
+    };
+  });
 }

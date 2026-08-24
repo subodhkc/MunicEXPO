@@ -12,7 +12,10 @@ import { merkleRoot, merkleProofForLeaf, verifyMerkleProof } from '@/lib/audit/m
 import {
   AssuranceEvaluation,
   AssuranceEvaluationV1_1,
+  AssurancePlane,
+  CapabilityFact,
   ClaimEvaluationResult,
+  PlaneAvailability,
   ProfileVerdict,
 } from './types';
 import { CONTROL_CLAIM_CATALOG } from './claim-catalog';
@@ -47,7 +50,7 @@ export function buildUnifiedAssuranceReport(
   const isSynthetic = v1_1.operatingEnvelopeId?.includes('synthetic') || v1_1.profileId?.includes('synthetic');
   const syntheticMarker = isSynthetic ? 'SYNTHETIC_REFERENCE' : undefined;
 
-  const claimResults = buildReportClaimResults(evaluation.claimResults, v1_1.fivePlaneComparisons || []);
+  const claimResults = buildReportClaimResults(evaluation.claimResults, v1_1.fivePlaneComparisons || [], v1_1.applicableClaimKeys ?? []);
   const claimSummary = buildClaimSummary(evaluation.claimResults);
 
   const report: UnifiedAssuranceReport = {
@@ -273,17 +276,26 @@ export function publicVerification(receipt: AssuranceDecisionReceipt): PublicVer
 function buildReportClaimResults(
   claimResults: ClaimEvaluationResult[],
   comparisons: any[],
+  applicableClaimKeys: string[],
 ): ReportClaimResult[] {
   return claimResults.map(c => {
     const def = CONTROL_CLAIM_CATALOG.find(x => x.claimKey === c.claimKey);
+    const isApplicable = applicableClaimKeys.includes(c.claimKey);
+    const isMandatory = !!def?.mandatory;
+    const criticalityRaw = def?.criticality ?? (isMandatory ? 'critical' : 'high');
+    const criticality: 'CRITICAL' | 'REQUIRED' | 'INFORMATIONAL' =
+      criticalityRaw === 'critical' ? 'CRITICAL' :
+      criticalityRaw === 'high' || criticalityRaw === 'medium' ? 'REQUIRED' : 'INFORMATIONAL';
+    const applicability = isApplicable ? 'APPLICABLE' : 'NOT_APPLICABLE';
     return {
       claimKey: c.claimKey,
       claimVersion: c.claimVersion,
       statement: def?.statement ?? '',
       claimState: c.claimState,
       reasonCodes: c.reasonCodes,
-      criticality: def?.mandatory ? 'CRITICAL' : 'REQUIRED',
-      applicability: 'APPLICABLE',
+      criticality,
+      mandatory: isMandatory,
+      applicability,
       supportingCount: c.supportingCount,
       contradictingCount: c.contradictingCount,
       excludedCount: c.excludedCount,
@@ -309,23 +321,51 @@ function buildClaimSummary(claimResults: ClaimEvaluationResult[]): ClaimSummaryI
 }
 
 function buildFivePlaneReport(v1_1: AssuranceEvaluationV1_1): FivePlaneReportSection {
-  const empty: PlaneReportItem[] = [];
-  const comps = v1_1.fivePlaneComparisons || [];
+  const facts = v1_1.capabilityFacts ?? { requested: [], policy: [], granted: [], capable: [], observed: [] };
+  const availability = v1_1.planeAvailability ?? buildDefaultPlaneAvailabilityReport();
 
   return {
-    requested: empty,
-    policyAuthorized: empty,
-    effectivelyGranted: empty,
-    codeCapable: empty,
-    observed: empty,
-    comparisons: comps,
+    requested: facts.requested.map(f => mapCapabilityFactToReport(f)),
+    policyAuthorized: facts.policy.map(f => mapCapabilityFactToReport(f)),
+    effectivelyGranted: facts.granted.map(f => mapCapabilityFactToReport(f)),
+    codeCapable: facts.capable.map(f => mapCapabilityFactToReport(f)),
+    observed: facts.observed.map(f => mapCapabilityFactToReport(f)),
+    comparisons: v1_1.fivePlaneComparisons || [],
     overallVerdict: v1_1.fivePlaneOverallVerdict ?? 'REVIEW',
-    availability: ['REQUESTED', 'POLICY_AUTHORIZED', 'EFFECTIVELY_GRANTED', 'CODE_CAPABLE', 'OBSERVED'].map(p => ({
-      plane: p,
-      status: 'NOT_EVALUATED',
-      explanation: 'Plane availability not recorded for this evaluation.',
-    })),
+    availability,
   };
+}
+
+function mapCapabilityFactToReport(f: CapabilityFact): PlaneReportItem {
+  return {
+    capabilityId: f.capabilityId,
+    capabilityFamily: f.capabilityFamily,
+    action: f.action,
+    resource: f.resource,
+    scope: f.scope,
+    sourceLocation: f.sourceLocation,
+    constraints: f.constraints,
+    impact: f.impact,
+    discoveryBasis: f.discoveryBasis,
+    capabilityCoverage: f.capabilityCoverage,
+    evidenceIds: f.sourceEvidenceIds ?? [],
+    evidenceMethod: f.evidenceMethod,
+    authorityClass: f.authorityClass,
+    authoritySourceLabel: f.authoritySourceLabel,
+    availability: 'PRESENT',
+  };
+}
+
+function buildDefaultPlaneAvailabilityReport(): PlaneAvailability[] {
+  const planes: AssurancePlane[] = ['REQUESTED', 'POLICY_AUTHORIZED', 'EFFECTIVELY_GRANTED', 'CODE_CAPABLE', 'OBSERVED'];
+  return planes.map(plane => ({
+    plane,
+    status: 'NOT_EVALUATED',
+    coverage: 'UNKNOWN',
+    basis: 'UNKNOWN',
+    sourceEvidenceIds: [],
+    explanation: 'Plane availability not recorded for this evaluation.',
+  }));
 }
 
 function buildProducerCoverage(evaluation: AssuranceEvaluation): ProducerCoverageItem[] {
