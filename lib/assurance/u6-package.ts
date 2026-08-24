@@ -39,7 +39,8 @@ export interface PackageBuildContext {
   authoritySourceLabel?: string;
   operatingEnvelopeApprovedAt?: string;
   approvalReference?: string;
-  syntheticClassification?: 'NONE' | 'SYNTHETIC_REFERENCE';
+  syntheticClassification?: 'NONE' | 'SYNTHETIC_REFERENCE' | 'UNKNOWN';
+  verificationSchemaVersion?: string;
 }
 
 export function buildAssuranceVerificationPackage(
@@ -60,8 +61,9 @@ export function buildAssuranceVerificationPackage(
   // 3. Decision Receipt
   const receipt = buildDecisionReceipt(evaluation, report, bundle);
 
-  // 4. Package Digest
-  const semanticPackageDigest = computePackageDigest(evaluation.id, report, bundle, receipt);
+  // 4. Package Digest — commits to the actual package verification schema version
+  const verificationSchemaVersion = context.verificationSchemaVersion ?? U6_VERIFICATION_SCHEMA_VERSION;
+  const semanticPackageDigest = computePackageDigest(evaluation.id, verificationSchemaVersion, report, bundle, receipt);
 
   return {
     packageSchemaVersion: U6_VERIFICATION_SCHEMA_VERSION,
@@ -73,7 +75,7 @@ export function buildAssuranceVerificationPackage(
     reportSchemaVersion: report.reportVersion,
     bundleSchemaVersion: bundle.bundleVersion,
     receiptSchemaVersion: receipt.receiptVersion,
-    verificationSchemaVersion: U6_VERIFICATION_SCHEMA_VERSION,
+    verificationSchemaVersion,
     semanticPackageDigest,
     semanticReportDigest: report.reportDigest,
     bundleDigest: bundle.bundleDigest,
@@ -178,22 +180,23 @@ export function resolveBuildIdentity(
 
 export function computePackageDigest(
   assuranceEvaluationId: string,
+  verificationSchemaVersion: string,
   report: { reportVersion: string; reportDigest: string },
   bundle: { bundleVersion: string; bundleDigest: string; merkleRoot: string | null; merkleStatus: string },
-  receipt: { receiptVersion: string; receiptHash: string; syntheticClassification?: 'NONE' | 'SYNTHETIC_REFERENCE' },
+  receipt: { receiptVersion: string; receiptHash: string; syntheticClassification?: 'NONE' | 'SYNTHETIC_REFERENCE' | 'UNKNOWN' },
 ): string {
   const payload = {
     assuranceEvaluationId,
     reportSchemaVersion: report.reportVersion,
     bundleSchemaVersion: bundle.bundleVersion,
     receiptSchemaVersion: receipt.receiptVersion,
-    verificationSchemaVersion: U6_VERIFICATION_SCHEMA_VERSION,
+    verificationSchemaVersion,
     semanticReportDigest: report.reportDigest,
     bundleDigest: bundle.bundleDigest,
     merkleRoot: bundle.merkleRoot,
     merkleStatus: bundle.merkleStatus,
     receiptHash: receipt.receiptHash,
-    syntheticClassification: receipt.syntheticClassification ?? 'NONE',
+    syntheticClassification: receipt.syntheticClassification ?? 'UNKNOWN',
   };
   return hashTextContent(canonicalSerialize(payload));
 }
@@ -201,6 +204,7 @@ export function computePackageDigest(
 function computePackageDigestFromPackage(pkg: U6Package): string {
   return computePackageDigest(
     pkg.assuranceEvaluationId,
+    pkg.verificationSchemaVersion,
     { reportVersion: pkg.reportSchemaVersion, reportDigest: pkg.semanticReportDigest },
     { bundleVersion: pkg.bundleSchemaVersion, bundleDigest: pkg.bundleDigest, merkleRoot: pkg.merkleRoot, merkleStatus: pkg.merkleStatus },
     { receiptVersion: pkg.receiptSchemaVersion, receiptHash: pkg.receiptHash, syntheticClassification: pkg.syntheticClassification },
@@ -216,17 +220,17 @@ function verifyAllBundleMerkleProofs(bundle: { merkleStatus: string; merkleRoot:
   return proofs.every(({ leafHash, proof }) => verifyBundleProof(bundle as any, leafHash, proof));
 }
 
-function resolveSyntheticClassification(evaluation: AssuranceEvaluation, v1_1?: AssuranceEvaluationV1_1): 'NONE' | 'SYNTHETIC_REFERENCE' {
-  if (v1_1?.operatingEnvelopeId?.includes('synthetic') || v1_1?.profileId?.includes('synthetic') || v1_1?.operatingEnvelopeApprovalReference?.includes('synthetic')) {
-    return 'SYNTHETIC_REFERENCE';
-  }
-  return 'NONE';
+function resolveSyntheticClassification(evaluation: AssuranceEvaluation, v1_1?: AssuranceEvaluationV1_1): 'NONE' | 'SYNTHETIC_REFERENCE' | 'UNKNOWN' {
+  if (v1_1?.syntheticClassification) return v1_1.syntheticClassification;
+  if (v1_1?.operatingEnvelopeAuthoritySourceLabel === 'SYNTHETIC_REFERENCE_POLICY') return 'SYNTHETIC_REFERENCE';
+  if (v1_1?.operatingEnvelopeState !== 'APPROVED') return 'UNKNOWN';
+  if (v1_1?.operatingEnvelopeAuthoritySourceLabel) return 'NONE';
+  return 'UNKNOWN';
 }
 
-function resolveAuthoritySourceLabel(_evaluation: AssuranceEvaluation, v1_1?: AssuranceEvaluationV1_1): string | undefined {
-  if (v1_1?.operatingEnvelopeState !== 'APPROVED') return 'UNKNOWN';
-  if (v1_1?.operatingEnvelopeApprovedBy) return 'AUTHORITATIVE_POLICY';
-  return 'REFERENCE_DEFAULT';
+function resolveAuthoritySourceLabel(_evaluation: AssuranceEvaluation, v1_1?: AssuranceEvaluationV1_1): string {
+  // U6: authority source is the explicit evaluation-time label. approvedBy is provenance, not authority.
+  return v1_1?.operatingEnvelopeAuthoritySourceLabel ?? 'UNKNOWN';
 }
 
 function sanitizePublicScope(scope: string): string {

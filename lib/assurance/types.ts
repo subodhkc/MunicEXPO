@@ -344,7 +344,8 @@ export type AuthorityClass =
   | 'EFFECTIVE_GRANT'
   | 'VENDOR_DECLARATION'
   | 'NON_AUTHORITATIVE'
-  | 'UNKNOWN';
+  | 'UNKNOWN'
+  | 'AMBIGUOUS';
 
 export type EvidenceMethod =
   | 'IAM_OBSERVATION'
@@ -356,7 +357,8 @@ export type EvidenceMethod =
   | 'RUNTIME_TRACE'
   | 'ACTION_WITNESS'
   | 'EXTERNAL_REPORT'
-  | 'SELF_REPORT';
+  | 'SELF_REPORT'
+  | 'AMBIGUOUS';
 
 // ─── B6: Capability Declaration (Pre-U6: structured capability projection) ─────
 // Moved to lib/evidence/capability-declaration-contract.ts to keep U4/U2 neutral.
@@ -782,6 +784,8 @@ export interface AssuranceEvaluationV1_1 extends AssuranceEvaluation {
   };
   /** U6: plane availability snapshot at evaluation time */
   planeAvailability?: PlaneAvailability[];
+  /** U6: explicit synthetic/reference source truth — not inferred from strings */
+  syntheticClassification?: 'NONE' | 'SYNTHETIC_REFERENCE' | 'UNKNOWN';
   buildBinding?: BuildProfileBinding;
 }
 

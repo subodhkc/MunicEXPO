@@ -63,7 +63,9 @@ export function isWitnessSetComplete(witnesses: ActionWitness[]): boolean {
     }
   }
 
-  return true;
+  // Section 15: A complete witness set requires a single logical action identity.
+  const logical = validateLogicalActionIdentity(witnesses);
+  return logical.valid;
 }
 
 /**
@@ -174,6 +176,16 @@ export function validateLogicalActionIdentity(witnesses: ActionWitness[]): {
     errors.push(`Inconsistent logical build digest: ${Array.from(buildDigests).join(', ')}`);
   }
 
+  const profileRefs = new Set(witnesses.map(w => w.profileReference).filter(Boolean));
+  if (profileRefs.size > 1) {
+    errors.push(`Inconsistent logical profile reference: ${Array.from(profileRefs).join(', ')}`);
+  }
+
+  const envelopeRefs = new Set(witnesses.map(w => w.envelopeReference).filter(Boolean));
+  if (envelopeRefs.size > 1) {
+    errors.push(`Inconsistent logical envelope reference: ${Array.from(envelopeRefs).join(', ')}`);
+  }
+
   const correlationIds = new Set(
     witnesses.map(w => w.actionCorrelationId ?? '').filter(id => id !== '')
   );
@@ -270,6 +282,8 @@ export function authoritativeActionAppliedWitness(params: {
   operation: string;
   resourceScope?: string;
   buildDigest?: string;
+  profileReference?: string;
+  envelopeReference?: string;
   sideEffectWitness?: string;
   observedAt: Date;
   authoritySourceLabel?: AuthoritySourceLabel;
@@ -281,6 +295,8 @@ export function authoritativeActionAppliedWitness(params: {
     operation: params.operation,
     resourceScope: params.resourceScope,
     buildDigest: params.buildDigest,
+    profileReference: params.profileReference,
+    envelopeReference: params.envelopeReference,
     sideEffectWitness: params.sideEffectWitness,
     observedAt: params.observedAt,
     actionCorrelationId: params.actionCorrelationId,
@@ -299,6 +315,10 @@ export function actionConfirmedWitness(params: {
   operation: string;
   sideEffectWitness: string;
   observedAt: Date;
+  resourceScope?: string;
+  buildDigest?: string;
+  profileReference?: string;
+  envelopeReference?: string;
   authoritySourceLabel?: AuthoritySourceLabel;
 }): ActionWitness {
   return {
@@ -306,6 +326,10 @@ export function actionConfirmedWitness(params: {
     phase: 'ACTION_CONFIRMED',
     actorIdentity: params.actorIdentity,
     operation: params.operation,
+    resourceScope: params.resourceScope,
+    buildDigest: params.buildDigest,
+    profileReference: params.profileReference,
+    envelopeReference: params.envelopeReference,
     sideEffectWitness: params.sideEffectWitness,
     observedAt: params.observedAt,
     actionCorrelationId: params.actionCorrelationId,

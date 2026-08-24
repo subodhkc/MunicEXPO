@@ -538,7 +538,8 @@ function mapComparisonResultToReason(result: string): ClaimReasonCode[] {
     case 'CHANGE_MAGNITUDE_EXCEEDS_POLICY':
       return ['CHANGE_MAGNITUDE_EXCEEDS_POLICY'];
     case 'ALIGNED':
-      return ['SUPPORTED_BY_RUNTIME_EVIDENCE'];
+      // U6: five-plane ALIGNED is diagnostic; it does not independently establish canonical runtime support.
+      return [];
     default:
       return [];
   }

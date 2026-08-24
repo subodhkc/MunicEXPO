@@ -109,6 +109,7 @@ export async function persistAssuranceEvaluation(
           operatingEnvelopeApprovedAt: v1_1.operatingEnvelopeApprovedAt ?? null,
           operatingEnvelopeAuthoritySourceLabel: v1_1.operatingEnvelopeAuthoritySourceLabel ?? null,
           operatingEnvelopeApprovalReference: v1_1.operatingEnvelopeApprovalReference ?? null,
+          syntheticClassification: v1_1.syntheticClassification ?? null,
           // Section 13: Persist five-plane comparison as concise JSON
           fivePlaneResult: buildPersistedFivePlaneResult(v1_1) as any,
           applicableClaimKeys: (v1_1.applicableClaimKeys ?? []) as any,
@@ -315,6 +316,7 @@ function reconstructEvaluation(record: any): AssuranceEvaluation {
       operatingEnvelopeApprovedAt: binding.operatingEnvelopeApprovedAt ?? undefined,
       operatingEnvelopeAuthoritySourceLabel: binding.operatingEnvelopeAuthoritySourceLabel ?? undefined,
       operatingEnvelopeApprovalReference: binding.operatingEnvelopeApprovalReference ?? undefined,
+      syntheticClassification: (binding.syntheticClassification as 'NONE' | 'SYNTHETIC_REFERENCE' | 'UNKNOWN' | null) ?? undefined,
       applicableClaimKeys: binding.applicableClaimKeys as string[] ?? [],
       claimPackVersions: binding.claimPackVersions as Record<string, string> ?? {},
       rulePackVersions: binding.rulePackVersions as Record<string, string> ?? {},

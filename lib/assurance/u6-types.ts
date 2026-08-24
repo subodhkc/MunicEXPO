@@ -58,7 +58,7 @@ export interface U6Package {
   authoritySourceLabel?: string;
   operatingEnvelopeApprovedAt?: string;
   approvalReference?: string;
-  syntheticClassification: 'NONE' | 'SYNTHETIC_REFERENCE';
+  syntheticClassification: 'NONE' | 'SYNTHETIC_REFERENCE' | 'UNKNOWN';
 }
 
 export interface UnifiedAssuranceReport {
@@ -87,7 +87,7 @@ export interface UnifiedAssuranceReport {
   evidenceBundle: EvidenceBundleSummary;
   decisionReceipt: DecisionReceiptSummary;
   reportDigest: string;
-  syntheticClassification: 'NONE' | 'SYNTHETIC_REFERENCE';
+  syntheticClassification: 'NONE' | 'SYNTHETIC_REFERENCE' | 'UNKNOWN';
 }
 
 export interface ReportProfileSection {
@@ -260,7 +260,7 @@ export interface AssuranceDecisionReceipt {
   operatingEnvelopeVersion?: string;
   operatingEnvelopeDigest?: string;
   authoritySourceLabel?: string;
-  syntheticClassification: 'NONE' | 'SYNTHETIC_REFERENCE';
+  syntheticClassification: 'NONE' | 'SYNTHETIC_REFERENCE' | 'UNKNOWN';
   disposition: AssuranceDisposition;
   claimStateSummary: Record<ClaimState, number>;
   inputHash: string;
@@ -289,6 +289,7 @@ export interface VerificationPackage {
 
 export interface PackageVerificationResult {
   reportDigestValid: boolean;
+  packageDigestValid: boolean;
   receiptHashValid: boolean;
   bundleDigestValid: boolean;
   merkleRootValid: boolean;
@@ -319,7 +320,7 @@ export interface PublicVerificationResult {
   receiptHash?: string;
   merkleRoot?: string | null;
   merkleStatus?: MerkleStatus;
-  syntheticClassification?: 'NONE' | 'SYNTHETIC_REFERENCE';
+  syntheticClassification?: 'NONE' | 'SYNTHETIC_REFERENCE' | 'UNKNOWN';
   publishedAt?: string;
   revokedAt?: string;
 }

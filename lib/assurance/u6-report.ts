@@ -46,9 +46,12 @@ function emptyBuildIdentity(): BuildIdentity {
   return { source: 'NOT_PROVIDED', explanation: 'BUILD_IDENTITY_NOT_PROVIDED' };
 }
 
-function resolveSyntheticClassification(evaluation: AssuranceEvaluationV1_1): 'NONE' | 'SYNTHETIC_REFERENCE' {
-  const isSynthetic = evaluation.operatingEnvelopeId?.includes('synthetic') || evaluation.profileId?.includes('synthetic');
-  return isSynthetic ? 'SYNTHETIC_REFERENCE' : 'NONE';
+function resolveSyntheticClassification(evaluation: AssuranceEvaluationV1_1): 'NONE' | 'SYNTHETIC_REFERENCE' | 'UNKNOWN' {
+  if (evaluation.syntheticClassification) return evaluation.syntheticClassification;
+  if (evaluation.operatingEnvelopeAuthoritySourceLabel === 'SYNTHETIC_REFERENCE_POLICY') return 'SYNTHETIC_REFERENCE';
+  if (evaluation.operatingEnvelopeState !== 'APPROVED') return 'UNKNOWN';
+  if (evaluation.operatingEnvelopeAuthoritySourceLabel) return 'NONE';
+  return 'UNKNOWN';
 }
 
 /**
@@ -59,7 +62,7 @@ export function buildUnifiedAssuranceReport(
   bundle: EvidenceBundle,
   buildIdentity: BuildIdentity = emptyBuildIdentity(),
   projectedEvidence: DecisionEvidenceProjection[] = [],
-  syntheticClass: 'NONE' | 'SYNTHETIC_REFERENCE' = resolveSyntheticClassification(evaluation as AssuranceEvaluationV1_1),
+  syntheticClass: 'NONE' | 'SYNTHETIC_REFERENCE' | 'UNKNOWN' = resolveSyntheticClassification(evaluation as AssuranceEvaluationV1_1),
   authoritySourceLabel?: string,
 ): UnifiedAssuranceReport {
   const v1_1 = evaluation as AssuranceEvaluationV1_1;
@@ -219,7 +222,8 @@ export function buildDecisionReceipt(
     operatingEnvelopeVersion: v1_1.operatingEnvelopeVersion,
     operatingEnvelopeDigest: v1_1.operatingEnvelopeDigest,
     authoritySourceLabel: report.operatingEnvelope?.authoritySourceLabel ??
-      (v1_1.operatingEnvelopeState === 'APPROVED' ? (v1_1.operatingEnvelopeApprovedBy ? 'AUTHORITATIVE_POLICY' : 'REFERENCE_DEFAULT') : 'UNKNOWN'),
+      v1_1.operatingEnvelopeAuthoritySourceLabel ??
+      'UNKNOWN',
     syntheticClassification: report.syntheticClassification,
     disposition: evaluation.disposition,
     claimStateSummary,
@@ -480,11 +484,11 @@ function buildDefaultPlaneAvailabilityReport(): PlaneAvailability[] {
 }
 
 function buildEnvelopeSection(v1_1: AssuranceEvaluationV1_1, authoritySourceLabel?: string) {
+  // U6: authority source is the explicit evaluation-time label. approvedBy is provenance, not authority.
   const source =
     authoritySourceLabel ??
-    (v1_1.operatingEnvelopeState === 'APPROVED'
-      ? (v1_1.operatingEnvelopeApprovedBy ? 'AUTHORITATIVE_POLICY' : 'REFERENCE_DEFAULT')
-      : 'UNKNOWN');
+    v1_1.operatingEnvelopeAuthoritySourceLabel ??
+    'UNKNOWN';
   return {
     envelopeId: v1_1.operatingEnvelopeId ?? '',
     envelopeVersion: v1_1.operatingEnvelopeVersion ?? '',

@@ -31,6 +31,11 @@ export function classifyEvidence(params: {
   const canonicalProducer = resolveCanonicalProducerId(params.sourceType);
   const method = (params.evidenceMethod ?? '').toUpperCase().trim();
 
+  // U6: materially ambiguous methods or authority classes must not fall through to producer fallbacks
+  if (method === 'AMBIGUOUS' || params.authorityClass === 'AMBIGUOUS') {
+    return 'DERIVED';
+  }
+
   // Method-first precedence
   if (method) {
     if (method === 'SELF_REPORT' || method === 'SIGNED_MANIFEST') {

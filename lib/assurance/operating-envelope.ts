@@ -80,7 +80,7 @@ export function createDraftEnvelope(params: {
     profileVersion: params.profileVersion,
     constraints: params.constraints,
     createdAt: new Date(0), // deterministic placeholder — real createdAt set on persist
-    authoritySourceLabel: params.authoritySourceLabel ?? 'REFERENCE_DEFAULT',
+    authoritySourceLabel: params.authoritySourceLabel ?? 'UNKNOWN',
   };
   return {
     ...draft,

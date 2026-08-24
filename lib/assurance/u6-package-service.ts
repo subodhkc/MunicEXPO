@@ -360,17 +360,15 @@ async function reconstructPackageFromRow(row: any): Promise<U6Package> {
   };
 }
 
-function resolveSyntheticClassification(v1_1: AssuranceEvaluationV1_1): 'NONE' | 'SYNTHETIC_REFERENCE' {
-  if (v1_1.operatingEnvelopeId?.includes('synthetic') || v1_1.profileId?.includes('synthetic') || v1_1.operatingEnvelopeApprovalReference?.includes('synthetic')) {
-    return 'SYNTHETIC_REFERENCE';
-  }
-  return 'NONE';
+function resolveSyntheticClassification(v1_1: AssuranceEvaluationV1_1): 'NONE' | 'SYNTHETIC_REFERENCE' | 'UNKNOWN' {
+  if (v1_1.syntheticClassification) return v1_1.syntheticClassification;
+  if (v1_1.operatingEnvelopeAuthoritySourceLabel === 'SYNTHETIC_REFERENCE_POLICY') return 'SYNTHETIC_REFERENCE';
+  if (v1_1.operatingEnvelopeState !== 'APPROVED') return 'UNKNOWN';
+  if (v1_1.operatingEnvelopeAuthoritySourceLabel) return 'NONE';
+  return 'UNKNOWN';
 }
 
-function resolveAuthoritySourceLabel(v1_1: AssuranceEvaluationV1_1): string | undefined {
-  if (v1_1.operatingEnvelopeState !== 'APPROVED') return 'UNKNOWN';
-  // Persisted authority source label is the evaluation-time source of truth.
-  if (v1_1.operatingEnvelopeAuthoritySourceLabel) return v1_1.operatingEnvelopeAuthoritySourceLabel;
-  if (v1_1.operatingEnvelopeApprovedBy) return 'AUTHORITATIVE_POLICY';
-  return 'REFERENCE_DEFAULT';
+function resolveAuthoritySourceLabel(v1_1: AssuranceEvaluationV1_1): string {
+  // U6: authority source is the explicit evaluation-time label. approvedBy is provenance, not authority.
+  return v1_1.operatingEnvelopeAuthoritySourceLabel ?? 'UNKNOWN';
 }

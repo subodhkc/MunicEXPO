@@ -26,10 +26,18 @@ export function toAssuranceProjectedEvidence(
       .filter((id): id is string => !!id);
 
     const evidenceMethods = new Set(declarations.map(d => d.evidenceMethod).filter(Boolean));
-    const evidenceMethod = evidenceMethods.size === 1 ? Array.from(evidenceMethods)[0] : undefined;
+    const evidenceMethod = evidenceMethods.size === 0
+      ? undefined
+      : evidenceMethods.size === 1
+        ? Array.from(evidenceMethods)[0]
+        : 'AMBIGUOUS';
 
     const authorityClasses = new Set(declarations.map(d => d.authorityClass).filter(Boolean));
-    const authorityClass = authorityClasses.size === 1 ? Array.from(authorityClasses)[0] : undefined;
+    const authorityClass = authorityClasses.size === 0
+      ? undefined
+      : authorityClasses.size === 1
+        ? Array.from(authorityClasses)[0]
+        : 'AMBIGUOUS';
 
     const declarationFindings = (ev.capabilityDeclarations || [])
       .map(d => ({
