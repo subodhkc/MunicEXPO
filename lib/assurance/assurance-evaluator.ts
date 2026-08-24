@@ -243,6 +243,8 @@ export function evaluateAssurance(params: {
     operatingEnvelopeDigest,
     operatingEnvelopeState: operatingEnvelope?.state,
     operatingEnvelopeApprovedBy: operatingEnvelope?.approvedBy,
+    operatingEnvelopeApprovedAt: operatingEnvelope?.approvedAt,
+    operatingEnvelopeAuthoritySourceLabel: operatingEnvelope?.authoritySourceLabel,
     operatingEnvelopeApprovalReference: operatingEnvelope?.approvalReference,
     claimPackVersions: resolvedProfile.effectiveClaimPackVersions,
     rulePackVersions: resolvedProfile.effectiveRulePackVersions,
@@ -406,8 +408,8 @@ function mergeComparisonIntoClaim(
     existing = claimResults[existingIndex];
   }
 
-  // Get claim state + reason codes from comparator
-  const mapped = comparisonToClaimState(comparison.comparisons);
+  // Get claim state + reason codes from comparator using canonical verdict
+  const mapped = comparisonToClaimState(comparison.comparisons, comparison.verdict);
 
   // Determine merged claim state (precedence)
   let mergedState: ClaimState = existing.claimState;

@@ -106,6 +106,8 @@ export async function persistAssuranceEvaluation(
           operatingEnvelopeDigest: v1_1.operatingEnvelopeDigest ?? null,
           operatingEnvelopeState: v1_1.operatingEnvelopeState ?? null,
           operatingEnvelopeApprovedBy: v1_1.operatingEnvelopeApprovedBy ?? null,
+          operatingEnvelopeApprovedAt: v1_1.operatingEnvelopeApprovedAt ?? null,
+          operatingEnvelopeAuthoritySourceLabel: v1_1.operatingEnvelopeAuthoritySourceLabel ?? null,
           operatingEnvelopeApprovalReference: v1_1.operatingEnvelopeApprovalReference ?? null,
           // Section 13: Persist five-plane comparison as concise JSON
           fivePlaneResult: buildPersistedFivePlaneResult(v1_1) as any,
@@ -310,6 +312,8 @@ function reconstructEvaluation(record: any): AssuranceEvaluation {
       operatingEnvelopeDigest: binding.operatingEnvelopeDigest ?? undefined,
       operatingEnvelopeState: binding.operatingEnvelopeState ?? undefined,
       operatingEnvelopeApprovedBy: binding.operatingEnvelopeApprovedBy ?? undefined,
+      operatingEnvelopeApprovedAt: binding.operatingEnvelopeApprovedAt ?? undefined,
+      operatingEnvelopeAuthoritySourceLabel: binding.operatingEnvelopeAuthoritySourceLabel ?? undefined,
       operatingEnvelopeApprovalReference: binding.operatingEnvelopeApprovalReference ?? undefined,
       applicableClaimKeys: binding.applicableClaimKeys as string[] ?? [],
       claimPackVersions: binding.claimPackVersions as Record<string, string> ?? {},
@@ -329,4 +333,35 @@ function reconstructEvaluation(record: any): AssuranceEvaluation {
   }
 
   return base;
+}
+
+/**
+ * A15: Retrieve an Assurance Evaluation by exact ID.
+ *
+ * Uses the same reconstructEvaluation internal as the orchestrator-run lookup
+ * so the U5 contract is recovered consistently.
+ */
+export async function getAssuranceEvaluationById(
+  evaluationId: string,
+  organizationId: string
+): Promise<AssuranceEvaluation | null> {
+  const record = await prisma.assurance_evaluations.findUnique({
+    where: { id: evaluationId, organizationId },
+    include: {
+      control_claim_evaluations: {
+        include: {
+          control_evidence_sets: {
+            include: {
+              control_evidence_set_members: true,
+            },
+          },
+        },
+      },
+      assurance_evaluation_profile_bindings: true,
+    },
+  });
+
+  if (!record) return null;
+
+  return reconstructEvaluation(record);
 }

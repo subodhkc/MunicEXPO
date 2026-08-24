@@ -56,15 +56,26 @@ export interface CapabilityFactProjectionResult {
  * Main projection — no LLM, deterministic, evidence-backed.
  */
 export function projectCapabilityFacts(input: CapabilityFactProjectionInput): CapabilityFactProjectionResult {
-  const { evidence, operatingEnvelope, aiSystemId } = input;
+  const { evidence, operatingEnvelope, aiSystemId, evaluationSnapshotAt } = input;
+
+  const eligible = evidence.filter(ev => evidenceEligibleForSnapshot(ev, evaluationSnapshotAt));
 
   return {
-    requested: projectRequestedFacts(evidence, aiSystemId),
+    requested: projectRequestedFacts(eligible, aiSystemId),
     policy: projectPolicyFacts(operatingEnvelope, aiSystemId),
-    granted: projectGrantedFacts(evidence, aiSystemId),
-    capable: projectCapableFacts(evidence, aiSystemId),
-    observed: projectObservedFacts(evidence, aiSystemId),
+    granted: projectGrantedFacts(eligible, aiSystemId),
+    capable: projectCapableFacts(eligible, aiSystemId),
+    observed: projectObservedFacts(eligible, aiSystemId),
   };
+}
+
+function evidenceEligibleForSnapshot(ev: DecisionEvidenceProjection, evaluationSnapshotAt: Date): boolean {
+  const observed = new Date(ev.observedAt);
+  if (Number.isNaN(observed.getTime())) {
+    // Invalid/unparseable timestamp must not silently become present.
+    return false;
+  }
+  return observed.getTime() <= evaluationSnapshotAt.getTime();
 }
 
 function projectRequestedFacts(evidence: DecisionEvidenceProjection[], aiSystemId: string): CapabilityFact[] {
@@ -103,7 +114,7 @@ function projectPolicyFacts(operatingEnvelope: OperatingEnvelope | undefined, ai
       facts.push({
         ...base,
         capabilityId: `${op}:${scope}`,
-        capabilityFamily: (op.split('.')[0] ?? 'UNKNOWN') as any,
+        capabilityFamily: (extractCanonicalCapabilityFamily(op) as any),
         action: op,
         resource: extractResourceFromOperation(op),
         scope,
@@ -212,7 +223,7 @@ function buildCapabilityFact(ev: DecisionEvidenceProjection, decl: EvidenceCapab
   if (!decl.evidenceMethod) return undefined;
   return {
     capabilityId: decl.capabilityId ?? `${ev.evidenceId}:capability`,
-    capabilityFamily: decl.capabilityFamily as any,
+    capabilityFamily: (normalizeCapabilityFamily(decl.capabilityFamily) as any),
     subject: decl.subject ?? `system:${aiSystemId}`,
     action: decl.action ?? 'unknown',
     resource: decl.resource ?? 'unknown',
@@ -234,7 +245,7 @@ function buildCapabilityFact(ev: DecisionEvidenceProjection, decl: EvidenceCapab
     sourcePlane: decl.sourcePlane as AssurancePlane,
     authorityClass: (decl.authorityClass as AuthorityClass) ?? 'NON_AUTHORITATIVE',
     evidenceMethod: decl.evidenceMethod as EvidenceMethod,
-    sourceEvidenceIds: [ev.evidenceId, ...(Array.isArray(decl.sourceEvidenceIds) ? decl.sourceEvidenceIds : [])],
+    sourceEvidenceIds: Array.from(new Set([ev.evidenceId, ...(Array.isArray(decl.sourceEvidenceIds) ? decl.sourceEvidenceIds : [])])),
     authoritySourceLabel: (decl.authoritySourceLabel as AuthoritySourceLabel) ?? 'UNKNOWN',
   };
 }
@@ -249,6 +260,35 @@ function extractResourceFromOperation(operation: string): string {
   if (op.includes('callback')) return 'callback';
   if (op.includes('service')) return 'service';
   return 'resource';
+}
+
+const CAPABILITY_FAMILY_MAP: Record<string, string> = {
+  CONFIG: 'CONFIGURATION_ACTUATION',
+  DATA: 'DATA_ACCESS',
+  MODEL: 'MODEL_LIFECYCLE',
+  TOOL: 'TOOL_ACTION_EXECUTION',
+  IDENTITY: 'IDENTITY_PRIVILEGE',
+  RAG: 'RAG_CONTEXT_MEMORY',
+  AGENT: 'INTER_AGENT_COMMUNICATION',
+  EGRESS: 'EXTERNAL_EGRESS',
+  PERSIST: 'PERSISTENCE',
+  SECRET: 'DATA_ACCESS',
+  TENANT: 'RESOURCE_SCOPE',
+  POLICY: 'RESOURCE_SCOPE',
+  CALLBACK: 'EXTERNAL_EGRESS',
+  SERVICE: 'INTER_AGENT_COMMUNICATION',
+  NETWORK: 'EXTERNAL_EGRESS',
+};
+
+function extractCanonicalCapabilityFamily(operation: string): string {
+  const prefix = operation.split('.')[0]?.toUpperCase() ?? 'UNKNOWN';
+  return CAPABILITY_FAMILY_MAP[prefix] ?? prefix;
+}
+
+function normalizeCapabilityFamily(family?: string): string {
+  if (!family) return 'UNKNOWN';
+  const mapped = CAPABILITY_FAMILY_MAP[family.toUpperCase()];
+  return mapped ?? family;
 }
 
 const PLANE_ORDER: AssurancePlane[] = ['REQUESTED', 'POLICY_AUTHORIZED', 'EFFECTIVELY_GRANTED', 'CODE_CAPABLE', 'OBSERVED'];

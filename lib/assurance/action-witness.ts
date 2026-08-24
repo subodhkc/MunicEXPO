@@ -198,7 +198,7 @@ export function runtimeTraceToWitness(params: {
     buildDigest: params.requestHash,
     observedAt: params.executedAt,
     actionCorrelationId: params.actionCorrelationId,
-    authoritySourceLabel: params.authoritativeBoundary ? 'AUTHORITATIVE_POLICY' : 'UNKNOWN',
+    authoritySourceLabel: params.authoritativeBoundary ? 'TECHNICAL_EVIDENCE' : 'UNKNOWN',
   };
 }
 
@@ -229,7 +229,7 @@ export function authoritativeActionAppliedWitness(params: {
     sideEffectWitness: params.sideEffectWitness,
     observedAt: params.observedAt,
     actionCorrelationId: params.actionCorrelationId,
-    authoritySourceLabel: params.authoritySourceLabel ?? 'AUTHORITATIVE_POLICY',
+    authoritySourceLabel: params.authoritySourceLabel ?? 'TECHNICAL_EVIDENCE',
     oTelSourceAuthority: 'TRUSTED_SANDBOX',
   };
 }
@@ -254,7 +254,7 @@ export function actionConfirmedWitness(params: {
     sideEffectWitness: params.sideEffectWitness,
     observedAt: params.observedAt,
     actionCorrelationId: params.actionCorrelationId,
-    authoritySourceLabel: params.authoritySourceLabel ?? 'AUTHORITATIVE_POLICY',
+    authoritySourceLabel: params.authoritySourceLabel ?? 'TECHNICAL_EVIDENCE',
   };
 }
 
@@ -372,6 +372,6 @@ export function openTelemetrySpanToWitness(params: {
     observedAt: params.startTime,
     actionCorrelationId: params.actionCorrelationId,
     oTelSourceAuthority: sourceAuthority,
-    authoritySourceLabel: sourceAuthority === 'GENERIC_APPLICATION' ? 'UNKNOWN' : 'AUTHORITATIVE_POLICY',
+    authoritySourceLabel: sourceAuthority === 'GENERIC_APPLICATION' ? 'UNKNOWN' : 'TECHNICAL_EVIDENCE',
   };
 }

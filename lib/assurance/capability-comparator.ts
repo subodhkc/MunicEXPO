@@ -39,6 +39,7 @@ import {
   coreCapabilityKeyToString,
 } from './types';
 import { compareVerdicts } from './profile-hierarchy';
+import { CONTROL_CLAIM_CATALOG } from './claim-catalog';
 import {
   sameCapability,
   scopeContains,
@@ -214,10 +215,12 @@ export function compareCapabilitySets(params: {
     }
 
     // Map to claim key (Section 12)
-    const mappedClaimKey = mapComparisonToClaim(planeComparisons);
+    const primaryCapabilityId = reqMatches[0]?.capabilityId ?? capMatches[0]?.capabilityId ?? graMatches[0]?.capabilityId ?? obsMatches[0]?.capabilityId ?? keyStr;
+    const mappedClaimKey = mapComparisonToClaim(planeComparisons, primaryCapabilityId);
 
     comparisons.push({
       capabilityKey: keyStr,
+      capabilityId: primaryCapabilityId,
       requested: hasReq,
       policyAuthorized: hasPol,
       effectivelyGranted: hasGra,
@@ -406,44 +409,37 @@ function isWithinEnvelope(fact: CapabilityFact, envelope: OperatingEnvelope): bo
  * No parallel "profile verdict" may bypass U5.
  * U5 remains the canonical Assurance disposition engine.
  */
-export function mapComparisonToClaim(comparisons: CapabilityComparisonResult[]): string | undefined {
-  // OBSERVED_OUTSIDE_OPERATING_ENVELOPE → exact capability claim contradiction
-  if (comparisons.includes('OBSERVED_OUTSIDE_OPERATING_ENVELOPE')) {
-    return 'privileged-action-authorization';
-  }
-  // OVER_PRIVILEGED_GRANT → authorization/least-privilege claim result
-  if (comparisons.includes('OVER_PRIVILEGED_GRANT') || comparisons.includes('EXCESS_GRANTED_AUTHORITY')) {
-    return 'privileged-action-authorization';
-  }
-  // UNDECLARED_CAPABILITY → privileged-action or untrusted-input claim
-  if (comparisons.includes('UNDECLARED_CAPABILITY')) {
-    return 'privileged-action-authorization';
-  }
-  // REQUIRED_APPROVAL_STEP_MISSING → privileged-action claim contradiction
-  if (comparisons.includes('REQUIRED_APPROVAL_STEP_MISSING')) {
-    return 'privileged-action-authorization';
-  }
-  // REQUESTED_NOT_AUTHORIZED → privileged-action claim
-  if (comparisons.includes('REQUESTED_NOT_AUTHORIZED')) {
-    return 'privileged-action-authorization';
-  }
-  // EFFECTIVE_GRANT_NOT_PROVIDED → authorization/least-privilege claim
-  if (comparisons.includes('EFFECTIVE_GRANT_NOT_PROVIDED')) {
-    return 'privileged-action-authorization';
-  }
-  // ALIGNED → the capability is within the approved envelope
-  if (comparisons.includes('ALIGNED')) {
-    return 'privileged-action-authorization';
-  }
-  // UNTESTED_CAPABILITY → runtime-safety-observation
-  if (comparisons.includes('UNTESTED_CAPABILITY')) {
-    return 'runtime-safety-observation';
-  }
-  // UNEXPLAINED_RUNTIME_BEHAVIOR → runtime-safety-observation
-  if (comparisons.includes('UNEXPLAINED_RUNTIME_BEHAVIOR')) {
-    return 'runtime-safety-observation';
-  }
-  return undefined;
+export function mapComparisonToClaim(comparisons: CapabilityComparisonResult[], capabilityId?: string): string | undefined {
+  const resultType = comparisons.find(c =>
+    c === 'OBSERVED_OUTSIDE_OPERATING_ENVELOPE' ||
+    c === 'OVER_PRIVILEGED_GRANT' ||
+    c === 'EXCESS_GRANTED_AUTHORITY' ||
+    c === 'UNDECLARED_CAPABILITY' ||
+    c === 'REQUIRED_APPROVAL_STEP_MISSING' ||
+    c === 'REQUESTED_NOT_AUTHORIZED' ||
+    c === 'EFFECTIVE_GRANT_NOT_PROVIDED' ||
+    c === 'ALIGNED' ||
+    c === 'UNTESTED_CAPABILITY' ||
+    c === 'UNEXPLAINED_RUNTIME_BEHAVIOR'
+  );
+
+  if (!resultType) return undefined;
+
+  // No canonical capability identity → no exact claim mapping.
+  if (!capabilityId) return undefined;
+
+  const normalizedCapabilityId = capabilityId.toLowerCase();
+  const matchingClaim = CONTROL_CLAIM_CATALOG.find(claim => {
+    const spec = claim.relevanceSpec;
+    if (!spec) return false;
+    const capIds = [
+      ...spec.claimCapabilityIds,
+      ...spec.contradictingCapabilityIds,
+    ].map(c => c.toLowerCase());
+    return capIds.includes(normalizedCapabilityId);
+  });
+
+  return matchingClaim?.claimKey;
 }
 
 /**
@@ -452,46 +448,50 @@ export function mapComparisonToClaim(comparisons: CapabilityComparisonResult[]):
  */
 export function comparisonToClaimState(
   comparisons: CapabilityComparisonResult[],
+  verdict?: ProfileVerdict,
 ): { claimState: ClaimState; reasonCodes: ClaimReasonCode[] } {
-  const reasonCodes: ClaimReasonCode[] = [];
+  // When the comparator has already rendered a canonical verdict, use it.
+  // U5 remains the canonical Assurance disposition engine; the comparator is diagnostic.
+  if (verdict === 'BLOCK') {
+    for (const c of comparisons) {
+      if (c === 'OBSERVED_OUTSIDE_OPERATING_ENVELOPE') {
+        return { claimState: 'CONTRADICTED', reasonCodes: ['OBSERVED_OUTSIDE_OPERATING_ENVELOPE', 'CAPABILITY_CONTRADICTION'] };
+      }
+      if (c === 'OVER_PRIVILEGED_GRANT' || c === 'EXCESS_GRANTED_AUTHORITY') {
+        return { claimState: 'CONTRADICTED', reasonCodes: ['OVER_PRIVILEGED_GRANT_DETECTED'] };
+      }
+      if (c === 'REQUIRED_APPROVAL_STEP_MISSING') {
+        return { claimState: 'CONTRADICTED', reasonCodes: ['REQUIRED_APPROVAL_STEP_MISSING', 'CAPABILITY_CONTRADICTION'] };
+      }
+      if (c === 'UNDECLARED_CAPABILITY') {
+        return { claimState: 'CONTRADICTED', reasonCodes: ['UNDECLARED_CAPABILITY_DETECTED'] };
+      }
+    }
+    return { claimState: 'CONTRADICTED', reasonCodes: ['CAPABILITY_CONTRADICTION'] };
+  }
 
-  if (comparisons.includes('OBSERVED_OUTSIDE_OPERATING_ENVELOPE')) {
-    reasonCodes.push('OBSERVED_OUTSIDE_OPERATING_ENVELOPE', 'CAPABILITY_CONTRADICTION');
-    return { claimState: 'CONTRADICTED', reasonCodes };
+  if (verdict === 'REVIEW') {
+    for (const c of comparisons) {
+      if (c === 'EFFECTIVE_GRANT_NOT_PROVIDED') {
+        return { claimState: 'REVIEW_REQUIRED', reasonCodes: ['EFFECTIVE_GRANT_NOT_PROVIDED'] };
+      }
+      if (c === 'UNTESTED_CAPABILITY') {
+        return { claimState: 'NOT_ASSESSED', reasonCodes: ['NOT_EVALUATED'] };
+      }
+      if (c === 'UNEXPLAINED_RUNTIME_BEHAVIOR') {
+        return { claimState: 'REVIEW_REQUIRED', reasonCodes: ['NOT_EVALUATED'] };
+      }
+      if (c === 'REQUESTED_NOT_AUTHORIZED') {
+        return { claimState: 'REVIEW_REQUIRED', reasonCodes: ['REQUESTED_NOT_AUTHORIZED'] };
+      }
+      if (c === 'OVER_PRIVILEGED_GRANT' || c === 'EXCESS_GRANTED_AUTHORITY') {
+        return { claimState: 'REVIEW_REQUIRED', reasonCodes: ['OVER_PRIVILEGED_GRANT_DETECTED'] };
+      }
+    }
+    return { claimState: 'REVIEW_REQUIRED', reasonCodes: ['NOT_EVALUATED'] };
   }
-  if (comparisons.includes('OVER_PRIVILEGED_GRANT')) {
-    reasonCodes.push('OVER_PRIVILEGED_GRANT_DETECTED');
-    return { claimState: 'CONTRADICTED', reasonCodes };
-  }
-  if (comparisons.includes('REQUIRED_APPROVAL_STEP_MISSING')) {
-    reasonCodes.push('REQUIRED_APPROVAL_STEP_MISSING', 'CAPABILITY_CONTRADICTION');
-    return { claimState: 'CONTRADICTED', reasonCodes };
-  }
-  if (comparisons.includes('UNDECLARED_CAPABILITY')) {
-    reasonCodes.push('UNDECLARED_CAPABILITY_DETECTED');
-    return { claimState: 'CONTRADICTED', reasonCodes };
-  }
-  if (comparisons.includes('EXCESS_GRANTED_AUTHORITY')) {
-    reasonCodes.push('OVER_PRIVILEGED_GRANT_DETECTED');
-    return { claimState: 'CONTRADICTED', reasonCodes };
-  }
-  if (comparisons.includes('EFFECTIVE_GRANT_NOT_PROVIDED')) {
-    reasonCodes.push('EFFECTIVE_GRANT_NOT_PROVIDED');
-    return { claimState: 'REVIEW_REQUIRED', reasonCodes };
-  }
-  if (comparisons.includes('UNTESTED_CAPABILITY')) {
-    reasonCodes.push('NOT_EVALUATED');
-    return { claimState: 'NOT_ASSESSED', reasonCodes };
-  }
-  if (comparisons.includes('UNEXPLAINED_RUNTIME_BEHAVIOR')) {
-    reasonCodes.push('NOT_EVALUATED');
-    return { claimState: 'REVIEW_REQUIRED', reasonCodes };
-  }
-  if (comparisons.includes('REQUESTED_NOT_AUTHORIZED')) {
-    reasonCodes.push('NOT_EVALUATED');
-    return { claimState: 'REVIEW_REQUIRED', reasonCodes };
-  }
-  if (comparisons.includes('ALIGNED')) {
+
+  if (verdict === 'ALLOW' || comparisons.includes('ALIGNED')) {
     return { claimState: 'SUPPORTED', reasonCodes: ['SUPPORTED_BY_RUNTIME_EVIDENCE'] };
   }
 

@@ -260,6 +260,59 @@ function checkCoveragePolicy(
 }
 
 /**
+ * A6: Check whether the evidence proves the claim's relevant evaluation scope.
+ *
+ * Zero findings cannot support a technical claim unless the evidence
+ * demonstrates that the exact capability/rule/concern the claim cares about
+ * was within the evaluated scope.
+ */
+function evidenceProvesClaimScope(claim: ControlClaimDefinition, ev: ProjectedEvidence): boolean {
+  const spec = claim.relevanceSpec;
+  if (!spec) {
+    // 1.0 claims without relevanceSpec fall back to producer capability
+    return true;
+  }
+
+  const evCaps = new Set((ev.capabilityIds || []).map(c => c.toLowerCase()));
+  const evRules = new Set((ev.evaluatedRuleIds || []).map(r => r.toLowerCase()));
+  const evConcerns = new Set((ev.concernIds || []).map(c => c.toLowerCase()));
+
+  if (spec.claimCapabilityIds.length > 0) {
+    const claimCaps = spec.claimCapabilityIds.map(c => c.toLowerCase());
+    if (claimCaps.some(c => evCaps.has(c))) return true;
+  }
+
+  if (spec.contradictingCapabilityIds.length > 0) {
+    const capIds = spec.contradictingCapabilityIds.map(c => c.toLowerCase());
+    if (capIds.some(c => evCaps.has(c))) return true;
+  }
+
+  if (spec.supportingRuleIds.length > 0) {
+    const ruleIds = spec.supportingRuleIds.map(r => r.toLowerCase());
+    if (ruleIds.some(r => evRules.has(r))) return true;
+  }
+
+  if (spec.contradictingRuleIds.length > 0) {
+    const ruleIds = spec.contradictingRuleIds.map(r => r.toLowerCase());
+    if (ruleIds.some(r => evRules.has(r))) return true;
+  }
+
+  if (spec.contradictingConcernIds.length > 0) {
+    const concernIds = spec.contradictingConcernIds.map(c => c.toLowerCase());
+    if (concernIds.some(c => evConcerns.has(c))) return true;
+  }
+
+  // If the claim has no specific scope requirements, any relevant evidence is acceptable.
+  return (
+    spec.claimCapabilityIds.length === 0 &&
+    spec.contradictingCapabilityIds.length === 0 &&
+    spec.supportingRuleIds.length === 0 &&
+    spec.contradictingRuleIds.length === 0 &&
+    spec.contradictingConcernIds.length === 0
+  );
+}
+
+/**
  * Determine the role of a piece of evidence for a claim.
  *
  * A5: Evidence qualification is checked BEFORE role assignment.
@@ -342,8 +395,16 @@ function determineMemberRole(
         // Configuration/inventory/derived: presence IS the evidence
         return { role: 'SUPPORTING' };
       }
-      if (claim.zeroFindingsCanSupport && ev.coverageStatus === 'COMPLETE') {
-        return { role: 'SUPPORTING' };
+      // A6: zero findings only support when the evidence actually proves the
+      // claim's relevant scope (capability, rule, or concern) was evaluated.
+      const provesClaimScope = evidenceProvesClaimScope(claim, ev);
+      if (claim.zeroFindingsCanSupport && provesClaimScope) {
+        if (ev.coverageStatus === 'COMPLETE') {
+          return { role: 'SUPPORTING' };
+        }
+        if (ev.coverageStatus === 'PARTIAL' && ev.coverageRatio != null && ev.coverageRatio >= (claim.coverageRatioThreshold ?? 0)) {
+          return { role: 'SUPPORTING' };
+        }
       }
       if (!claim.zeroFindingsCanSupport) {
         return { role: 'CONTEXT_ONLY' };

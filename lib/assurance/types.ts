@@ -762,6 +762,8 @@ export interface AssuranceEvaluationV1_1 extends AssuranceEvaluation {
   operatingEnvelopeDigest?: string;
   operatingEnvelopeState?: OperatingEnvelopeState;
   operatingEnvelopeApprovedBy?: string;
+  operatingEnvelopeApprovedAt?: Date;
+  operatingEnvelopeAuthoritySourceLabel?: AuthoritySourceLabel;
   operatingEnvelopeApprovalReference?: string;
   claimPackVersions: Record<string, string>;
   rulePackVersions: Record<string, string>;
@@ -954,6 +956,8 @@ export function coreCapabilityKeyToString(fact: {
  */
 export interface CapabilityComparisonRecord {
   capabilityKey: string;
+  /** Canonical capability identifier for exact claim mapping */
+  capabilityId?: string;
   requested: boolean;
   policyAuthorized: boolean;
   effectivelyGranted: boolean;

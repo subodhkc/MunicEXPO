@@ -53,15 +53,14 @@ export async function getEvaluationOwnership(evaluationId: string): Promise<{ id
 /**
  * Load the full AssuranceEvaluation for package building after authorization.
  *
- * Current minimal loader: the persisted row contains JSON `fivePlaneResult` and
- * `inputHash`/`outputHash`. A full round-trip loader should reconstruct the
- * U5 evaluation contract. For the structural closeout the service uses the
- * in-memory evaluation passed by the route after authorization.
+ * Reconstructs the U5 evaluation contract from persisted records using the
+ * same internal as the orchestrator-run loader.
  */
 export async function loadFullAssuranceEvaluation(evaluationId: string): Promise<AssuranceEvaluation | null> {
-  const row = await prisma.assurance_evaluations.findUnique({ where: { id: evaluationId } });
-  if (!row) return null;
-  return row as any;
+  const ownership = await getEvaluationOwnership(evaluationId);
+  if (!ownership) return null;
+  const { getAssuranceEvaluationById } = await import('./persistence');
+  return getAssuranceEvaluationById(evaluationId, ownership.organizationId);
 }
 
 /**
@@ -117,7 +116,7 @@ export async function buildPackageFromEvaluation(
     projectedEvidence,
     buildIdentity: undefined,
     authoritySourceLabel: resolveAuthoritySourceLabel(v1_1),
-    operatingEnvelopeApprovedAt: undefined,
+    operatingEnvelopeApprovedAt: v1_1.operatingEnvelopeApprovedAt ? v1_1.operatingEnvelopeApprovedAt.toISOString() : undefined,
     approvalReference: v1_1.operatingEnvelopeApprovalReference ?? undefined,
     syntheticClassification: resolveSyntheticClassification(v1_1),
   });
@@ -138,11 +137,12 @@ export async function issueAssurancePackage(
 
   const existing = await (prisma as any).assurance_packages.findUnique({
     where: {
-      assuranceEvaluationId_reportSchemaVersion_bundleSchemaVersion_receiptSchemaVersion: {
+      assuranceEvaluationId_reportSchemaVersion_bundleSchemaVersion_receiptSchemaVersion_verificationSchemaVersion: {
         assuranceEvaluationId: evaluation.id,
         reportSchemaVersion: packageCandidate.reportSchemaVersion,
         bundleSchemaVersion: packageCandidate.bundleSchemaVersion,
         receiptSchemaVersion: packageCandidate.receiptSchemaVersion,
+        verificationSchemaVersion: packageCandidate.verificationSchemaVersion,
       },
     },
   });
@@ -158,8 +158,9 @@ export async function issueAssurancePackage(
   const packageId = nanoid(32);
   packageCandidate.packageId = packageId;
 
-  await (prisma as any).assurance_packages.create({
-    data: {
+  try {
+    await (prisma as any).assurance_packages.create({
+      data: {
       packageId,
       organizationId: evaluation.organizationId,
       aiSystemId: evaluation.aiSystemId,
@@ -189,7 +190,31 @@ export async function issueAssurancePackage(
     },
   });
 
-  return { status: 'CREATED', packageId, package: packageCandidate };
+    return { status: 'CREATED', packageId, package: packageCandidate };
+  } catch (createError: any) {
+    // Concurrent package creation with the same composite key → IDEMPOTENT or CONFLICT.
+    if (createError?.code === 'P2002' && createError?.meta?.target?.includes('assuranceEvaluationId_reportSchemaVersion_bundleSchemaVersion_receiptSchemaVersion_verificationSchemaVersion_key')) {
+      const existing = await (prisma as any).assurance_packages.findUnique({
+        where: {
+          assuranceEvaluationId_reportSchemaVersion_bundleSchemaVersion_receiptSchemaVersion_verificationSchemaVersion: {
+            assuranceEvaluationId: evaluation.id,
+            reportSchemaVersion: packageCandidate.reportSchemaVersion,
+            bundleSchemaVersion: packageCandidate.bundleSchemaVersion,
+            receiptSchemaVersion: packageCandidate.receiptSchemaVersion,
+            verificationSchemaVersion: packageCandidate.verificationSchemaVersion,
+          },
+        },
+      });
+      if (existing) {
+        if (existing.semanticPackageDigest === packageCandidate.semanticPackageDigest) {
+          const persisted = await reconstructPackageFromRow(existing);
+          return { status: 'IDEMPOTENT', packageId: existing.packageId, package: persisted };
+        }
+        return { status: 'CONFLICT', packageId: existing.packageId, package: packageCandidate };
+      }
+    }
+    throw createError;
+  }
 }
 
 export async function getAssurancePackage(
@@ -343,6 +368,8 @@ function resolveSyntheticClassification(v1_1: AssuranceEvaluationV1_1): 'NONE' |
 
 function resolveAuthoritySourceLabel(v1_1: AssuranceEvaluationV1_1): string | undefined {
   if (v1_1.operatingEnvelopeState !== 'APPROVED') return 'UNKNOWN';
+  // Persisted authority source label is the evaluation-time source of truth.
+  if (v1_1.operatingEnvelopeAuthoritySourceLabel) return v1_1.operatingEnvelopeAuthoritySourceLabel;
   if (v1_1.operatingEnvelopeApprovedBy) return 'AUTHORITATIVE_POLICY';
   return 'REFERENCE_DEFAULT';
 }
