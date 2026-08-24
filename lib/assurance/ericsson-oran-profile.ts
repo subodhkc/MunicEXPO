@@ -1,94 +1,134 @@
 /**
- * E1 B13 — Ericsson / O-RAN Profile Foundation
+ * E1 Closure Sections 17-23 — Ericsson / O-RAN Profile Source Truth
  *
- * O-RAN profile ID/version: telecom.oran.rapp / 0.1
- * Ericsson EIAP extension ID/version: ericsson.eiap.rapp / 0.1
+ * Section 17: Telecom rule implementation status reflects actual scanner/runtime implementation.
+ *   A profile rule definition alone is NEVER an ACTIVE detector.
  *
- * R1 capability vocabulary: derived from public O-RAN WG6 R1 interface specs.
+ * Section 19: Current O-RAN material: Application Protocols for R1 Services v11.00
+ *   and updated Data Access, SME and AI/ML APIs. Do not leave stale v01.00 source references.
  *
- * CRITICAL: Do NOT invent private Ericsson semantics.
- * Where proprietary EIAP semantics are unavailable, use explicit unknown/review states
- * and document source gaps.
+ * Section 20: Expand public R1 seed vocabulary to include all relevant capability families.
+ *   Matrix distinguishes SUPPORTED_SEED, KNOWN_NOT_IMPLEMENTED, UNKNOWN.
  *
- * Unknown proprietary EIAP operation fails to REVIEW, not ALLOW.
+ * Section 21: Exact O-RAN semantic mappings first. registerCallback ≠ MODEL_LIFECYCLE.
+ *
+ * Section 22: EIAP = Ericsson Intelligent Automation Platform (correct expansion).
+ *
+ * Section 23: No fictional proprietary Ericsson operations. Use generic extension
+ *   placeholders ericsson.eiap.unknown.*.
  */
 
-import { CapabilityFact, CapabilityFamily, AuthorityClass, EvidenceMethod } from './types';
+import {
+  CapabilityFact,
+  CapabilityFamily,
+  AuthorityClass,
+  EvidenceMethod,
+  TelecomRuleImplementationStatus,
+  FrameworkMappingEntry,
+} from './types';
 import { TELECOM_RULES } from './predefined-profiles';
 import { InterfaceSpecification } from './profile-compiler';
 
-// ─── B13: O-RAN R1 Capability Vocabulary ─────────────────────────────────────
+// ─── Section 19/20: O-RAN R1 Capability Vocabulary ───────────────────────────
+//
+// Source: O-RAN-WG6 Application Protocols for R1 Services v11.00
+// plus updated Data Access, SME and AI/ML APIs.
+// This is a v0.1 reference seed — explicitly marked as synthetic/reference.
 
-/**
- * R1 capability vocabulary derived from public O-RAN WG6 R1 interface documentation.
- * Source: O-RAN-WG6 R1 Interface (publicly available specifications).
- *
- * These are PUBLIC O-RAN vocabulary terms, not proprietary Ericsson semantics.
- */
+export type R1SeedStatus = 'SUPPORTED_SEED' | 'KNOWN_NOT_IMPLEMENTED' | 'UNKNOWN';
+
+export interface R1CapabilitySeed {
+  capabilityId: string;
+  family: CapabilityFamily;
+  description: string;
+  sourceVersion: string;
+  status: R1SeedStatus;
+}
+
 export const R1_CAPABILITY_VOCABULARY = {
   version: '0.1',
+  sourceSpecId: 'O-RAN-WG6.R1-Application-Protocols',
+  sourceSpecVersion: 'v11.00',
+  sourceSpecDigest: 'oran-r1-application-protocols-v11.00',
   capabilities: [
-    // Service Management
-    { capabilityId: 'r1.service-management.create', family: 'CONFIGURATION_ACTUATION' as CapabilityFamily, description: 'Create rApp service instance' },
-    { capabilityId: 'r1.service-management.delete', family: 'CONFIGURATION_ACTUATION' as CapabilityFamily, description: 'Delete rApp service instance' },
-    { capabilityId: 'r1.service-management.list', family: 'DATA_ACCESS' as CapabilityFamily, description: 'List rApp service instances' },
-    // Policy Management
-    { capabilityId: 'r1.policy-management.create', family: 'CONFIGURATION_ACTUATION' as CapabilityFamily, description: 'Create A1 policy' },
-    { capabilityId: 'r1.policy-management.delete', family: 'CONFIGURATION_ACTUATION' as CapabilityFamily, description: 'Delete A1 policy' },
-    { capabilityId: 'r1.policy-management.update', family: 'CONFIGURATION_ACTUATION' as CapabilityFamily, description: 'Update A1 policy' },
-    { capabilityId: 'r1.policy-management.get', family: 'DATA_ACCESS' as CapabilityFamily, description: 'Get A1 policy' },
-    // Data Subscription
-    { capabilityId: 'r1.data-subscription.subscribe', family: 'RAG_CONTEXT_MEMORY' as CapabilityFamily, description: 'Subscribe to data stream' },
-    { capabilityId: 'r1.data-subscription.unsubscribe', family: 'RAG_CONTEXT_MEMORY' as CapabilityFamily, description: 'Unsubscribe from data stream' },
-    // Model Management
-    { capabilityId: 'r1.model-management.deploy', family: 'MODEL_LIFECYCLE' as CapabilityFamily, description: 'Deploy ML model' },
-    { capabilityId: 'r1.model-management.retire', family: 'MODEL_LIFECYCLE' as CapabilityFamily, description: 'Retire ML model' },
-    { capabilityId: 'r1.model-management.list', family: 'MODEL_LIFECYCLE' as CapabilityFamily, description: 'List deployed models' },
-    // Callbacks/Egress
-    { capabilityId: 'r1.callback.register', family: 'EXTERNAL_EGRESS' as CapabilityFamily, description: 'Register callback endpoint' },
-  ],
+    // Service management / exposure
+    { capabilityId: 'r1.service-management.create', family: 'CONFIGURATION_ACTUATION' as CapabilityFamily, description: 'Create rApp service instance', sourceVersion: 'v11.00', status: 'SUPPORTED_SEED' },
+    { capabilityId: 'r1.service-management.delete', family: 'CONFIGURATION_ACTUATION' as CapabilityFamily, description: 'Delete rApp service instance', sourceVersion: 'v11.00', status: 'SUPPORTED_SEED' },
+    { capabilityId: 'r1.service-management.list', family: 'DATA_ACCESS' as CapabilityFamily, description: 'List rApp service instances', sourceVersion: 'v11.00', status: 'SUPPORTED_SEED' },
+    { capabilityId: 'r1.service-management.get', family: 'DATA_ACCESS' as CapabilityFamily, description: 'Get rApp service instance details', sourceVersion: 'v11.00', status: 'SUPPORTED_SEED' },
+    // Data registration / discovery / access / subscription
+    { capabilityId: 'r1.data-registration.register', family: 'DATA_ACCESS' as CapabilityFamily, description: 'Register data product', sourceVersion: 'v11.00', status: 'SUPPORTED_SEED' },
+    { capabilityId: 'r1.data-discovery.discover', family: 'DATA_ACCESS' as CapabilityFamily, description: 'Discover data products', sourceVersion: 'v11.00', status: 'SUPPORTED_SEED' },
+    { capabilityId: 'r1.data-access.read', family: 'DATA_ACCESS' as CapabilityFamily, description: 'Read data product', sourceVersion: 'v11.00', status: 'SUPPORTED_SEED' },
+    { capabilityId: 'r1.data-subscription.subscribe', family: 'RAG_CONTEXT_MEMORY' as CapabilityFamily, description: 'Subscribe to data stream', sourceVersion: 'v11.00', status: 'SUPPORTED_SEED' },
+    { capabilityId: 'r1.data-subscription.unsubscribe', family: 'RAG_CONTEXT_MEMORY' as CapabilityFamily, description: 'Unsubscribe from data stream', sourceVersion: 'v11.00', status: 'SUPPORTED_SEED' },
+    // Configuration management
+    { capabilityId: 'r1.configuration-management.read', family: 'CONFIGURATION_ACTUATION' as CapabilityFamily, description: 'Read configuration', sourceVersion: 'v11.00', status: 'SUPPORTED_SEED' },
+    { capabilityId: 'r1.configuration-management.write', family: 'CONFIGURATION_ACTUATION' as CapabilityFamily, description: 'Write configuration', sourceVersion: 'v11.00', status: 'SUPPORTED_SEED' },
+    { capabilityId: 'r1.configuration-management.delete', family: 'CONFIGURATION_ACTUATION' as CapabilityFamily, description: 'Delete configuration', sourceVersion: 'v11.00', status: 'SUPPORTED_SEED' },
+    // Configuration schema
+    { capabilityId: 'r1.configuration-schema.get', family: 'CONFIGURATION_ACTUATION' as CapabilityFamily, description: 'Get configuration schema', sourceVersion: 'v11.00', status: 'SUPPORTED_SEED' },
+    // Fault management
+    { capabilityId: 'r1.fault-management.subscribe', family: 'OBSERVABILITY' as CapabilityFamily, description: 'Subscribe to fault notifications', sourceVersion: 'v11.00', status: 'KNOWN_NOT_IMPLEMENTED' },
+    // Performance / topology
+    { capabilityId: 'r1.performance-management.subscribe', family: 'OBSERVABILITY' as CapabilityFamily, description: 'Subscribe to performance data', sourceVersion: 'v11.00', status: 'KNOWN_NOT_IMPLEMENTED' },
+    { capabilityId: 'r1.topology-management.discover', family: 'RESOURCE_SCOPE' as CapabilityFamily, description: 'Discover topology', sourceVersion: 'v11.00', status: 'KNOWN_NOT_IMPLEMENTED' },
+    // A1 policy
+    { capabilityId: 'r1.a1-policy.create', family: 'CONFIGURATION_ACTUATION' as CapabilityFamily, description: 'Create A1 policy', sourceVersion: 'v11.00', status: 'SUPPORTED_SEED' },
+    { capabilityId: 'r1.a1-policy.update', family: 'CONFIGURATION_ACTUATION' as CapabilityFamily, description: 'Update A1 policy', sourceVersion: 'v11.00', status: 'SUPPORTED_SEED' },
+    { capabilityId: 'r1.a1-policy.delete', family: 'CONFIGURATION_ACTUATION' as CapabilityFamily, description: 'Delete A1 policy', sourceVersion: 'v11.00', status: 'SUPPORTED_SEED' },
+    { capabilityId: 'r1.a1-policy.get', family: 'DATA_ACCESS' as CapabilityFamily, description: 'Get A1 policy', sourceVersion: 'v11.00', status: 'SUPPORTED_SEED' },
+    // AI/ML registration / discovery / training / deployment
+    { capabilityId: 'r1.ai-ml.register', family: 'MODEL_LIFECYCLE' as CapabilityFamily, description: 'Register ML model', sourceVersion: 'v11.00', status: 'SUPPORTED_SEED' },
+    { capabilityId: 'r1.ai-ml.discover', family: 'MODEL_LIFECYCLE' as CapabilityFamily, description: 'Discover ML models', sourceVersion: 'v11.00', status: 'SUPPORTED_SEED' },
+    { capabilityId: 'r1.ai-ml.train', family: 'MODEL_LIFECYCLE' as CapabilityFamily, description: 'Train ML model', sourceVersion: 'v11.00', status: 'KNOWN_NOT_IMPLEMENTED' },
+    { capabilityId: 'r1.ai-ml.deploy', family: 'MODEL_LIFECYCLE' as CapabilityFamily, description: 'Deploy ML model', sourceVersion: 'v11.00', status: 'SUPPORTED_SEED' },
+    { capabilityId: 'r1.ai-ml.retire', family: 'MODEL_LIFECYCLE' as CapabilityFamily, description: 'Retire ML model', sourceVersion: 'v11.00', status: 'SUPPORTED_SEED' },
+    // Callbacks / notifications
+    { capabilityId: 'r1.callback.register', family: 'EXTERNAL_EGRESS' as CapabilityFamily, description: 'Register callback endpoint', sourceVersion: 'v11.00', status: 'SUPPORTED_SEED' },
+    { capabilityId: 'r1.callback.unregister', family: 'EXTERNAL_EGRESS' as CapabilityFamily, description: 'Unregister callback endpoint', sourceVersion: 'v11.00', status: 'SUPPORTED_SEED' },
+  ] as R1CapabilitySeed[],
 } as const;
 
-// ─── B13: Ericsson EIAP Extension Vocabulary ─────────────────────────────────
+// ─── Section 22/23: Ericsson EIAP Extension Vocabulary ───────────────────────
+//
+// EIAP = Ericsson Intelligent Automation Platform.
+// No fictional proprietary operations. Use ericsson.eiap.unknown.* placeholders.
 
-/**
- * Ericsson EIAP extension vocabulary.
- *
- * SOURCE GAP: Ericsson EIAP (Extensible Intelligent rApp Platform) proprietary
- * specifications are NOT publicly available. This vocabulary contains ONLY:
- *   1. Public O-RAN R1 terms that Ericsson EIAP extends
- *   2. Generic extension points (clearly marked as unknown)
- *
- * Any proprietary Ericsson EIAP operation that is not in this vocabulary
- * MUST fail to REVIEW — never ALLOW.
- */
 export const ERICSSON_EIAP_VOCABULARY = {
   version: '0.1',
+  fullName: 'Ericsson Intelligent Automation Platform',
   sourceGaps: [
     'Ericsson EIAP proprietary API specifications are not publicly available',
     'EIAP-specific authorization model is not documented in public sources',
     'EIAP-specific actuation semantics are not documented in public sources',
+    'EIAP-specific model deployment optimization semantics are not documented in public sources',
+    'EIAP-specific callback/egress destinations are not documented in public sources',
   ],
   // Only public O-RAN R1 terms that EIAP is known to extend
-  extendedCapabilities: [
-    { capabilityId: 'eiap.r1-ext.policy-management.advanced-update', family: 'CONFIGURATION_ACTUATION' as CapabilityFamily, description: 'EIAP-extended A1 policy update (proprietary semantics unknown)', proprietary: true },
-    { capabilityId: 'eiap.r1-ext.model-management.optimized-deploy', family: 'MODEL_LIFECYCLE' as CapabilityFamily, description: 'EIAP-optimized model deployment (proprietary semantics unknown)', proprietary: true },
+  extendedCapabilities: [] as Array<{
+    capabilityId: string;
+    family: CapabilityFamily;
+    description: string;
+    proprietary: true;
+  }>,
+  // Section 23: Generic extension placeholders — no fictional operations
+  unknownExtensionPlaceholders: [
+    'ericsson.eiap.unknown.policy-management',
+    'ericsson.eiap.unknown.model-management',
+    'ericsson.eiap.unknown.callback-egress',
+    'ericsson.eiap.unknown.actuation-optimization',
   ],
 } as const;
 
-// ─── B13: Ericsson Source-Truth Matrix ───────────────────────────────────────
+// ─── Section 17/18: Ericsson Source-Truth Matrix ─────────────────────────────
 
-/**
- * B13: Ericsson source-truth matrix.
- *
- * Maps each capability/claim to its evidence source and coverage status.
- * Explicitly marks proprietary EIAP semantics as UNKNOWN.
- */
 export interface SourceTruthEntry {
   capabilityId: string;
   claimKey: string;
   sourceType: 'O_RAN_PUBLIC' | 'ERICSSON_PUBLIC' | 'ERICSSON_PROPRIETARY' | 'HAIEC_NATIVE' | 'UNKNOWN';
   coverageStatus: 'COMPLETE' | 'PARTIAL' | 'UNKNOWN' | 'NOT_ASSESSED';
+  implementationStatus: TelecomRuleImplementationStatus;
   evidenceProducers: string[];
   notes: string;
 }
@@ -96,28 +136,41 @@ export interface SourceTruthEntry {
 export const ERICSSON_SOURCE_TRUTH_MATRIX: SourceTruthEntry[] = [
   // Privileged action authorization
   {
-    capabilityId: 'r1.policy-management.create',
+    capabilityId: 'r1.a1-policy.create',
     claimKey: 'privileged-action-authorization',
     sourceType: 'O_RAN_PUBLIC',
     coverageStatus: 'PARTIAL',
+    implementationStatus: 'STATIC_DETECTOR_ACTIVE',
     evidenceProducers: ['saas-static'],
-    notes: 'O-RAN R1 policy creation is publicly specified. HAIEC static scanner can detect authorization patterns.',
+    notes: 'O-RAN R1 A1 policy creation is publicly specified in v11.00. HAIEC static scanner can detect authorization patterns.',
   },
   {
-    capabilityId: 'r1.policy-management.update',
+    capabilityId: 'r1.a1-policy.update',
     claimKey: 'privileged-action-authorization',
     sourceType: 'O_RAN_PUBLIC',
     coverageStatus: 'PARTIAL',
+    implementationStatus: 'STATIC_DETECTOR_ACTIVE',
     evidenceProducers: ['saas-static'],
-    notes: 'O-RAN R1 policy update is publicly specified. Authorization check detection is partial.',
+    notes: 'O-RAN R1 A1 policy update is publicly specified in v11.00. Authorization check detection is partial.',
   },
   {
-    capabilityId: 'eiap.r1-ext.policy-management.advanced-update',
+    capabilityId: 'r1.configuration-management.write',
+    claimKey: 'privileged-action-authorization',
+    sourceType: 'O_RAN_PUBLIC',
+    coverageStatus: 'PARTIAL',
+    implementationStatus: 'STATIC_DETECTOR_ACTIVE',
+    evidenceProducers: ['saas-static'],
+    notes: 'O-RAN R1 configuration write is publicly specified in v11.00. Authorization check detection is partial.',
+  },
+  // Section 23: No fictional EIAP proprietary capability
+  {
+    capabilityId: 'ericsson.eiap.unknown.policy-management',
     claimKey: 'privileged-action-authorization',
     sourceType: 'ERICSSON_PROPRIETARY',
     coverageStatus: 'UNKNOWN',
+    implementationStatus: 'REFERENCE_ONLY',
     evidenceProducers: [],
-    notes: 'EIAP advanced policy update semantics are proprietary. Cannot evaluate without Ericsson EIAP specification. Must fail to REVIEW.',
+    notes: 'EIAP proprietary policy management semantics are unknown. Cannot evaluate without Ericsson EIAP specification. Must fail to REVIEW.',
   },
   // Untrusted input boundary
   {
@@ -125,8 +178,18 @@ export const ERICSSON_SOURCE_TRUTH_MATRIX: SourceTruthEntry[] = [
     claimKey: 'untrusted-input-boundary',
     sourceType: 'O_RAN_PUBLIC',
     coverageStatus: 'PARTIAL',
+    implementationStatus: 'STATIC_DETECTOR_ACTIVE',
     evidenceProducers: ['saas-static'],
-    notes: 'O-RAN R1 data subscription input handling is partially specified.',
+    notes: 'O-RAN R1 data subscription input handling is partially specified in v11.00.',
+  },
+  {
+    capabilityId: 'r1.callback.register',
+    claimKey: 'untrusted-input-boundary',
+    sourceType: 'O_RAN_PUBLIC',
+    coverageStatus: 'PARTIAL',
+    implementationStatus: 'STATIC_DETECTOR_ACTIVE',
+    evidenceProducers: ['saas-static'],
+    notes: 'O-RAN R1 callback registration is publicly specified in v11.00. Destination validation detection is partial.',
   },
   // Runtime safety observation
   {
@@ -134,51 +197,51 @@ export const ERICSSON_SOURCE_TRUTH_MATRIX: SourceTruthEntry[] = [
     claimKey: 'runtime-safety-observation',
     sourceType: 'O_RAN_PUBLIC',
     coverageStatus: 'PARTIAL',
+    implementationStatus: 'RUNTIME_TEST_ACTIVE',
     evidenceProducers: ['saas-runtime'],
     notes: 'O-RAN R1 service management runtime behavior can be observed via runtime tests.',
   },
   // Model lifecycle
   {
-    capabilityId: 'r1.model-management.deploy',
+    capabilityId: 'r1.ai-ml.deploy',
     claimKey: 'ai-inventory-completeness',
     sourceType: 'O_RAN_PUBLIC',
     coverageStatus: 'PARTIAL',
+    implementationStatus: 'RUNTIME_TEST_ACTIVE',
     evidenceProducers: ['saas-inventory', 'saas-static'],
-    notes: 'O-RAN R1 model deployment can be inventoried. Static scanner can detect deploy patterns.',
+    notes: 'O-RAN R1 ML model deployment can be inventoried. Static scanner can detect deploy patterns.',
   },
   {
-    capabilityId: 'eiap.r1-ext.model-management.optimized-deploy',
+    capabilityId: 'r1.ai-ml.retire',
+    claimKey: 'ai-inventory-completeness',
+    sourceType: 'O_RAN_PUBLIC',
+    coverageStatus: 'PARTIAL',
+    implementationStatus: 'PARTIAL_ENGINE_SUPPORT',
+    evidenceProducers: ['saas-inventory', 'saas-static'],
+    notes: 'O-RAN R1 ML model retire partially covered by inventory.',
+  },
+  {
+    capabilityId: 'ericsson.eiap.unknown.model-management',
     claimKey: 'ai-inventory-completeness',
     sourceType: 'ERICSSON_PROPRIETARY',
     coverageStatus: 'UNKNOWN',
+    implementationStatus: 'REFERENCE_ONLY',
     evidenceProducers: [],
-    notes: 'EIAP optimized model deployment semantics are proprietary. Cannot inventory without Ericsson EIAP specification. Must fail to REVIEW.',
+    notes: 'EIAP proprietary model management semantics are unknown. Cannot inventory without Ericsson EIAP specification. Must fail to REVIEW.',
   },
-  // Callback/egress
-  {
-    capabilityId: 'r1.callback.register',
-    claimKey: 'untrusted-input-boundary',
-    sourceType: 'O_RAN_PUBLIC',
-    coverageStatus: 'PARTIAL',
-    evidenceProducers: ['saas-static'],
-    notes: 'O-RAN R1 callback registration is publicly specified. Destination validation detection is partial.',
-  },
-];
+] as const;
 
-// ─── B13: O-RAN R1 Interface Specification (POC) ─────────────────────────────
+// ─── Section 19/21: O-RAN R1 Interface Specification (POC) ───────────────────
+//
+// Source: O-RAN-WG6 Application Protocols for R1 Services v11.00
+// Unknown operations → REVIEW, not ALLOW.
+// Section 21: registerCallback must NOT become MODEL_LIFECYCLE.
 
-/**
- * B13: Safe proof-of-concept O-RAN R1 interface specification.
- *
- * This is a POC specification derived from PUBLIC O-RAN WG6 documentation.
- * It does NOT include any proprietary Ericsson EIAP extensions.
- *
- * Unknown operations in this specification fail to REVIEW, not ALLOW.
- */
 export const ORAN_R1_POC_SPECIFICATION: InterfaceSpecification = {
   specificationId: 'oran-wg6-r1',
-  specificationVersion: '0.1-poc',
-  specificationDigest: 'oran-r1-poc-digest-v01',
+  // Section 19: Corrected source version
+  specificationVersion: 'v11.00-poc',
+  specificationDigest: 'oran-r1-application-protocols-v11.00-poc',
   operations: [
     { operationId: 'listServices', method: 'GET', routeTemplate: '/services' },
     { operationId: 'createService', method: 'POST', routeTemplate: '/services' },
@@ -191,43 +254,49 @@ export const ORAN_R1_POC_SPECIFICATION: InterfaceSpecification = {
     { operationId: 'unsubscribeData', method: 'DELETE', routeTemplate: '/data/subscriptions/{id}' },
     { operationId: 'deployModel', method: 'POST', routeTemplate: '/models' },
     { operationId: 'retireModel', method: 'DELETE', routeTemplate: '/models/{id}' },
+    // Section 21: registerCallback is exact O-RAN operation — must NOT become MODEL_LIFECYCLE
     { operationId: 'registerCallback', method: 'POST', routeTemplate: '/callbacks' },
+    { operationId: 'unregisterCallback', method: 'DELETE', routeTemplate: '/callbacks/{id}' },
+    { operationId: 'registerData', method: 'POST', routeTemplate: '/data/products' },
+    { operationId: 'discoverData', method: 'GET', routeTemplate: '/data/products' },
+    { operationId: 'readData', method: 'GET', routeTemplate: '/data/products/{id}' },
   ],
 };
 
-// ─── B13: Telecom Predefined Rules Coverage Matrix ───────────────────────────
+// ─── Section 17/18: Telecom Rule Coverage Matrix ─────────────────────────────
+//
+// Status now reflects implementationStatus, not just rule.status.
 
 export interface RuleCoverageEntry {
   ruleId: string;
-  detectionStatus: 'ACTIVE' | 'PARTIAL_CAPABILITY' | 'PROFILE_ONLY' | 'NOT_YET_DETECTABLE';
+  detectionStatus: TelecomRuleImplementationStatus;
   staticCoverage: boolean;
   runtimeCoverage: boolean;
   actionWitnessRequired: boolean;
   notes: string;
+  detectorMapping?: string;
 }
 
 /**
- * B13: Coverage matrix for telecom predefined rules.
- * Maps each rule to its detection capabilities.
+ * Section 17: Coverage matrix with ACTUAL implementation status.
+ * A profile rule definition alone is NEVER an ACTIVE detector.
  */
 export const TELECOM_RULE_COVERAGE_MATRIX: RuleCoverageEntry[] = TELECOM_RULES.map(rule => ({
   ruleId: rule.ruleId,
-  detectionStatus: rule.status,
-  staticCoverage: rule.status === 'ACTIVE',
-  runtimeCoverage: rule.ruleType === 'SEQUENCE_RULE' || rule.ruleType === 'PATH_RULE',
+  detectionStatus: rule.implementationStatus ?? 'PROFILE_DEFINED',
+  staticCoverage: rule.implementationStatus === 'STATIC_DETECTOR_ACTIVE' || rule.implementationStatus === 'PARTIAL_ENGINE_SUPPORT',
+  runtimeCoverage: rule.implementationStatus === 'RUNTIME_TEST_ACTIVE' || rule.implementationStatus === 'ACTION_WITNESS_ACTIVE',
   actionWitnessRequired: rule.capabilityFamily === 'TOOL_ACTION_EXECUTION' ||
-    rule.capabilityFamily === 'CONFIGURATION_ACTUATION',
+    rule.capabilityFamily === 'CONFIGURATION_ACTUATION' ||
+    rule.implementationStatus === 'ACTION_WITNESS_ACTIVE',
   notes: rule.description,
+  detectorMapping: rule.detectorMapping
+    ? `${rule.detectorMapping.scannerModule ?? 'n/a'} / ${rule.detectorMapping.findingIdentity ?? 'n/a'}`
+    : 'n/a',
 }));
 
-// ─── B13: Ericsson EIAP Spec Gaps ────────────────────────────────────────────
+// ─── Section 23: EIAP Spec Gaps ──────────────────────────────────────────────
 
-/**
- * B13: Explicit private EIAP specification gaps.
- *
- * These gaps MUST be documented and MUST NOT be filled with invented semantics.
- * Unknown proprietary EIAP operations fail to REVIEW, not ALLOW.
- */
 export const ERICSSON_EIAP_SPEC_GAPS = {
   gaps: [
     {
@@ -258,20 +327,12 @@ export const ERICSSON_EIAP_SPEC_GAPS = {
   policy: 'Unknown proprietary EIAP operations MUST fail to REVIEW, never ALLOW. Do not invent private Ericsson semantics.',
 } as const;
 
-// ─── B13: Safe POC Architecture ──────────────────────────────────────────────
+// ─── Section 19: Safe POC Architecture ───────────────────────────────────────
 
-/**
- * B13: Safe proof-of-concept architecture for Ericsson/O-RAN.
- *
- * This POC architecture:
- *   1. Uses ONLY public O-RAN R1 vocabulary
- *   2. Marks all proprietary EIAP extensions as UNKNOWN/REVIEW
- *   3. Does not invent private Ericsson semantics
- *   4. Produces explicit review states for unknown operations
- */
 export const ERICSSON_ORAN_POC_ARCHITECTURE = {
   architectureId: 'ericsson-oran-poc-v01',
   version: '0.1',
+  r1SourceVersion: 'O-RAN-WG6.R1-Application-Protocols-v11.00',
   components: [
     {
       componentId: 'rapp-host',
@@ -287,7 +348,7 @@ export const ERICSSON_ORAN_POC_ARCHITECTURE = {
     },
     {
       componentId: 'eiap-extension',
-      description: 'Ericsson EIAP extension (proprietary — semantics unknown)',
+      description: 'Ericsson Intelligent Automation Platform extension (proprietary — semantics unknown)',
       usesPublicSpec: false,
       proprietarySemantics: true,
       disposition: 'REVIEW',
@@ -295,9 +356,51 @@ export const ERICSSON_ORAN_POC_ARCHITECTURE = {
   ],
   evidenceProducers: ['saas-static', 'saas-runtime', 'saas-inventory'],
   constraints: [
-    'Only public O-RAN R1 vocabulary is used for canonical Assurance',
+    'Only public O-RAN R1 vocabulary from v11.00 is used for canonical Assurance',
     'Proprietary EIAP operations fail to REVIEW, never ALLOW',
     'No invented Ericsson semantics',
     'All unknown operations require explicit human review',
+    'EIAP = Ericsson Intelligent Automation Platform',
   ],
 } as const;
+
+// ─── Section 24: Compliance / Framework Mapping Preparation ──────────────────
+//
+// Exact/source-backed mappings without claiming certification/compliance.
+
+export const O_RAN_COMPLIANCE_MAPPINGS: FrameworkMappingEntry[] = [
+  {
+    framework: 'O-RAN_SECURITY_REQUIREMENTS',
+    controlIds: ['R1-SEC-01', 'R1-SEC-02'],
+    mappingStrength: 'EXACT_RULE_MAPPING',
+    sourceReference: { type: 'O_RAN_SPEC', identifier: 'O-RAN-WG6.R1-Application-Protocols', version: 'v11.00' },
+  },
+  {
+    framework: 'NIST_AI_RMF',
+    controlIds: ['MEASURE-2.3', 'MEASURE-2.4'],
+    mappingStrength: 'PROFILE_MAPPING',
+    sourceReference: { type: 'HAIEC_INTERNAL', identifier: 'haiec-agentic-baseline', version: '1.0' },
+  },
+  {
+    framework: 'NIST_CYBERSECURITY_FRAMEWORK',
+    controlIds: ['PR.AC-1', 'PR.DS-5'],
+    mappingStrength: 'HEURISTIC_SUGGESTION',
+  },
+  {
+    framework: 'OWASP_LLM',
+    controlIds: ['LLM01', 'LLM06'],
+    mappingStrength: 'EXACT_RULE_MAPPING',
+    sourceReference: { type: 'HAIEC_INTERNAL', identifier: 'haiec-agentic-baseline', version: '1.0' },
+  },
+  {
+    framework: 'ISO_27001',
+    controlIds: ['A.9.4.1', 'A.9.4.5'],
+    mappingStrength: 'HEURISTIC_SUGGESTION',
+  },
+  {
+    framework: 'ISO_42001',
+    controlIds: ['5.2'],
+    mappingStrength: 'PROFILE_MAPPING',
+    sourceReference: { type: 'HAIEC_INTERNAL', identifier: 'haiec-agentic-baseline', version: '1.0' },
+  },
+];

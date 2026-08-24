@@ -1,18 +1,30 @@
 /**
- * U5 B32 / E1 A13-A15 — Assurance Persistence Service
+ * E1 Closure Sections 4, 13, 28 — Assurance Persistence Service
  *
- * Persists Assurance Evaluation results to the database.
+ * Section 4: Methodology 1.1 AssuranceEvaluation must durably record:
+ *   profileId, profileVersion, profileDigest, effective rulePackVersions,
+ *   effective claimPackVersions, operatingEnvelopeId/Version/Digest,
+ *   operatingEnvelopeState/approval reference.
+ *
+ * Section 13: Persist the effective five-plane/capability comparison result
+ *   associated with methodology 1.1 evaluation.
+ *
+ * Section 28: Tenant safety — all records carry organizationId, no cross-org access.
  *
  * A13: Idempotency distinguishes same-input vs changed-input conflict.
- *   - same run + same methodology + same inputHash → IDEMPOTENT
- *   - same run + same methodology + different inputHash → CONFLICT (fail closed)
- *   - Do NOT overwrite the historical evaluation.
  * A14: All lookup/idempotency checks include authoritative tenant ownership.
  * B31: Tenant-scoped — all records carry organizationId.
  */
 
 import { prisma } from '@/lib/prisma';
-import { AssuranceEvaluation, ClaimEvaluationResult, PersistenceResult } from './types';
+import {
+  AssuranceEvaluation,
+  AssuranceEvaluationV1_1,
+  ClaimEvaluationResult,
+  PersistenceResult,
+  PersistedFivePlaneResult,
+  ASSURANCE_METHODOLOGY_VERSION_1_1,
+} from './types';
 
 /**
  * Persist an Assurance Evaluation to the database.
@@ -22,7 +34,9 @@ import { AssuranceEvaluation, ClaimEvaluationResult, PersistenceResult } from '.
  *   - same run + same methodology + different inputHash → CONFLICT (fail closed, do NOT overwrite)
  *   - no existing → CREATE
  *
- * A14: All checks include organizationId for tenant safety.
+ * Section 4: Methodology 1.1 rows record profile/envelope identities in
+ * `assurance_evaluation_profile_bindings`.
+ * Historical methodology 1.0 rows remain valid with null profile fields.
  */
 export async function persistAssuranceEvaluation(
   evaluation: AssuranceEvaluation
@@ -71,6 +85,32 @@ export async function persistAssuranceEvaluation(
         outputHash: evaluation.outputHash,
       },
     });
+
+    // Section 4: Persist 1.1 profile/envelope binding
+    if (isV1_1(evaluation)) {
+      const v1_1 = evaluation as AssuranceEvaluationV1_1;
+      await tx.assurance_evaluation_profile_bindings.create({
+        data: {
+          assuranceEvaluationId: evalRecord.id,
+          organizationId: evaluation.organizationId,
+          profileId: v1_1.profileId,
+          profileVersion: v1_1.profileVersion,
+          profileDigest: v1_1.profileDigest,
+          profileDigestResolved: v1_1.profileId ? v1_1.profileDigest : null,
+          claimPackVersions: v1_1.claimPackVersions as any,
+          rulePackVersions: v1_1.rulePackVersions as any,
+          operatingEnvelopeId: v1_1.operatingEnvelopeId ?? null,
+          operatingEnvelopeVersion: v1_1.operatingEnvelopeVersion ?? null,
+          operatingEnvelopeDigest: v1_1.operatingEnvelopeDigest ?? null,
+          operatingEnvelopeState: v1_1.operatingEnvelopeState ?? null,
+          operatingEnvelopeApprovedBy: v1_1.operatingEnvelopeApprovedBy ?? null,
+          operatingEnvelopeApprovalReference: v1_1.operatingEnvelopeApprovalReference ?? null,
+          // Section 13: Persist five-plane comparison as concise JSON
+          fivePlaneResult: buildPersistedFivePlaneResult(v1_1) as any,
+          applicableClaimKeys: (v1_1.applicableClaimKeys ?? []) as any,
+        },
+      });
+    }
 
     for (const claimResult of evaluation.claimResults) {
       const claimEval = await tx.control_claim_evaluations.create({
@@ -123,6 +163,36 @@ export async function persistAssuranceEvaluation(
 }
 
 /**
+ * Section 13: Build concise five-plane result JSON for persistence.
+ */
+function buildPersistedFivePlaneResult(evaluation: AssuranceEvaluationV1_1): PersistedFivePlaneResult | null {
+  const comparisons = evaluation.fivePlaneComparisons;
+  if (!comparisons || comparisons.length === 0) return null;
+
+  return {
+    comparisons: comparisons.map(c => ({
+      capabilityKey: c.capabilityKey,
+      comparisons: c.comparisons,
+      mappedClaimKey: c.mappedClaimKey,
+      verdict: c.verdict,
+      evidenceIds: c.evidenceIds,
+      planes: {
+        requested: c.requested,
+        policyAuthorized: c.policyAuthorized,
+        effectivelyGranted: c.effectivelyGranted,
+        codeCapable: c.codeCapable,
+        observed: c.observed,
+      },
+    })),
+    overallVerdict: 'ALLOW',
+  };
+}
+
+function isV1_1(evaluation: AssuranceEvaluation): boolean {
+  return (evaluation as AssuranceEvaluationV1_1).assuranceMethodologyVersion === ASSURANCE_METHODOLOGY_VERSION_1_1;
+}
+
+/**
  * Retrieve an Assurance Evaluation by orchestrator run ID.
  * A14: organizationId is required for tenant safety.
  */
@@ -142,6 +212,7 @@ export async function getAssuranceEvaluation(
           },
         },
       },
+      assurance_evaluation_profile_bindings: true,
     },
     orderBy: { createdAt: 'desc' },
   });
@@ -151,10 +222,10 @@ export async function getAssuranceEvaluation(
   return reconstructEvaluation(record);
 }
 
+
+
 /**
  * A15: Reconstruct an AssuranceEvaluation from DB records.
- * Verifies roundtrip preserves all Evidence Set members, roles, hashes, reason codes,
- * claim states, dimension results, and overall digest.
  */
 function reconstructEvaluation(record: any): AssuranceEvaluation {
   const claimResults: ClaimEvaluationResult[] = record.control_claim_evaluations.map((ce: any) => ({
@@ -182,7 +253,7 @@ function reconstructEvaluation(record: any): AssuranceEvaluation {
     explanation: ce.explanation,
   }));
 
-  return {
+  const base: AssuranceEvaluation = {
     id: record.id,
     organizationId: record.organizationId,
     aiSystemId: record.aiSystemId,
@@ -200,4 +271,28 @@ function reconstructEvaluation(record: any): AssuranceEvaluation {
     outputHash: record.outputHash,
     createdAt: record.createdAt,
   };
+
+  // Section 4: Reconstruct 1.1 fields if binding exists
+  const binding = record.assurance_evaluation_profile_bindings;
+  if (binding && base.assuranceMethodologyVersion === ASSURANCE_METHODOLOGY_VERSION_1_1) {
+    const v1_1: AssuranceEvaluationV1_1 = {
+      ...base,
+      assuranceMethodologyVersion: '1.1',
+      profileId: binding.profileId,
+      profileVersion: binding.profileVersion,
+      profileDigest: binding.profileDigest,
+      operatingEnvelopeId: binding.operatingEnvelopeId ?? undefined,
+      operatingEnvelopeVersion: binding.operatingEnvelopeVersion ?? undefined,
+      operatingEnvelopeDigest: binding.operatingEnvelopeDigest ?? undefined,
+      operatingEnvelopeState: binding.operatingEnvelopeState ?? undefined,
+      operatingEnvelopeApprovedBy: binding.operatingEnvelopeApprovedBy ?? undefined,
+      operatingEnvelopeApprovalReference: binding.operatingEnvelopeApprovalReference ?? undefined,
+      applicableClaimKeys: binding.applicableClaimKeys as string[] ?? [],
+      claimPackVersions: binding.claimPackVersions as Record<string, string> ?? {},
+      rulePackVersions: binding.rulePackVersions as Record<string, string> ?? {},
+    };
+    return v1_1;
+  }
+
+  return base;
 }

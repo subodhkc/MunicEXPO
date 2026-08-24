@@ -1,37 +1,73 @@
 /**
- * E1 B27 — Action Witness Contract
+ * E1 Closure Sections 14-16 — Action Witness Correction + Correlation + OTel Trust
  *
- * B27: Action Witness is the canonical evidence for OBSERVED plane.
+ * Section 14: Generic runtime trace does NOT prove ACTION_APPLIED.
+ *   targetReached does NOT prove network action applied.
+ *   Generic runtime trace may prove ACTION_REQUESTED or TARGET_REACHED/ACTION_ATTEMPTED.
+ *   ACTION_APPLIED requires evidence from an authoritative controlled action boundary.
+ *   ACTION_CONFIRMED requires confirmation/side-effect evidence.
+ *   Do NOT infer APPLIED from an HTTP response alone.
  *
- * Phases:
- *   ACTION_REQUESTED → ACTION_AUTHORIZED → ACTION_ACCEPTED
- *   → ACTION_APPLIED → ACTION_CONFIRMED
+ * Section 15: All phases in one Action Witness set must refer to the SAME logical action.
+ *   actionCorrelationId + build identity + actor + operation + resource/scope.
+ *   isWitnessSetComplete() must not combine unrelated witness events.
  *
- * A complete privileged action requires witnesses for all five phases.
- * Missing phase → REVIEW (not BLOCK unless explicitly configured).
- *
- * B28: Runtime trace reuse disposition.
- *   - Existing runtime_execution_traces can serve as ACTION_APPLIED witnesses
- *   - OpenTelemetry spans can serve as ACTION_REQUESTED/ACTION_APPLIED witnesses
- *   - Static capability extraction can serve as CODE_CAPABLE plane evidence
+ * Section 16: Do not let caller-selected arbitrary OTel phase become authoritative.
+ *   Classify OTel source authority.
+ *   Generic application span → OBSERVATION/REQUESTED.
+ *   Trusted sandbox/platform instrumentation → may qualify for APPLIED/CONFIRMED.
  */
 
-import { ActionWitness, ActionWitnessPhase } from './types';
+import {
+  ActionWitness,
+  ActionWitnessPhase,
+  ActionWitnessCorrelation,
+  OTelSourceAuthority,
+  WitnessPhaseAuthority,
+  AuthoritySourceLabel,
+} from './types';
 
 /**
- * B27: Check if an action witness set is complete (all 5 phases present).
+ * Section 15: Check if an action witness set is complete (all 5 phases present)
+ * AND all witnesses share the same actionCorrelationId.
+ *
+ * Witnesses with different correlation IDs cannot form a complete trajectory.
  */
 export function isWitnessSetComplete(witnesses: ActionWitness[]): boolean {
+  // Must have all 5 phases
   const phases = new Set(witnesses.map(w => w.phase));
-  return phases.has('ACTION_REQUESTED') &&
+  const hasAllPhases =
+    phases.has('ACTION_REQUESTED') &&
     phases.has('ACTION_AUTHORIZED') &&
     phases.has('ACTION_ACCEPTED') &&
     phases.has('ACTION_APPLIED') &&
     phases.has('ACTION_CONFIRMED');
+
+  if (!hasAllPhases) return false;
+
+  // Section 15: All witnesses must share the same actionCorrelationId
+  const correlationIds = new Set(
+    witnesses.map(w => w.actionCorrelationId ?? '').filter(id => id !== '')
+  );
+  if (correlationIds.size > 1) {
+    // Multiple correlation IDs → unrelated witness events
+    return false;
+  }
+
+  // If any witness has a correlation ID, all must share it
+  const hasCorrelation = witnesses.some(w => w.actionCorrelationId && w.actionCorrelationId !== '');
+  if (hasCorrelation) {
+    const firstCorrelation = witnesses.find(w => w.actionCorrelationId)?.actionCorrelationId;
+    if (!witnesses.every(w => w.actionCorrelationId === firstCorrelation)) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 /**
- * B27: Get missing phases for an action witness set.
+ * Section 15: Get missing phases for an action witness set.
  */
 export function getMissingPhases(witnesses: ActionWitness[]): ActionWitnessPhase[] {
   const present = new Set(witnesses.map(w => w.phase));
@@ -46,7 +82,7 @@ export function getMissingPhases(witnesses: ActionWitness[]): ActionWitnessPhase
 }
 
 /**
- * B27: Validate witness sequence ordering.
+ * Section 15: Validate witness sequence ordering.
  * Witnesses must be in phase order: REQUESTED → AUTHORIZED → ACCEPTED → APPLIED → CONFIRMED
  */
 export function validateWitnessSequence(witnesses: ActionWitness[]): {
@@ -72,14 +108,56 @@ export function validateWitnessSequence(witnesses: ActionWitness[]): {
     }
   }
 
+  // Section 15: Check correlation identity consistency
+  const correlationIds = new Set(
+    witnesses.map(w => w.actionCorrelationId ?? '').filter(id => id !== '')
+  );
+  if (correlationIds.size > 1) {
+    errors.push(`Witness set contains multiple actionCorrelationIds: ${Array.from(correlationIds).join(', ')}`);
+  }
+
   return { valid: errors.length === 0, errors };
 }
 
 /**
- * B28: Convert a runtime execution trace to an ACTION_APPLIED witness.
+ * Section 15: Check if all witnesses in a set share the same correlation identity.
+ */
+export function shareCorrelationIdentity(witnesses: ActionWitness[]): boolean {
+  const correlationIds = new Set(
+    witnesses.map(w => w.actionCorrelationId ?? '').filter(id => id !== '')
+  );
+  return correlationIds.size <= 1;
+}
+
+/**
+ * Section 15: Extract correlation identity from a witness.
+ */
+export function extractCorrelation(witness: ActionWitness): ActionWitnessCorrelation {
+  return {
+    actionCorrelationId: witness.actionCorrelationId ?? '',
+    buildDigest: witness.buildDigest,
+    actorIdentity: witness.actorIdentity,
+    operation: witness.operation,
+    resourceScope: witness.resourceScope,
+  };
+}
+
+/**
+ * Section 14: Convert a runtime execution trace to a witness.
  *
- * Reuses existing runtime_execution_traces infrastructure.
- * Does NOT create a new runtime trace table.
+ * CORRECTION: A generic runtime trace does NOT prove ACTION_APPLIED.
+ *   targetReached does NOT prove network action applied.
+ *
+ * Generic runtime trace may prove:
+ *   - ACTION_REQUESTED (if it shows a request was made)
+ *   - TARGET_REACHED / ACTION_ATTEMPTED (if targetReached is true)
+ *
+ * ACTION_APPLIED requires evidence from an authoritative controlled action boundary:
+ *   R1 sandbox adapter, mock R1 producer, test proxy, platform callback, authoritative telemetry.
+ *
+ * @param authoritativeBoundary - if true, the trace comes from an authoritative
+ *   controlled action boundary and may qualify for ACTION_APPLIED.
+ *   If false (default), the trace can only prove ACTION_REQUESTED or ACTION_ATTEMPTED.
  */
 export function runtimeTraceToWitness(params: {
   traceId: string;
@@ -90,24 +168,174 @@ export function runtimeTraceToWitness(params: {
   responseHash?: string;
   targetReached?: boolean;
   executedAt: Date;
+  actionCorrelationId?: string;
+  /** Section 14: Whether this trace comes from an authoritative action boundary */
+  authoritativeBoundary?: boolean;
 }): ActionWitness {
+  // Section 14: Determine the correct phase based on source authority
+  let phase: ActionWitnessPhase;
+  if (params.authoritativeBoundary === true) {
+    // Authoritative controlled action boundary → may prove ACTION_APPLIED
+    phase = 'ACTION_APPLIED';
+  } else if (params.targetReached) {
+    // Generic trace with targetReached → ACTION_ATTEMPTED (not APPLIED)
+    // But ACTION_ATTEMPTED is not a standard phase — use ACTION_REQUESTED
+    // to indicate the action was attempted but not confirmed applied
+    phase = 'ACTION_REQUESTED';
+  } else {
+    // Generic trace → ACTION_REQUESTED only
+    phase = 'ACTION_REQUESTED';
+  }
+
   return {
     witnessId: `witness:runtime:${params.traceId}`,
-    phase: 'ACTION_APPLIED',
+    phase,
     actorIdentity: params.transportAdapter ?? 'runtime-adapter',
     operation: params.attackId,
     resourceScope: params.executionMode ?? 'runtime',
-    result: params.targetReached ? 'REACHED' : 'NOT_REACHED',
+    result: params.targetReached ? 'TARGET_REACHED' : 'NOT_REACHED',
     sideEffectWitness: params.responseHash,
     buildDigest: params.requestHash,
     observedAt: params.executedAt,
+    actionCorrelationId: params.actionCorrelationId,
+    authoritySourceLabel: params.authoritativeBoundary ? 'AUTHORITATIVE_POLICY' : 'UNKNOWN',
   };
 }
 
 /**
- * B29: Convert an OpenTelemetry span to an action witness.
+ * Section 14: Create an ACTION_APPLIED witness from an authoritative controlled action boundary.
  *
- * OpenTelemetry spans can serve as ACTION_REQUESTED or ACTION_APPLIED witnesses.
+ * This is the ONLY way to produce ACTION_APPLIED evidence.
+ * Sources: R1 sandbox adapter, mock R1 producer, test proxy, platform callback, authoritative telemetry.
+ */
+export function authoritativeActionAppliedWitness(params: {
+  boundaryId: string;
+  actionCorrelationId: string;
+  actorIdentity: string;
+  operation: string;
+  resourceScope?: string;
+  buildDigest?: string;
+  sideEffectWitness?: string;
+  observedAt: Date;
+  authoritySourceLabel?: AuthoritySourceLabel;
+}): ActionWitness {
+  return {
+    witnessId: `witness:applied:${params.boundaryId}:${params.actionCorrelationId}`,
+    phase: 'ACTION_APPLIED',
+    actorIdentity: params.actorIdentity,
+    operation: params.operation,
+    resourceScope: params.resourceScope,
+    buildDigest: params.buildDigest,
+    sideEffectWitness: params.sideEffectWitness,
+    observedAt: params.observedAt,
+    actionCorrelationId: params.actionCorrelationId,
+    authoritySourceLabel: params.authoritySourceLabel ?? 'AUTHORITATIVE_POLICY',
+    oTelSourceAuthority: 'TRUSTED_SANDBOX',
+  };
+}
+
+/**
+ * Section 14: Create an ACTION_CONFIRMED witness from confirmation/side-effect evidence.
+ */
+export function actionConfirmedWitness(params: {
+  confirmationId: string;
+  actionCorrelationId: string;
+  actorIdentity: string;
+  operation: string;
+  sideEffectWitness: string;
+  observedAt: Date;
+  authoritySourceLabel?: AuthoritySourceLabel;
+}): ActionWitness {
+  return {
+    witnessId: `witness:confirmed:${params.confirmationId}:${params.actionCorrelationId}`,
+    phase: 'ACTION_CONFIRMED',
+    actorIdentity: params.actorIdentity,
+    operation: params.operation,
+    sideEffectWitness: params.sideEffectWitness,
+    observedAt: params.observedAt,
+    actionCorrelationId: params.actionCorrelationId,
+    authoritySourceLabel: params.authoritySourceLabel ?? 'AUTHORITATIVE_POLICY',
+  };
+}
+
+/**
+ * Section 16: Classify OTel source authority.
+ *
+ * Generic application span → OBSERVATION / REQUESTED.
+ * Trusted sandbox/platform instrumentation → may qualify for APPLIED / CONFIRMED.
+ */
+export function classifyOTelSourceAuthority(params: {
+  serviceName?: string;
+  instrumentationLibrary?: string;
+  attributes?: Record<string, string>;
+}): OTelSourceAuthority {
+  const service = (params.serviceName ?? '').toLowerCase();
+  const lib = (params.instrumentationLibrary ?? '').toLowerCase();
+  const attrs = params.attributes ?? {};
+
+  // Trusted sandbox instrumentation
+  if (service.includes('sandbox') || service.includes('r1-sandbox') ||
+      lib.includes('sandbox') || lib.includes('r1-boundary')) {
+    return 'TRUSTED_SANDBOX';
+  }
+
+  // Platform instrumentation
+  if (service.includes('platform') || service.includes('haiec-platform') ||
+      lib.includes('platform') || attrs['haiec.platform'] === 'true') {
+    return 'PLATFORM_INSTRUMENTATION';
+  }
+
+  // Generic application span
+  if (service.includes('app') || service.includes('application') ||
+      lib.includes('app') || lib.includes('http') || lib.includes('express')) {
+    return 'GENERIC_APPLICATION';
+  }
+
+  return 'UNKNOWN_OTEL_SOURCE';
+}
+
+/**
+ * Section 16: Determine what phase authority an OTel source can prove.
+ *
+ * Generic application span → OBSERVATION / REQUESTED only.
+ * Trusted sandbox → may qualify for ACCEPTED / APPLIED.
+ * Platform instrumentation → may qualify for APPLIED / CONFIRMED.
+ */
+export function oTelAuthorityToPhase(
+  authority: OTelSourceAuthority,
+  requestedPhase: ActionWitnessPhase,
+): WitnessPhaseAuthority {
+  switch (authority) {
+    case 'GENERIC_APPLICATION':
+      // Generic spans can only prove REQUESTED or OBSERVATION
+      if (requestedPhase === 'ACTION_REQUESTED') return 'ACTION_REQUESTED';
+      return 'OBSERVATION_ONLY';
+
+    case 'TRUSTED_SANDBOX':
+      // Trusted sandbox may qualify for ACCEPTED or APPLIED
+      if (requestedPhase === 'ACTION_ACCEPTED') return 'ACTION_ACCEPTED';
+      if (requestedPhase === 'ACTION_APPLIED') return 'ACTION_APPLIED';
+      if (requestedPhase === 'ACTION_REQUESTED') return 'ACTION_REQUESTED';
+      return 'OBSERVATION_ONLY';
+
+    case 'PLATFORM_INSTRUMENTATION':
+      // Platform instrumentation may qualify for APPLIED or CONFIRMED
+      if (requestedPhase === 'ACTION_APPLIED') return 'ACTION_APPLIED';
+      if (requestedPhase === 'ACTION_CONFIRMED') return 'ACTION_CONFIRMED';
+      if (requestedPhase === 'ACTION_REQUESTED') return 'ACTION_REQUESTED';
+      return 'OBSERVATION_ONLY';
+
+    case 'UNKNOWN_OTEL_SOURCE':
+    default:
+      return 'OBSERVATION_ONLY';
+  }
+}
+
+/**
+ * Section 16: Convert an OpenTelemetry span to an action witness.
+ *
+ * OTel source authority is classified — generic spans cannot self-declare
+ * ACTION_APPLIED or ACTION_CONFIRMED.
  */
 export function openTelemetrySpanToWitness(params: {
   spanId: string;
@@ -116,14 +344,34 @@ export function openTelemetrySpanToWitness(params: {
   phase: ActionWitnessPhase;
   attributes?: Record<string, string>;
   startTime: Date;
+  actionCorrelationId?: string;
+  serviceName?: string;
+  instrumentationLibrary?: string;
 }): ActionWitness {
+  // Section 16: Classify OTel source authority
+  const sourceAuthority = classifyOTelSourceAuthority({
+    serviceName: params.serviceName,
+    instrumentationLibrary: params.instrumentationLibrary,
+    attributes: params.attributes,
+  });
+
+  // Section 16: Determine what this source can actually prove
+  const phaseAuthority = oTelAuthorityToPhase(sourceAuthority, params.phase);
+
+  // If the source cannot prove the requested phase, downgrade to OBSERVATION_ONLY
+  const actualPhase: ActionWitnessPhase =
+    phaseAuthority === 'OBSERVATION_ONLY' ? 'ACTION_REQUESTED' : params.phase;
+
   return {
     witnessId: `witness:otel:${params.traceId}:${params.spanId}`,
-    phase: params.phase,
+    phase: actualPhase,
     actorIdentity: params.attributes?.['actor.id'] ?? 'otel-actor',
     operation: params.operationName,
     resourceScope: params.attributes?.['resource.scope'],
     authorizationContext: params.attributes?.['authorization.context'],
     observedAt: params.startTime,
+    actionCorrelationId: params.actionCorrelationId,
+    oTelSourceAuthority: sourceAuthority,
+    authoritySourceLabel: sourceAuthority === 'GENERIC_APPLICATION' ? 'UNKNOWN' : 'AUTHORITATIVE_POLICY',
   };
 }

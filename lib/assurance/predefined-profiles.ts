@@ -1,5 +1,5 @@
 /**
- * E1 B2/B4/B5/B15 — Predefined HAIEC Baseline Profiles
+ * E1 Closure — Predefined HAIEC Baseline Profiles
  *
  * B2: Clients NEVER start with an empty security rule set.
  *     HAIEC ships predefined rules.
@@ -7,9 +7,16 @@
  * Hierarchy:
  *   HAIEC_CORE_BASELINE → HAIEC_AGENTIC_BASELINE → TELECOM_ORAN_BASELINE
  *   → ERICSSON_EIAP_PROFILE → CUSTOMER_PARAMETERS
+ *
+ * E1 Closure changes:
+ *   Section 8: Arbitrary client default authority values labeled REFERENCE_DEFAULT.
+ *   Section 17: Telecom rules have implementationStatus reflecting actual implementation.
+ *   Section 19: R1 source version corrected to v11.00.
+ *   Section 22: EIAP name corrected to "Ericsson Intelligent Automation Platform".
+ *   Section 24: Compliance/framework mapping metadata added.
  */
 
-import { AssuranceProfile, ProfileRule, CapabilityFamily } from './types';
+import { AssuranceProfile, ProfileRule, CapabilityFamily, TelecomRuleImplementationStatus } from './types';
 import { PROFILE_IDS, computeProfileDigest } from './profile-hierarchy';
 
 // ─── B15: Predefined Telecom Rule Families ───────────────────────────────────
@@ -25,7 +32,11 @@ export const TELECOM_RULE_FAMILIES = [
   'EVIDENCE_ACCOUNTABILITY',
 ] as const;
 
-// ─── B16: Initial Telecom Rules ──────────────────────────────────────────────
+// ─── Section 17: Telecom Rules with implementation status ────────────────────
+//
+// Each rule now has implementationStatus reflecting ACTUAL implementation.
+// A profile rule definition alone is NOT an ACTIVE detector.
+// Source-audit against actual scanner/runtime implementation.
 
 export const TELECOM_RULES: ProfileRule[] = [
   {
@@ -35,6 +46,13 @@ export const TELECOM_RULES: ProfileRule[] = [
     capabilityFamily: 'TOOL_ACTION_EXECUTION',
     severity: 'critical',
     status: 'ACTIVE',
+    implementationStatus: 'STATIC_DETECTOR_ACTIVE',
+    detectorMapping: {
+      scannerModule: 'ai-security-scanner',
+      semantics: 'source: privileged tool call, sink: R1 operation, guard: auth check',
+      findingIdentity: 'privileged_action_without_authorization',
+      coverageLimitations: 'Detects missing auth on privileged tool calls; does not verify auth correctness',
+    },
     requiredGuards: ['authentication', 'authorization'],
   },
   {
@@ -44,6 +62,13 @@ export const TELECOM_RULES: ProfileRule[] = [
     capabilityFamily: 'RESOURCE_SCOPE',
     severity: 'high',
     status: 'ACTIVE',
+    implementationStatus: 'STATIC_DETECTOR_ACTIVE',
+    detectorMapping: {
+      scannerModule: 'ai-security-scanner',
+      semantics: 'source: R1 operation call, sink: resource access, guard: scope validation',
+      findingIdentity: 'scope_validation_missing',
+      coverageLimitations: 'Detects missing scope validation; does not verify scope correctness',
+    },
     requiredGuards: ['scope-validation'],
   },
   {
@@ -53,6 +78,13 @@ export const TELECOM_RULES: ProfileRule[] = [
     capabilityFamily: 'DATA_ACCESS',
     severity: 'critical',
     status: 'ACTIVE',
+    implementationStatus: 'STATIC_DETECTOR_ACTIVE',
+    detectorMapping: {
+      scannerModule: 'ai-security-scanner',
+      semantics: 'source: external input, sink: privileged R1 operation, guard: input validation',
+      findingIdentity: 'untrusted_resource_id_privileged_path',
+      coverageLimitations: 'Taint analysis from external input to privileged R1 operations',
+    },
     requiredGuards: ['input-validation', 'authorization'],
   },
   {
@@ -62,6 +94,13 @@ export const TELECOM_RULES: ProfileRule[] = [
     capabilityFamily: 'CONFIGURATION_ACTUATION',
     severity: 'critical',
     status: 'ACTIVE',
+    implementationStatus: 'STATIC_DETECTOR_ACTIVE',
+    detectorMapping: {
+      scannerModule: 'ai-security-scanner',
+      semantics: 'source: LLM output, sink: config write, guard: deterministic validation',
+      findingIdentity: 'llm_output_config_write_without_guard',
+      coverageLimitations: 'Detects LLM output reaching config write without deterministic guard',
+    },
     requiredGuards: ['deterministic-guard', 'output-validation'],
   },
   {
@@ -70,7 +109,14 @@ export const TELECOM_RULES: ProfileRule[] = [
     description: 'Write operation must not exceed configured blast-radius constraint',
     capabilityFamily: 'CONFIGURATION_ACTUATION',
     severity: 'high',
-    status: 'ACTIVE',
+    status: 'PARTIAL_CAPABILITY',
+    implementationStatus: 'PARTIAL_ENGINE_SUPPORT',
+    detectorMapping: {
+      scannerModule: 'ai-security-scanner',
+      semantics: 'state: write operation scope vs configured blast-radius',
+      findingIdentity: 'write_exceeds_blast_radius',
+      coverageLimitations: 'Partial — requires operating envelope configuration to evaluate',
+    },
     requiredGuards: ['blast-radius-check'],
   },
   {
@@ -79,7 +125,14 @@ export const TELECOM_RULES: ProfileRule[] = [
     description: 'Approval-required action must have valid approval before execution',
     capabilityFamily: 'HUMAN_AUTHORITY',
     severity: 'critical',
-    status: 'ACTIVE',
+    status: 'PARTIAL_CAPABILITY',
+    implementationStatus: 'ACTION_WITNESS_ACTIVE',
+    detectorMapping: {
+      runtimeImplementation: 'Action Witness trajectory validation: READ → ANALYZE → RECOMMEND → APPROVAL → WRITE',
+      semantics: 'sequence: expected approval trajectory vs observed trajectory',
+      findingIdentity: 'approval_required_action_no_approval',
+      coverageLimitations: 'Requires Action Witness evidence for full sequence validation',
+    },
     requiredGuards: ['approval-verification'],
     expectedTrajectory: ['READ', 'ANALYZE', 'RECOMMEND', 'APPROVAL', 'CONFIG_WRITE'],
   },
@@ -90,6 +143,13 @@ export const TELECOM_RULES: ProfileRule[] = [
     capabilityFamily: 'DATA_ACCESS',
     severity: 'high',
     status: 'ACTIVE',
+    implementationStatus: 'STATIC_DETECTOR_ACTIVE',
+    detectorMapping: {
+      scannerModule: 'ai-security-scanner',
+      semantics: 'source: data subscription call, sink: data stream, guard: subscription authorization',
+      findingIdentity: 'unauthorized_data_subscription',
+      coverageLimitations: 'Detects missing authorization on data subscription calls',
+    },
     requiredGuards: ['subscription-authorization'],
   },
   {
@@ -99,6 +159,13 @@ export const TELECOM_RULES: ProfileRule[] = [
     capabilityFamily: 'EXTERNAL_EGRESS',
     severity: 'high',
     status: 'ACTIVE',
+    implementationStatus: 'STATIC_DETECTOR_ACTIVE',
+    detectorMapping: {
+      scannerModule: 'ai-security-scanner',
+      semantics: 'source: callback registration, sink: external endpoint, guard: destination approval',
+      findingIdentity: 'unapproved_callback_egress',
+      coverageLimitations: 'Detects unapproved callback destinations; does not verify destination reachability',
+    },
     requiredGuards: ['destination-approval'],
   },
   {
@@ -107,7 +174,14 @@ export const TELECOM_RULES: ProfileRule[] = [
     description: 'A1 policy mutation must be within authorized policy type',
     capabilityFamily: 'CONFIGURATION_ACTUATION',
     severity: 'high',
-    status: 'ACTIVE',
+    status: 'PARTIAL_CAPABILITY',
+    implementationStatus: 'PARTIAL_ENGINE_SUPPORT',
+    detectorMapping: {
+      scannerModule: 'ai-security-scanner',
+      semantics: 'state: A1 policy mutation vs authorized policy type',
+      findingIdentity: 'a1_mutation_outside_policy_type',
+      coverageLimitations: 'Partial — requires operating envelope policy type configuration',
+    },
     requiredGuards: ['policy-type-validation'],
   },
   {
@@ -117,6 +191,13 @@ export const TELECOM_RULES: ProfileRule[] = [
     capabilityFamily: 'MODEL_LIFECYCLE',
     severity: 'high',
     status: 'ACTIVE',
+    implementationStatus: 'STATIC_DETECTOR_ACTIVE',
+    detectorMapping: {
+      scannerModule: 'ai-security-scanner',
+      semantics: 'source: model deploy call, sink: model registry, guard: artifact identity verification',
+      findingIdentity: 'model_deploy_without_approved_identity',
+      coverageLimitations: 'Detects missing artifact identity verification on model deploy',
+    },
     requiredGuards: ['artifact-identity-verification', 'integrity-check'],
   },
   {
@@ -126,6 +207,13 @@ export const TELECOM_RULES: ProfileRule[] = [
     capabilityFamily: 'TOOL_ACTION_EXECUTION',
     severity: 'high',
     status: 'PARTIAL_CAPABILITY',
+    implementationStatus: 'PARTIAL_ENGINE_SUPPORT',
+    detectorMapping: {
+      scannerModule: 'ai-security-scanner',
+      semantics: 'state: retry loop with privileged mutation, guard: retry authorization',
+      findingIdentity: 'agent_retry_privileged_mutation',
+      coverageLimitations: 'Partial — retry loop detection is structural only',
+    },
     requiredGuards: ['retry-authorization'],
   },
   {
@@ -134,7 +222,14 @@ export const TELECOM_RULES: ProfileRule[] = [
     description: 'Privileged action must produce audit trace',
     capabilityFamily: 'OBSERVABILITY',
     severity: 'medium',
-    status: 'ACTIVE',
+    status: 'PARTIAL_CAPABILITY',
+    implementationStatus: 'PARTIAL_ENGINE_SUPPORT',
+    detectorMapping: {
+      scannerModule: 'ai-security-scanner',
+      semantics: 'state: privileged action without audit logging',
+      findingIdentity: 'missing_privileged_action_audit_trace',
+      coverageLimitations: 'Partial — detects missing audit logging patterns',
+    },
     requiredGuards: ['audit-logging'],
   },
   {
@@ -144,6 +239,7 @@ export const TELECOM_RULES: ProfileRule[] = [
     capabilityFamily: 'EXTERNAL_EGRESS',
     severity: 'medium',
     status: 'PROFILE_ONLY',
+    implementationStatus: 'PROFILE_DEFINED',
   },
   {
     ruleId: 'oran.r1.actuation-conflict-without-check',
@@ -152,6 +248,7 @@ export const TELECOM_RULES: ProfileRule[] = [
     capabilityFamily: 'RESILIENCE',
     severity: 'high',
     status: 'NOT_YET_DETECTABLE',
+    implementationStatus: 'FUTURE',
   },
 ];
 
@@ -259,6 +356,10 @@ export const HAIEC_AGENTIC_BASELINE: AssuranceProfile = {
 };
 
 // ─── B13: Telecom/O-RAN Baseline Profile ─────────────────────────────────────
+//
+// Section 8: Arbitrary default values (maxTargetsPerAction=10, maxChangeMagnitude=100,
+//   approvalThreshold=1) are labeled REFERENCE_DEFAULT — NOT AUTHORITATIVE_POLICY.
+// Section 19: R1 source version corrected to v11.00.
 
 const telecomOranBaselineData: Omit<AssuranceProfile, 'profileDigest'> = {
   profileId: PROFILE_IDS.TELECOM_ORAN_BASELINE,
@@ -301,9 +402,11 @@ const telecomOranBaselineData: Omit<AssuranceProfile, 'profileDigest'> = {
       'tenant-boundary-enforcement',
     ],
     blockingRuleIds: TELECOM_RULES
-      .filter(r => r.severity === 'critical' && r.status === 'ACTIVE')
+      .filter(r => r.severity === 'critical' && r.implementationStatus === 'STATIC_DETECTOR_ACTIVE')
       .map(r => r.ruleId),
   },
+  // Section 8: REFERENCE_DEFAULT — NOT AUTHORITATIVE_POLICY.
+  // Customer/Ericsson/CSP authoritative policy replaces these values later.
   customerParameterSchema: {
     allowedR1Services: [],
     approvedModels: [],
@@ -313,12 +416,16 @@ const telecomOranBaselineData: Omit<AssuranceProfile, 'profileDigest'> = {
     maxChangeMagnitude: 100,
     approvalThreshold: 1,
     allowedEnvironments: ['sandbox', 'test', 'staging'],
+    authoritySourceLabel: 'REFERENCE_DEFAULT',
   },
   nonOverridableRuleIds: TELECOM_RULES
     .filter(r => r.severity === 'critical')
     .map(r => r.ruleId),
+  // Section 19: Corrected R1 source version.
+  // Current public O-RAN material: Application Protocols for R1 Services v11.00
   sourceReferences: [
-    { type: 'O_RAN_SPEC', identifier: 'O-RAN-WG6', version: 'R1-Interface-v01.00' },
+    { type: 'O_RAN_SPEC', identifier: 'O-RAN-WG6.R1-Interface', version: 'v11.00', digest: 'oran-r1-v11.00-public' },
+    { type: 'O_RAN_SPEC', identifier: 'O-RAN-WG6.R1-DataAccess-SME-AIML', version: 'v11.00', digest: 'oran-r1-data-v11.00-public' },
     { type: 'O_RAN_SPEC', identifier: 'O-RAN-A1', version: 'A1-Interface-v01.00' },
   ],
 };
@@ -329,11 +436,15 @@ export const TELECOM_ORAN_BASELINE: AssuranceProfile = {
 };
 
 // ─── B13: Ericsson EIAP Extension Profile ────────────────────────────────────
+//
+// Section 22: EIAP = Ericsson Intelligent Automation Platform.
+//   Do NOT invent expansion of EIAP.
+// Section 23: No fictional Ericsson operations. Use generic extension placeholders.
 
 const ericssonEiapData: Omit<AssuranceProfile, 'profileDigest'> = {
   profileId: PROFILE_IDS.ERICSSON_EIAP_PROFILE,
   profileVersion: '0.1',
-  displayName: 'Ericsson EIAP rApp Extension',
+  displayName: 'Ericsson Intelligent Automation Platform (EIAP) rApp Extension',
   parentProfileIds: [PROFILE_IDS.TELECOM_ORAN_BASELINE],
   claimPackVersions: {},
   rulePackVersions: {
@@ -352,11 +463,13 @@ const ericssonEiapData: Omit<AssuranceProfile, 'profileDigest'> = {
     allowedResourceTypes: [],
     allowedOperations: [],
     prohibitedDataClasses: ['RESTRICTED'],
+    authoritySourceLabel: 'REFERENCE_DEFAULT',
   },
   nonOverridableRuleIds: [],
   sourceReferences: [
-    // B13: Do not claim support for proprietary Ericsson APIs that are not actually known
-    { type: 'ERICSSON_EIAP', identifier: 'ericsson-eiap-extensible', version: '0.1' },
+    // Section 22/23: Do not claim support for proprietary Ericsson APIs.
+    // EIAP = Ericsson Intelligent Automation Platform.
+    { type: 'ERICSSON_EIAP', identifier: 'ericsson-intelligent-automation-platform', version: '0.1' },
   ],
 };
 

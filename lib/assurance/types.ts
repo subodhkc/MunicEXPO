@@ -103,7 +103,13 @@ export type ClaimReasonCode =
   | 'NOT_EVALUATED'
   | 'NOT_APPLICABLE_TO_ARCHITECTURE'
   | 'ZERO_FINDINGS_WITH_KNOWN_COVERAGE'
-  | 'PARTIAL_REQUIREMENTS_MET';
+  | 'PARTIAL_REQUIREMENTS_MET'
+  | 'CAPABILITY_CONTRADICTION'
+  | 'REQUIRED_APPROVAL_STEP_MISSING'
+  | 'OVER_PRIVILEGED_GRANT_DETECTED'
+  | 'UNDECLARED_CAPABILITY_DETECTED'
+  | 'OBSERVED_OUTSIDE_OPERATING_ENVELOPE'
+  | 'UNKNOWN_OPERATION_REVIEW';
 
 // ─── B22: Three-Dimension Result ─────────────────────────────────────────────
 
@@ -358,6 +364,8 @@ export interface CapabilityFact {
   authorityClass: AuthorityClass;
   evidenceMethod: EvidenceMethod;
   sourceEvidenceIds: string[];
+  /** E1 Closure Section 8: Authority source label */
+  authoritySourceLabel?: AuthoritySourceLabel;
 }
 
 // ─── B7: Universal Capability Ontology ───────────────────────────────────────
@@ -428,6 +436,8 @@ export interface CustomerParameterSchema {
   approvalThreshold?: number;
   prohibitedDataClasses?: string[];
   allowedEnvironments?: string[];
+  /** E1 Closure Section 8: Authority source label for these parameters */
+  authoritySourceLabel?: AuthoritySourceLabel;
 }
 
 export interface SourceReference {
@@ -451,9 +461,13 @@ export interface OperatingEnvelope {
   profileVersion: string;
   approvedBy?: string;
   approvedAt?: Date;
+  /** E1 Closure Section 6: Approval reference — decision identity binds approval authority */
+  approvalReference?: string;
   constraints: OperatingEnvelopeConstraints;
   envelopeDigest: string;
   createdAt: Date;
+  /** E1 Closure Section 8: Authority source label for envelope parameters */
+  authoritySourceLabel?: AuthoritySourceLabel;
 }
 
 export interface OperatingEnvelopeConstraints {
@@ -461,12 +475,15 @@ export interface OperatingEnvelopeConstraints {
   resourceScopes: string[];
   dataClasses: string[];
   destinations: string[];
+  regions?: string[];
+  r1Services?: string[];
   maxTargetCount?: number;
   maxChangeMagnitude?: number;
   approvalRequirements: ApprovalRequirement[];
   approvedModels: string[];
   approvedTools: string[];
   allowedEnvironments: string[];
+  prohibitedDataClasses?: string[];
 }
 
 export interface ApprovalRequirement {
@@ -534,6 +551,8 @@ export type CapabilityComparisonResult =
   | 'UNTESTED_CAPABILITY'
   | 'UNEXPLAINED_RUNTIME_BEHAVIOR'
   | 'REQUESTED_NOT_AUTHORIZED'
+  | 'AUTHORITY_NOT_REQUESTED'
+  | 'REQUIRED_APPROVAL_STEP_MISSING'
   | 'ALIGNED';
 
 // ─── B19: Verdict precedence ─────────────────────────────────────────────────
@@ -551,9 +570,29 @@ export interface ProfileRule {
   capabilityFamily: CapabilityFamily;
   severity: 'critical' | 'high' | 'medium' | 'low';
   status: 'ACTIVE' | 'PARTIAL_CAPABILITY' | 'PROFILE_ONLY' | 'NOT_YET_DETECTABLE';
+  /** E1 Closure Section 17: Actual implementation status (source-truth) */
+  implementationStatus?: TelecomRuleImplementationStatus;
+  /** E1 Closure Section 18: Exact detector mapping (if STATIC_DETECTOR_ACTIVE) */
+  detectorMapping?: RuleDetectorMapping;
   requiredGuards?: string[];
   expectedTrajectory?: string[];
   impactVector?: ImpactVector;
+}
+
+/**
+ * E1 Closure Section 18: Exact detector mapping for rules with actual implementations.
+ */
+export interface RuleDetectorMapping {
+  /** Scanner module or runtime test that implements this rule */
+  scannerModule?: string;
+  /** Source/sink/guard semantics */
+  semantics?: string;
+  /** Finding identity used by the detector */
+  findingIdentity?: string;
+  /** Coverage limitations */
+  coverageLimitations?: string;
+  /** Runtime attack/property implementation (if RUNTIME_TEST_ACTIVE) */
+  runtimeImplementation?: string;
 }
 
 // ─── B21: Cross-actor rule support ───────────────────────────────────────────
@@ -599,6 +638,12 @@ export interface ActionWitness {
   profileReference?: string;
   envelopeReference?: string;
   observedAt: Date;
+  /** E1 Closure Section 15: Correlation identity — all phases in one set must share this */
+  actionCorrelationId?: string;
+  /** E1 Closure Section 16: Authority source for OTel/classification */
+  authoritySourceLabel?: AuthoritySourceLabel;
+  /** E1 Closure Section 16: OTel source authority classification */
+  oTelSourceAuthority?: OTelSourceAuthority;
 }
 
 // ─── B26: Build/Profile binding ──────────────────────────────────────────────
@@ -654,8 +699,376 @@ export interface AssuranceEvaluationV1_1 extends AssuranceEvaluation {
   operatingEnvelopeId?: string;
   operatingEnvelopeVersion?: string;
   operatingEnvelopeDigest?: string;
+  operatingEnvelopeState?: OperatingEnvelopeState;
+  operatingEnvelopeApprovedBy?: string;
+  operatingEnvelopeApprovalReference?: string;
   claimPackVersions: Record<string, string>;
   rulePackVersions: Record<string, string>;
+  applicableClaimKeys?: string[];
   planeResults?: FivePlaneResult[];
+  fivePlaneComparisons?: CapabilityComparisonRecord[];
   buildBinding?: BuildProfileBinding;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// E1 CLOSURE — Profile Resolver, Capability Identity, Envelope Persistence,
+// Action Witness Correlation, OTel Authority, Telecom Rule Status,
+// Compliance Mapping, Reference POC Fixture
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── Section 3: Profile Resolver ─────────────────────────────────────────────
+
+/**
+ * Resolved profile — the output of the deterministic Profile Resolver.
+ * Contains the resolved profile, inherited parents, and effective packs.
+ */
+export interface ResolvedProfile {
+  profileId: string;
+  profileVersion: string;
+  profileDigest: string;
+  displayName: string;
+  /** All profiles in inheritance chain (root → leaf), including the resolved profile */
+  inheritedProfileIds: string[];
+  /** Effective claim pack versions after inheritance merge */
+  effectiveClaimPackVersions: Record<string, string>;
+  /** Effective rule pack versions after inheritance merge */
+  effectiveRulePackVersions: Record<string, string>;
+  /** Effective non-overridable rule IDs from all ancestors */
+  effectiveNonOverridableRuleIds: string[];
+  /** Effective customer parameters (merged from profile chain) */
+  effectiveCustomerParameters: CustomerParameterSchema;
+  /** Claim keys applicable to this profile + system architecture */
+  applicableClaimKeys: string[];
+  /** Digest of the effective resolved profile (commits to all effective fields) */
+  profileDigestResolved: string;
+}
+
+export type ProfileResolutionStatus = 'RESOLVED' | 'REVIEW' | 'UNAVAILABLE';
+
+export interface ProfileResolutionResult {
+  status: ProfileResolutionStatus;
+  resolvedProfile?: ResolvedProfile;
+  /** Operating envelope bound to this resolution (if any) */
+  operatingEnvelope?: OperatingEnvelope;
+  /** Reason for REVIEW/UNAVAILABLE status */
+  reason?: string;
+}
+
+// ─── Section 8: Default Authority Labels ──────────────────────────────────────
+
+/**
+ * Authority source label — distinguishes authoritative policy from reference defaults.
+ * No synthetic/default value may be labeled AUTHORITATIVE_POLICY.
+ */
+export type AuthoritySourceLabel =
+  | 'AUTHORITATIVE_POLICY'      // sourced from customer/CSP/Ericsson authoritative policy
+  | 'REFERENCE_DEFAULT'         // generic reference default — NOT authoritative
+  | 'SYNTHETIC_REFERENCE_POLICY' // synthetic POC fixture — NOT authoritative
+  | 'PROFILE_DEFINED'           // defined by profile but not yet backed by detector
+  | 'UNKNOWN';
+
+// ─── Section 9: Normalized Capability Identity ────────────────────────────────
+
+/**
+ * Normalized capability key — deterministic identity for a capability.
+ * Accounts for: subject, action, resource, scope, data class, channel, environment.
+ */
+export interface CapabilityKey {
+  subject: string;
+  action: string;
+  resource: string;
+  scope: string;
+  dataClass: string;
+  channel: string;
+  environment: string;
+}
+
+/**
+ * Normalize a CapabilityFact into a deterministic CapabilityKey.
+ */
+export function normalizeCapabilityKey(fact: {
+  subject: string;
+  action: string;
+  resource: string;
+  scope: string;
+  dataClass?: string;
+  channel?: string;
+  environment?: string;
+}): CapabilityKey {
+  return {
+    subject: (fact.subject ?? '').toLowerCase().trim(),
+    action: (fact.action ?? '').toLowerCase().trim(),
+    resource: (fact.resource ?? '').toLowerCase().trim(),
+    scope: (fact.scope ?? '').toLowerCase().trim(),
+    dataClass: (fact.dataClass ?? '').toLowerCase().trim(),
+    channel: (fact.channel ?? '').toLowerCase().trim(),
+    environment: (fact.environment ?? '').toLowerCase().trim(),
+  };
+}
+
+/**
+ * Serialize a CapabilityKey to a deterministic string for comparison.
+ */
+export function capabilityKeyToString(key: CapabilityKey): string {
+  return [key.subject, key.action, key.resource, key.scope, key.dataClass, key.channel, key.environment]
+    .join('|');
+}
+
+// ─── Section 10: Five-Plane Set Comparison ────────────────────────────────────
+
+/**
+ * A capability comparison record — one comparison between planes for a capability set.
+ */
+export interface CapabilityComparisonRecord {
+  capabilityKey: string;
+  requested: boolean;
+  policyAuthorized: boolean;
+  effectivelyGranted: boolean;
+  codeCapable: boolean;
+  observed: boolean;
+  comparisons: CapabilityComparisonResult[];
+  /** Mapped claim key (Section 12 — comparator → U5 claim) */
+  mappedClaimKey?: string;
+  /** Evidence IDs associated with this capability comparison */
+  evidenceIds: string[];
+  /** Profile verdict for this comparison */
+  verdict: ProfileVerdict;
+}
+
+/**
+ * Five-plane set comparison result — the full output of comparing sets of facts.
+ */
+export interface FivePlaneSetComparisonResult {
+  comparisons: CapabilityComparisonRecord[];
+  overallVerdict: ProfileVerdict;
+  /** Summary counts */
+  summary: {
+    aligned: number;
+    overPrivilegedGrant: number;
+    undeclaredCapability: number;
+    observedOutsideEnvelope: number;
+    excessGrantedAuthority: number;
+    untestedCapability: number;
+    unexplainedRuntimeBehavior: number;
+    requestedNotAuthorized: number;
+    authorityNotRequested: number;
+  };
+}
+
+// ─── Section 11: Verdict Policy ───────────────────────────────────────────────
+
+/**
+ * Profile verdict policy — determines severity from comparison result + impact.
+ * Profile policy determines whether a mismatch is BLOCK or REVIEW.
+ */
+export interface VerdictPolicy {
+  /** Observed unauthorized privileged/high-impact action → BLOCK */
+  observedUnauthorizedPrivileged: 'BLOCK' | 'REVIEW';
+  /** Capable unauthorized privileged capability → BLOCK or REVIEW per profile */
+  capableUnauthorizedPrivileged: 'BLOCK' | 'REVIEW';
+  /** Granted beyond policy → BLOCK/REVIEW per authority/impact */
+  grantedBeyondPolicy: 'BLOCK' | 'REVIEW';
+  /** Unused excess permission → normally REVIEW */
+  unusedExcessPermission: 'BLOCK' | 'REVIEW';
+  /** Untested capability → REVIEW */
+  untestedCapability: 'BLOCK' | 'REVIEW';
+  /** Unknown operation → REVIEW */
+  unknownOperation: 'BLOCK' | 'REVIEW';
+}
+
+// ─── Section 14/15: Action Witness Correlation ────────────────────────────────
+
+/**
+ * Action witness correlation identity — all phases in one witness set must
+ * refer to the SAME logical action.
+ */
+export interface ActionWitnessCorrelation {
+  actionCorrelationId: string;
+  buildDigest?: string;
+  actorIdentity: string;
+  operation: string;
+  resourceScope?: string;
+}
+
+/**
+ * OTel source authority classification (Section 16).
+ * Generic application span → OBSERVATION/REQUESTED only.
+ * Trusted sandbox/platform instrumentation → may qualify for APPLIED/CONFIRMED.
+ */
+export type OTelSourceAuthority =
+  | 'GENERIC_APPLICATION'    // → OBSERVATION / REQUESTED only
+  | 'TRUSTED_SANDBOX'        // → may qualify for ACCEPTED / APPLIED
+  | 'PLATFORM_INSTRUMENTATION' // → may qualify for APPLIED / CONFIRMED
+  | 'UNKNOWN_OTEL_SOURCE';
+
+/**
+ * Action witness phase authority — what a given source can prove.
+ */
+export type WitnessPhaseAuthority =
+  | 'ACTION_REQUESTED'
+  | 'ACTION_ATTEMPTED'
+  | 'TARGET_REACHED'
+  | 'ACTION_ACCEPTED'
+  | 'ACTION_APPLIED'
+  | 'ACTION_CONFIRMED'
+  | 'OBSERVATION_ONLY';
+
+// ─── Section 17: Telecom Rule Status Truth ────────────────────────────────────
+
+/**
+ * Telecom rule implementation status — reflects ACTUAL implementation,
+ * not just profile definition.
+ * A profile rule definition alone must never be called an ACTIVE detector.
+ */
+export type TelecomRuleImplementationStatus =
+  | 'PROFILE_DEFINED'           // defined in profile but no detector
+  | 'STATIC_DETECTOR_ACTIVE'    // has actual static scanner implementation
+  | 'RUNTIME_TEST_ACTIVE'       // has actual runtime test implementation
+  | 'ACTION_WITNESS_ACTIVE'     // has action witness boundary implementation
+  | 'PARTIAL_ENGINE_SUPPORT'    // partially implemented by engine
+  | 'REFERENCE_ONLY'            // reference/placeholder only
+  | 'FUTURE';                   // planned but not implemented
+
+// ─── Section 24: Compliance/Framework Mapping ─────────────────────────────────
+
+/**
+ * Framework mapping entry for U6 rendering.
+ * Mapping strength is explicit — HEURISTIC is informational only.
+ */
+export interface FrameworkMappingEntry {
+  framework: string;
+  controlIds: string[];
+  mappingStrength: MappingStrength;
+  sourceReference?: SourceReference;
+}
+
+/**
+ * Profile-backed compliance mapping metadata.
+ * Supports exact/source-backed mappings without claiming certification.
+ */
+export interface ComplianceMappingSet {
+  profileId: string;
+  profileVersion: string;
+  mappings: FrameworkMappingEntry[];
+}
+
+// ─── Section 25-27: Reference POC Fixture ─────────────────────────────────────
+
+/**
+ * Synthetic reference rAPP fixture — clearly labeled, NOT Ericsson authority.
+ */
+export interface SyntheticReferenceRAppFixture {
+  fixtureId: string;
+  fixtureLabel: 'SYNTHETIC_REFERENCE_RAPP';
+  authorityLabel: 'SYNTHETIC_REFERENCE_POLICY';
+  /** Sample repository/source */
+  repository: {
+    repoId: string;
+    repoUrl: string;
+    commitDigest: string;
+    description: string;
+  };
+  /** Synthetic IAM grants */
+  iamGrants: SyntheticIAMGrant[];
+  /** Synthetic operating envelope */
+  operatingEnvelope: OperatingEnvelope;
+  /** Mock R1 action boundary */
+  r1ActionBoundary: SyntheticR1ActionBoundary;
+  /** Controlled action witnesses */
+  actionWitnesses: ActionWitness[];
+  /** Capability facts per plane */
+  capabilityFacts: {
+    requested: CapabilityFact[];
+    policyAuthorized: CapabilityFact[];
+    effectivelyGranted: CapabilityFact[];
+    codeCapable: CapabilityFact[];
+    observed: CapabilityFact[];
+  };
+}
+
+export interface SyntheticIAMGrant {
+  grantId: string;
+  subject: string;
+  action: string;
+  resource: string;
+  scope: string;
+  authorityLabel: 'SYNTHETIC_REFERENCE_POLICY';
+}
+
+export interface SyntheticR1ActionBoundary {
+  boundaryId: string;
+  boundaryType: 'MOCK_R1_SANDBOX';
+  authorityLabel: 'SYNTHETIC_REFERENCE_POLICY';
+  supportedOperations: string[];
+}
+
+/**
+ * POC scenario result — machine-readable fixture output for U6.
+ */
+export interface POCScenarioResult {
+  scenarioId: string;
+  scenarioLabel: string;
+  profileId: string;
+  profileVersion: string;
+  profileDigest: string;
+  envelopeId: string;
+  envelopeVersion: string;
+  envelopeDigest: string;
+  envelopeState: OperatingEnvelopeState;
+  buildDigest: string;
+  requestedCapabilities: CapabilityKey[];
+  authorizedCapabilities: CapabilityKey[];
+  grantedCapabilities: CapabilityKey[];
+  codeCapabilities: CapabilityKey[];
+  observedCapabilities: CapabilityKey[];
+  comparisons: CapabilityComparisonRecord[];
+  claimResults: Array<{
+    claimKey: string;
+    claimState: ClaimState;
+    reasonCodes: ClaimReasonCode[];
+  }>;
+  disposition: AssuranceDisposition;
+  evidenceIds: string[];
+}
+
+/**
+ * Full POC fixture output — proves U6 will have all required data.
+ */
+export interface POCFixtureOutput {
+  fixtureId: string;
+  fixtureLabel: 'SYNTHETIC_REFERENCE_RAPP';
+  authorityLabel: 'SYNTHETIC_REFERENCE_POLICY';
+  profileId: string;
+  profileVersion: string;
+  profileDigest: string;
+  envelopeId: string;
+  envelopeVersion: string;
+  envelopeDigest: string;
+  buildDigest: string;
+  scenarios: POCScenarioResult[];
+  generatedAt: string;
+}
+
+// ─── Section 13: Five-Plane Result Persistence (JSON shape) ───────────────────
+
+/**
+ * Persisted five-plane result — concise JSON stored on evaluation/claim.
+ * U6 must be able to report all planes, delta, reason, evidence IDs.
+ */
+export interface PersistedFivePlaneResult {
+  comparisons: Array<{
+    capabilityKey: string;
+    comparisons: CapabilityComparisonResult[];
+    mappedClaimKey?: string;
+    verdict: ProfileVerdict;
+    evidenceIds: string[];
+    planes: {
+      requested: boolean;
+      policyAuthorized: boolean;
+      effectivelyGranted: boolean;
+      codeCapable: boolean;
+      observed: boolean;
+    };
+  }>;
+  overallVerdict: ProfileVerdict;
 }
