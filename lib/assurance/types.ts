@@ -348,11 +348,53 @@ export type AuthorityClass =
 export type EvidenceMethod =
   | 'IAM_OBSERVATION'
   | 'SIGNED_MANIFEST'
+  | 'APPROVED_POLICY_RECORD'
+  | 'POLICY_CONFIGURATION'
   | 'STATIC_PATH_ANALYSIS'
   | 'STATIC_STRUCTURAL_ANALYSIS'
   | 'RUNTIME_TRACE'
   | 'EXTERNAL_REPORT'
   | 'SELF_REPORT';
+
+// ─── B6: Capability Declaration (Pre-U6: structured capability projection) ─────
+
+export interface CapabilityDeclaration {
+  capabilityId: string;
+  sourcePlane: AssurancePlane;
+  subject?: string;
+  action: string;
+  resource: string;
+  scope?: string;
+  dataClass?: string;
+  channel?: string;
+  environment?: string;
+  guardRequirements?: string[];
+  impact?: string;
+  constraints?: string[];
+  targetCount?: number;
+  changeMagnitude?: number;
+  authorityClass?: AuthorityClass;
+  evidenceMethod?: EvidenceMethod;
+  authoritySourceLabel?: AuthoritySourceLabel;
+  mappingStrength: MappingStrength;
+  sourceRuleId?: string;
+  concernId?: string;
+  /** Reference to canonical evidence that produced this declaration */
+  sourceEvidenceIds: string[];
+}
+
+export type PlaneAvailabilityStatus =
+  | 'PRESENT'
+  | 'NOT_PROVIDED'
+  | 'NOT_EVALUATED'
+  | 'NOT_SUPPORTED_BY_CURRENT_PRODUCER'
+  | 'SYNTHETIC_REFERENCE';
+
+export interface PlaneAvailability {
+  plane: AssurancePlane;
+  status: PlaneAvailabilityStatus;
+  sourceEvidenceIds: string[];
+}
 
 // ─── B6: Capability Fact ─────────────────────────────────────────────────────
 

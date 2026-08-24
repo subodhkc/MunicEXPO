@@ -21,21 +21,23 @@
 
 import {
   CapabilityFact,
+  CapabilityDeclaration,
   OperatingEnvelope,
   ResolvedProfile,
   EvidenceMethod,
   AuthorityClass,
   AssurancePlane,
   AuthoritySourceLabel,
+  MappingStrength,
 } from './types';
-import { ProjectedEvidence } from './evidence-set-builder';
+import type { DecisionEvidenceProjection } from '@/lib/decision-pipeline/evidence-projection';
 import { resolveCanonicalProducerId } from '@/lib/engine-registry/producer-id-compatibility';
 
 export interface CapabilityFactProjectionInput {
   organizationId: string;
   aiSystemId: string;
   orchestratorRunId: string;
-  evidence: ProjectedEvidence[];
+  evidence: DecisionEvidenceProjection[];
   resolvedProfile: ResolvedProfile;
   operatingEnvelope?: OperatingEnvelope;
   evaluationSnapshotAt: Date;
@@ -64,7 +66,7 @@ export function projectCapabilityFacts(input: CapabilityFactProjectionInput): Ca
   };
 }
 
-function projectRequestedFacts(evidence: ProjectedEvidence[]): CapabilityFact[] {
+function projectRequestedFacts(evidence: DecisionEvidenceProjection[]): CapabilityFact[] {
   const facts: CapabilityFact[] = [];
   for (const ev of evidence) {
     const caps = extractCapabilityDeclarations(ev, 'REQUESTED');
@@ -87,7 +89,7 @@ function projectPolicyFacts(operatingEnvelope?: OperatingEnvelope): CapabilityFa
     subject: 'policy',
     sourcePlane: 'POLICY_AUTHORIZED' as AssurancePlane,
     authorityClass: 'AUTHORITATIVE_POLICY' as AuthorityClass,
-    evidenceMethod: 'SIGNED_MANIFEST' as EvidenceMethod,
+    evidenceMethod: 'APPROVED_POLICY_RECORD' as EvidenceMethod,
     sourceEvidenceIds: [operatingEnvelope.envelopeId],
     evidenceId: operatingEnvelope.envelopeId,
     producerRunId: undefined,
@@ -113,7 +115,7 @@ function projectPolicyFacts(operatingEnvelope?: OperatingEnvelope): CapabilityFa
   return facts;
 }
 
-function projectGrantedFacts(evidence: ProjectedEvidence[]): CapabilityFact[] {
+function projectGrantedFacts(evidence: DecisionEvidenceProjection[]): CapabilityFact[] {
   const facts: CapabilityFact[] = [];
   for (const ev of evidence) {
     const caps = extractCapabilityDeclarations(ev, 'EFFECTIVELY_GRANTED');
@@ -122,10 +124,10 @@ function projectGrantedFacts(evidence: ProjectedEvidence[]): CapabilityFact[] {
   return facts;
 }
 
-function projectCapableFacts(evidence: ProjectedEvidence[]): CapabilityFact[] {
+function projectCapableFacts(evidence: DecisionEvidenceProjection[]): CapabilityFact[] {
   const facts: CapabilityFact[] = [];
   for (const ev of evidence) {
-    const producer = resolveCanonicalProducerId(ev.sourceType) ?? ev.sourceType;
+    const producer = resolveCanonicalProducerId(ev.producerId) ?? ev.producerId;
     const isStatic = producer === 'saas-static' || producer === 'saas-inventory';
     if (!isStatic) continue;
 
@@ -135,10 +137,10 @@ function projectCapableFacts(evidence: ProjectedEvidence[]): CapabilityFact[] {
   return facts;
 }
 
-function projectObservedFacts(evidence: ProjectedEvidence[]): CapabilityFact[] {
+function projectObservedFacts(evidence: DecisionEvidenceProjection[]): CapabilityFact[] {
   const facts: CapabilityFact[] = [];
   for (const ev of evidence) {
-    const producer = resolveCanonicalProducerId(ev.sourceType) ?? ev.sourceType;
+    const producer = resolveCanonicalProducerId(ev.producerId) ?? ev.producerId;
     const isRuntime = producer === 'saas-runtime' || ev.evidenceType === 'action_witness' || ev.evidenceType === 'runtime_trace';
     if (!isRuntime) continue;
 
@@ -150,38 +152,33 @@ function projectObservedFacts(evidence: ProjectedEvidence[]): CapabilityFact[] {
   return facts;
 }
 
+/** Pre-U6: only these mapping strengths may create canonical CODE_CAPABLE facts. */
+const CODE_CAPABLE_MAPPING_STRENGTHS: MappingStrength[] = [
+  'EXACT_RULE_MAPPING',
+  'EXACT_CAPABILITY_MAPPING',
+  'PROFILE_MAPPING',
+];
+
 /**
- * Extract capability declarations from evidence metadata or findings.
- * Returns empty if no canonical declaration exists.
+ * Extract capability declarations from evidence's safe structured capability projection.
+ * Returns empty if no canonical declaration exists or the mapping is not strong enough.
  */
-function extractCapabilityDeclarations(ev: ProjectedEvidence, sourcePlane: AssurancePlane): CapabilityFact[] {
+function extractCapabilityDeclarations(ev: DecisionEvidenceProjection, sourcePlane: AssurancePlane): CapabilityFact[] {
   const facts: CapabilityFact[] = [];
-  const metadata = (ev.metadata ?? {}) as Record<string, unknown>;
-  const declarations = metadata.capabilityDeclarations as any[] | undefined;
+  const declarations = ev.capabilityDeclarations || [];
 
-  if (declarations) {
-    for (const decl of declarations) {
-      if (decl && decl.sourcePlane === sourcePlane) {
-        facts.push(buildCapabilityFact(ev, decl));
-      }
-    }
-  }
-
-  if (ev.findings) {
-    for (const finding of ev.findings) {
-      const f = finding as any;
-      if (f && f.sourcePlane === sourcePlane) {
-        facts.push(buildCapabilityFact(ev, f));
-      }
-    }
+  for (const decl of declarations) {
+    if (!decl || decl.sourcePlane !== sourcePlane) continue;
+    if (sourcePlane === 'CODE_CAPABLE' && !CODE_CAPABLE_MAPPING_STRENGTHS.includes(decl.mappingStrength)) continue;
+    facts.push(buildCapabilityFact(ev, decl));
   }
 
   return facts;
 }
 
-function buildCapabilityFact(ev: ProjectedEvidence, decl: any): CapabilityFact {
+function buildCapabilityFact(ev: DecisionEvidenceProjection, decl: CapabilityDeclaration): CapabilityFact {
   return {
-    capabilityId: decl.capabilityId ?? `${ev.id}:capability`,
+    capabilityId: decl.capabilityId ?? `${ev.evidenceId}:capability`,
     subject: decl.subject ?? 'system',
     action: decl.action ?? 'unknown',
     resource: decl.resource ?? 'unknown',
@@ -194,13 +191,13 @@ function buildCapabilityFact(ev: ProjectedEvidence, decl: any): CapabilityFact {
     constraints: Array.isArray(decl.constraints) ? decl.constraints : undefined,
     targetCount: typeof decl.targetCount === 'number' ? decl.targetCount : undefined,
     changeMagnitude: typeof decl.changeMagnitude === 'number' ? decl.changeMagnitude : undefined,
-    evidenceId: ev.id,
-    producerRunId: ev.producerRunId ?? ev.sourceId ?? undefined,
+    evidenceId: ev.evidenceId,
+    producerRunId: ev.producerRunId ?? undefined,
     contentHash: ev.contentHash ?? undefined,
     sourcePlane: decl.sourcePlane as AssurancePlane,
     authorityClass: (decl.authorityClass as AuthorityClass) ?? 'NON_AUTHORITATIVE',
     evidenceMethod: (decl.evidenceMethod as EvidenceMethod) ?? 'STATIC_PATH_ANALYSIS',
-    sourceEvidenceIds: [ev.id, ...(Array.isArray(decl.sourceEvidenceIds) ? decl.sourceEvidenceIds : [])],
+    sourceEvidenceIds: [ev.evidenceId, ...(Array.isArray(decl.sourceEvidenceIds) ? decl.sourceEvidenceIds : [])],
     authoritySourceLabel: (decl.authoritySourceLabel as AuthoritySourceLabel) ?? 'REFERENCE_DEFAULT',
   };
 }

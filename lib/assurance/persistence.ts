@@ -292,6 +292,7 @@ function reconstructEvaluation(record: any): AssuranceEvaluation {
       claimPackVersions: binding.claimPackVersions as Record<string, string> ?? {},
       rulePackVersions: binding.rulePackVersions as Record<string, string> ?? {},
       fivePlaneOverallVerdict: (binding.fivePlaneResult as any)?.overallVerdict ?? 'REVIEW',
+      fivePlaneComparisons: (binding.fivePlaneResult as any)?.comparisons ?? [],
     };
     return v1_1;
   }
