@@ -60,6 +60,7 @@ export function buildUnifiedAssuranceReport(
   buildIdentity: BuildIdentity = emptyBuildIdentity(),
   projectedEvidence: DecisionEvidenceProjection[] = [],
   syntheticClass: 'NONE' | 'SYNTHETIC_REFERENCE' = resolveSyntheticClassification(evaluation as AssuranceEvaluationV1_1),
+  authoritySourceLabel?: string,
 ): UnifiedAssuranceReport {
   const v1_1 = evaluation as AssuranceEvaluationV1_1;
 
@@ -92,7 +93,7 @@ export function buildUnifiedAssuranceReport(
       claimPackVersions: v1_1.claimPackVersions,
       rulePackVersions: v1_1.rulePackVersions,
     },
-    operatingEnvelope: v1_1.operatingEnvelopeId ? buildEnvelopeSection(v1_1) : undefined,
+    operatingEnvelope: v1_1.operatingEnvelopeId ? buildEnvelopeSection(v1_1, authoritySourceLabel) : undefined,
     dispositionExplanation: buildDispositionExplanation(evaluation),
     claimSummary,
     claimResults,
@@ -217,7 +218,8 @@ export function buildDecisionReceipt(
     operatingEnvelopeId: v1_1.operatingEnvelopeId,
     operatingEnvelopeVersion: v1_1.operatingEnvelopeVersion,
     operatingEnvelopeDigest: v1_1.operatingEnvelopeDigest,
-    authoritySourceLabel: v1_1.operatingEnvelopeState === 'APPROVED' ? (v1_1.operatingEnvelopeApprovedBy ? 'AUTHORITATIVE_POLICY' : 'REFERENCE_DEFAULT') : 'UNKNOWN',
+    authoritySourceLabel: report.operatingEnvelope?.authoritySourceLabel ??
+      (v1_1.operatingEnvelopeState === 'APPROVED' ? (v1_1.operatingEnvelopeApprovedBy ? 'AUTHORITATIVE_POLICY' : 'REFERENCE_DEFAULT') : 'UNKNOWN'),
     syntheticClassification: report.syntheticClassification,
     disposition: evaluation.disposition,
     claimStateSummary,
@@ -477,13 +479,18 @@ function buildDefaultPlaneAvailabilityReport(): PlaneAvailability[] {
   }));
 }
 
-function buildEnvelopeSection(v1_1: AssuranceEvaluationV1_1) {
+function buildEnvelopeSection(v1_1: AssuranceEvaluationV1_1, authoritySourceLabel?: string) {
+  const source =
+    authoritySourceLabel ??
+    (v1_1.operatingEnvelopeState === 'APPROVED'
+      ? (v1_1.operatingEnvelopeApprovedBy ? 'AUTHORITATIVE_POLICY' : 'REFERENCE_DEFAULT')
+      : 'UNKNOWN');
   return {
     envelopeId: v1_1.operatingEnvelopeId ?? '',
     envelopeVersion: v1_1.operatingEnvelopeVersion ?? '',
     envelopeDigest: v1_1.operatingEnvelopeDigest ?? '',
     state: v1_1.operatingEnvelopeState ?? 'UNKNOWN',
-    authoritySourceLabel: v1_1.operatingEnvelopeState === 'APPROVED' ? (v1_1.operatingEnvelopeApprovedBy ? 'AUTHORITATIVE_POLICY' : 'REFERENCE_DEFAULT') : 'UNKNOWN',
+    authoritySourceLabel: source,
     approvedBy: v1_1.operatingEnvelopeApprovedBy,
     approvalReference: v1_1.operatingEnvelopeApprovalReference,
     synthetic: resolveSyntheticClassification(v1_1) === 'SYNTHETIC_REFERENCE',

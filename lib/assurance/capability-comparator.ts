@@ -180,6 +180,12 @@ export function compareCapabilitySets(params: {
       }
     }
 
+    // REQUESTED and POLICY and CODE and OBSERVED are present but no qualifying GRANT
+    // This is a genuine missing effective-grant evidence plane, not alignment.
+    if (hasReq && hasPol && hasCap && !hasGra) {
+      planeComparisons.push('EFFECTIVE_GRANT_NOT_PROVIDED');
+    }
+
     // CAPABLE - OBSERVED → UNTESTED_CAPABILITY
     if (hasCap && !hasObs) {
       planeComparisons.push('UNTESTED_CAPABILITY');
@@ -287,6 +293,9 @@ function comparisonToVerdict(
     case 'AUTHORITY_NOT_REQUESTED':
       // Unused excess permission → normally REVIEW
       return policy.unusedExcessPermission;
+
+    case 'EFFECTIVE_GRANT_NOT_PROVIDED':
+      return 'REVIEW';
 
     case 'UNTESTED_CAPABILITY':
       return policy.untestedCapability;
@@ -418,6 +427,14 @@ export function mapComparisonToClaim(comparisons: CapabilityComparisonResult[]):
   if (comparisons.includes('REQUESTED_NOT_AUTHORIZED')) {
     return 'privileged-action-authorization';
   }
+  // EFFECTIVE_GRANT_NOT_PROVIDED → authorization/least-privilege claim
+  if (comparisons.includes('EFFECTIVE_GRANT_NOT_PROVIDED')) {
+    return 'privileged-action-authorization';
+  }
+  // ALIGNED → the capability is within the approved envelope
+  if (comparisons.includes('ALIGNED')) {
+    return 'privileged-action-authorization';
+  }
   // UNTESTED_CAPABILITY → runtime-safety-observation
   if (comparisons.includes('UNTESTED_CAPABILITY')) {
     return 'runtime-safety-observation';
@@ -457,6 +474,10 @@ export function comparisonToClaimState(
   if (comparisons.includes('EXCESS_GRANTED_AUTHORITY')) {
     reasonCodes.push('OVER_PRIVILEGED_GRANT_DETECTED');
     return { claimState: 'CONTRADICTED', reasonCodes };
+  }
+  if (comparisons.includes('EFFECTIVE_GRANT_NOT_PROVIDED')) {
+    reasonCodes.push('EFFECTIVE_GRANT_NOT_PROVIDED');
+    return { claimState: 'REVIEW_REQUIRED', reasonCodes };
   }
   if (comparisons.includes('UNTESTED_CAPABILITY')) {
     reasonCodes.push('NOT_EVALUATED');

@@ -511,6 +511,8 @@ function mapComparisonResultToReason(result: string): ClaimReasonCode[] {
       return ['UNEXPLAINED_RUNTIME_BEHAVIOR'];
     case 'REQUESTED_NOT_AUTHORIZED':
       return ['REQUESTED_NOT_AUTHORIZED'];
+    case 'EFFECTIVE_GRANT_NOT_PROVIDED':
+      return ['EFFECTIVE_GRANT_NOT_PROVIDED'];
     case 'CAPABILITY_OUTSIDE_POLICY':
       return ['CAPABILITY_OUTSIDE_POLICY'];
     case 'SCOPE_EXCEEDS_POLICY':

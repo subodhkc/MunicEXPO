@@ -103,6 +103,7 @@ function projectPolicyFacts(operatingEnvelope: OperatingEnvelope | undefined, ai
       facts.push({
         ...base,
         capabilityId: `${op}:${scope}`,
+        capabilityFamily: (op.split('.')[0] ?? 'UNKNOWN') as any,
         action: op,
         resource: extractResourceFromOperation(op),
         scope,
@@ -240,12 +241,13 @@ function buildCapabilityFact(ev: DecisionEvidenceProjection, decl: EvidenceCapab
 
 function extractResourceFromOperation(operation: string): string {
   // Minimal resource inference from O-RAN / R1 operations
-  if (operation.includes('policy')) return 'policy';
-  if (operation.includes('config')) return 'config';
-  if (operation.includes('data')) return 'data';
-  if (operation.includes('model')) return 'model';
-  if (operation.includes('callback')) return 'callback';
-  if (operation.includes('service')) return 'service';
+  const op = operation.toLowerCase();
+  if (op.includes('policy')) return 'policy';
+  if (op.includes('config')) return 'config';
+  if (op.includes('data')) return 'data';
+  if (op.includes('model')) return 'model';
+  if (op.includes('callback')) return 'callback';
+  if (op.includes('service')) return 'service';
   return 'resource';
 }
 

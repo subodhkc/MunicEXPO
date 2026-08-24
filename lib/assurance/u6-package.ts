@@ -54,15 +54,14 @@ export function buildAssuranceVerificationPackage(
   const bundle = buildEvidenceBundle(evaluation, projectedEvidence);
 
   // 2. Unified Assurance Report Core
-  const report = buildUnifiedAssuranceReport(evaluation, bundle, buildIdentity, projectedEvidence);
+  const synthetic = context.syntheticClassification ?? resolveSyntheticClassification(evaluation, v1_1);
+  const report = buildUnifiedAssuranceReport(evaluation, bundle, buildIdentity, projectedEvidence, synthetic, context.authoritySourceLabel);
 
   // 3. Decision Receipt
   const receipt = buildDecisionReceipt(evaluation, report, bundle);
 
   // 4. Package Digest
   const semanticPackageDigest = computePackageDigest(evaluation.id, report, bundle, receipt);
-
-  const synthetic = context.syntheticClassification ?? resolveSyntheticClassification(evaluation, v1_1);
 
   return {
     packageSchemaVersion: U6_VERIFICATION_SCHEMA_VERSION,
