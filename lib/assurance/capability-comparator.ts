@@ -36,8 +36,7 @@ import {
   ClaimReasonCode,
 } from './types';
 import {
-  normalizeCapabilityKey,
-  capabilityKeyToString,
+  coreCapabilityKeyToString,
 } from './types';
 import { compareVerdicts } from './profile-hierarchy';
 import {
@@ -83,17 +82,18 @@ export function compareCapabilitySets(params: {
 
   const comparisons: CapabilityComparisonRecord[] = [];
 
-  // Collect all unique capability keys across all planes
+  // U6: Group by core semantic identity (family, subject, action, resource).
+  // Optional dimensions and bounds are compared inside each candidate group.
   const allFacts = [...requested, ...policy, ...granted, ...capable, ...observed];
-  const allKeys = new Set(allFacts.map(f => capabilityKeyToString(normalizeCapabilityKey(f))));
+  const allKeys = new Set(allFacts.map(f => coreCapabilityKeyToString(f)));
 
   // For each unique capability, compare across planes
   for (const keyStr of allKeys) {
-    const reqMatches = requested.filter(f => capabilityKeyToString(normalizeCapabilityKey(f)) === keyStr);
-    const polMatches = policy.filter(f => capabilityKeyToString(normalizeCapabilityKey(f)) === keyStr);
-    const graMatches = granted.filter(f => capabilityKeyToString(normalizeCapabilityKey(f)) === keyStr);
-    const capMatches = capable.filter(f => capabilityKeyToString(normalizeCapabilityKey(f)) === keyStr);
-    const obsMatches = observed.filter(f => capabilityKeyToString(normalizeCapabilityKey(f)) === keyStr);
+    const reqMatches = requested.filter(f => coreCapabilityKeyToString(f) === keyStr);
+    const polMatches = policy.filter(f => coreCapabilityKeyToString(f) === keyStr);
+    const graMatches = granted.filter(f => coreCapabilityKeyToString(f) === keyStr);
+    const capMatches = capable.filter(f => coreCapabilityKeyToString(f) === keyStr);
+    const obsMatches = observed.filter(f => coreCapabilityKeyToString(f) === keyStr);
 
     const hasReq = reqMatches.length > 0;
     const hasPol = polMatches.length > 0;

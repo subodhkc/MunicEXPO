@@ -931,6 +931,20 @@ export function semanticCapabilityKeyToString(key: SemanticCapabilityKey): strin
     .join('|');
 }
 
+/**
+ * U6: Core capability identity string used for grouping candidates before
+ * comparing optional dimensions and bounds.
+ */
+export function coreCapabilityKeyToString(fact: {
+  capabilityFamily?: string;
+  subject: string;
+  action: string;
+  resource: string;
+}): string {
+  return [(fact.capabilityFamily ?? '').toLowerCase().trim(), fact.subject.toLowerCase().trim(), fact.action.toLowerCase().trim(), fact.resource.toLowerCase().trim()]
+    .join('|');
+}
+
 // ─── Section 10: Five-Plane Set Comparison ────────────────────────────────────
 
 /**

@@ -18,14 +18,30 @@ import {
 } from './types';
 
 /**
- * U6: Check if two capability facts represent the SAME capability semantically
- * (same capability family, subject, action, resource, data class, channel, environment).
- * Operational scope and quantitative bounds are compared separately via scopeContains/constraintsContain.
+ * U6: Check if two capability facts are semantically compatible candidates.
+ *
+ * Core identity (family, subject, action, resource) must match.
+ * Optional dimensions (dataClass, channel, environment) must not be known to differ.
+ * If one side is unknown/not established, they remain a candidate pair and
+ * uncertainty is handled during bounds comparison.
+ * Operational scope and quantitative bounds are compared separately.
  */
 export function sameCapability(a: CapabilityFact, b: CapabilityFact): boolean {
-  const keyA = normalizeSemanticCapabilityKey(a);
-  const keyB = normalizeSemanticCapabilityKey(b);
-  return semanticCapabilityKeyToString(keyA) === semanticCapabilityKeyToString(keyB);
+  if ((a.capabilityFamily ?? '').toLowerCase() !== (b.capabilityFamily ?? '').toLowerCase()) return false;
+  if (a.subject.toLowerCase() !== b.subject.toLowerCase()) return false;
+  if (a.action.toLowerCase() !== b.action.toLowerCase()) return false;
+  if (a.resource.toLowerCase() !== b.resource.toLowerCase()) return false;
+
+  const optionalDim = (aVal?: string, bVal?: string) => {
+    const x = (aVal ?? '').toLowerCase().trim();
+    const y = (bVal ?? '').toLowerCase().trim();
+    if (!x || !y) return true; // one side unknown is a candidate
+    return x === y;
+  };
+
+  return optionalDim(a.dataClass, b.dataClass) &&
+    optionalDim(a.channel, b.channel) &&
+    optionalDim(a.environment, b.environment);
 }
 
 /**

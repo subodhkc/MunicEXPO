@@ -56,21 +56,21 @@ export interface CapabilityFactProjectionResult {
  * Main projection — no LLM, deterministic, evidence-backed.
  */
 export function projectCapabilityFacts(input: CapabilityFactProjectionInput): CapabilityFactProjectionResult {
-  const { evidence, operatingEnvelope } = input;
+  const { evidence, operatingEnvelope, aiSystemId } = input;
 
   return {
-    requested: projectRequestedFacts(evidence),
-    policy: projectPolicyFacts(operatingEnvelope),
-    granted: projectGrantedFacts(evidence),
-    capable: projectCapableFacts(evidence),
-    observed: projectObservedFacts(evidence),
+    requested: projectRequestedFacts(evidence, aiSystemId),
+    policy: projectPolicyFacts(operatingEnvelope, aiSystemId),
+    granted: projectGrantedFacts(evidence, aiSystemId),
+    capable: projectCapableFacts(evidence, aiSystemId),
+    observed: projectObservedFacts(evidence, aiSystemId),
   };
 }
 
-function projectRequestedFacts(evidence: DecisionEvidenceProjection[]): CapabilityFact[] {
+function projectRequestedFacts(evidence: DecisionEvidenceProjection[], aiSystemId: string): CapabilityFact[] {
   const facts: CapabilityFact[] = [];
   for (const ev of evidence) {
-    const caps = extractCapabilityDeclarations(ev, 'REQUESTED');
+    const caps = extractCapabilityDeclarations(ev, 'REQUESTED', aiSystemId);
     if (caps.length > 0) facts.push(...caps);
   }
   return facts;
@@ -80,14 +80,14 @@ function projectRequestedFacts(evidence: DecisionEvidenceProjection[]): Capabili
  * POLICY_AUTHORIZED may ONLY come from an APPROVED operating envelope.
  * DRAFT / SUPERSEDED / REVOKED envelopes produce no POLICY_AUTHORIZED facts.
  */
-function projectPolicyFacts(operatingEnvelope?: OperatingEnvelope): CapabilityFact[] {
+function projectPolicyFacts(operatingEnvelope: OperatingEnvelope | undefined, aiSystemId: string): CapabilityFact[] {
   if (!operatingEnvelope) return [];
   if (operatingEnvelope.state !== 'APPROVED') return [];
 
   const facts: CapabilityFact[] = [];
   const constraints = operatingEnvelope.constraints;
   const base = {
-    subject: 'policy',
+    subject: `system:${aiSystemId}`,
     sourcePlane: 'POLICY_AUTHORIZED' as AssurancePlane,
     authorityClass: 'AUTHORITATIVE_POLICY' as AuthorityClass,
     evidenceMethod: 'APPROVED_POLICY_RECORD' as EvidenceMethod,
@@ -116,16 +116,16 @@ function projectPolicyFacts(operatingEnvelope?: OperatingEnvelope): CapabilityFa
   return facts;
 }
 
-function projectGrantedFacts(evidence: DecisionEvidenceProjection[]): CapabilityFact[] {
+function projectGrantedFacts(evidence: DecisionEvidenceProjection[], aiSystemId: string): CapabilityFact[] {
   const facts: CapabilityFact[] = [];
   for (const ev of evidence) {
-    const caps = extractCapabilityDeclarations(ev, 'EFFECTIVELY_GRANTED');
+    const caps = extractCapabilityDeclarations(ev, 'EFFECTIVELY_GRANTED', aiSystemId);
     if (caps.length > 0) facts.push(...caps);
   }
   return facts;
 }
 
-function projectCapableFacts(evidence: DecisionEvidenceProjection[]): CapabilityFact[] {
+function projectCapableFacts(evidence: DecisionEvidenceProjection[], aiSystemId: string): CapabilityFact[] {
   const facts: CapabilityFact[] = [];
   for (const ev of evidence) {
     const producer = resolveCanonicalProducerId(ev.producerId) ?? ev.producerId;
@@ -133,13 +133,13 @@ function projectCapableFacts(evidence: DecisionEvidenceProjection[]): Capability
     const isStatic = producer === 'saas-static';
     if (!isStatic) continue;
 
-    const caps = extractCapabilityDeclarations(ev, 'CODE_CAPABLE');
+    const caps = extractCapabilityDeclarations(ev, 'CODE_CAPABLE', aiSystemId);
     if (caps.length > 0) facts.push(...caps);
   }
   return facts;
 }
 
-function projectObservedFacts(evidence: DecisionEvidenceProjection[]): CapabilityFact[] {
+function projectObservedFacts(evidence: DecisionEvidenceProjection[], aiSystemId: string): CapabilityFact[] {
   const facts: CapabilityFact[] = [];
   for (const ev of evidence) {
     const producer = resolveCanonicalProducerId(ev.producerId) ?? ev.producerId;
@@ -148,7 +148,7 @@ function projectObservedFacts(evidence: DecisionEvidenceProjection[]): Capabilit
 
     // Generic runtime trace alone cannot establish OBSERVED/APPLIED.
     // Only exact capability declarations on runtime evidence with sourcePlane=OBSERVED are kept
-    const caps = extractCapabilityDeclarations(ev, 'OBSERVED');
+    const caps = extractCapabilityDeclarations(ev, 'OBSERVED', aiSystemId);
     if (caps.length > 0) facts.push(...caps);
   }
   return facts;
@@ -193,26 +193,26 @@ function qualifyDeclaration(ev: DecisionEvidenceProjection, decl: EvidenceCapabi
  * Extract capability declarations from evidence's safe structured capability projection.
  * Returns empty if no canonical declaration exists or the plane qualification fails.
  */
-function extractCapabilityDeclarations(ev: DecisionEvidenceProjection, sourcePlane: AssurancePlane): CapabilityFact[] {
+function extractCapabilityDeclarations(ev: DecisionEvidenceProjection, sourcePlane: AssurancePlane, aiSystemId: string): CapabilityFact[] {
   const facts: CapabilityFact[] = [];
   const declarations = ev.capabilityDeclarations || [];
 
   for (const decl of declarations) {
     if (!decl || decl.sourcePlane !== sourcePlane) continue;
     if (!qualifyDeclaration(ev, decl, sourcePlane)) continue;
-    const fact = buildCapabilityFact(ev, decl);
+    const fact = buildCapabilityFact(ev, decl, aiSystemId);
     if (fact) facts.push(fact);
   }
 
   return facts;
 }
 
-function buildCapabilityFact(ev: DecisionEvidenceProjection, decl: EvidenceCapabilityDeclaration): CapabilityFact | undefined {
+function buildCapabilityFact(ev: DecisionEvidenceProjection, decl: EvidenceCapabilityDeclaration, aiSystemId: string): CapabilityFact | undefined {
   if (!decl.evidenceMethod) return undefined;
   return {
     capabilityId: decl.capabilityId ?? `${ev.evidenceId}:capability`,
     capabilityFamily: decl.capabilityFamily as any,
-    subject: decl.subject ?? 'system',
+    subject: decl.subject ?? `system:${aiSystemId}`,
     action: decl.action ?? 'unknown',
     resource: decl.resource ?? 'unknown',
     scope: decl.scope ?? 'UNKNOWN',
@@ -251,13 +251,13 @@ function extractResourceFromOperation(operation: string): string {
 
 const PLANE_ORDER: AssurancePlane[] = ['REQUESTED', 'POLICY_AUTHORIZED', 'EFFECTIVELY_GRANTED', 'CODE_CAPABLE', 'OBSERVED'];
 
-/** U6: canonical producers that can support each capability plane. */
+/** U6: canonical producers that currently emit qualifying capability evidence per plane. */
 const PLANE_PRODUCERS: Record<AssurancePlane, string[]> = {
-  REQUESTED: [PRODUCER_IDS.SAAS_WIZARD],
+  REQUESTED: [], // no native REQUESTED capability producer currently
   POLICY_AUTHORIZED: [], // operating envelope / policy record
-  EFFECTIVELY_GRANTED: [PRODUCER_IDS.SAAS_INVENTORY],
-  CODE_CAPABLE: [PRODUCER_IDS.SAAS_STATIC, PRODUCER_IDS.CI_CD_SCANNER, PRODUCER_IDS.SARIF_IMPORT],
-  OBSERVED: [PRODUCER_IDS.SAAS_RUNTIME],
+  EFFECTIVELY_GRANTED: [], // IAM/grant evidence not yet integrated
+  CODE_CAPABLE: [PRODUCER_IDS.SAAS_STATIC], // bounded R2/R10 finding-derived bridge only
+  OBSERVED: [PRODUCER_IDS.SAAS_RUNTIME], // authoritative action witness evidence
 };
 
 /**
