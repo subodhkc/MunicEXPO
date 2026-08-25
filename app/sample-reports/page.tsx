@@ -13,13 +13,13 @@ export const metadata: Metadata = {
     'bias audit report template NYC',
     'LL144 public disclosure example',
     'NYC employer AI audit requirements',
-    'Colorado AI Act compliance report',
+    'Colorado ADMT Act compliance report',
     'Colorado SB 26-189 sample report',
-    'Colorado AI impact assessment template',
+    'Colorado AI technical documentation template',
     'Colorado AI consumer notice example',
-    'Colorado AI risk management policy sample',
-    'CRS 6-1-1703 deployer impact assessment',
-    'Colorado AI Act deadline June 2026',
+    'Colorado AI record retention framework sample',
+    'SB 26-189 covered ADMT documentation',
+    'Colorado ADMT Act deadline January 2027',
     'EU AI Act compliance report sample',
     'EU AI Act conformity assessment example',
     'EU AI Act high-risk AI documentation',
@@ -117,8 +117,8 @@ export const metadata: Metadata = {
             {
               '@type': 'ListItem',
               position: 7,
-              name: 'Colorado AI Risk Management Policy',
-              description: 'NIST AI RMF-aligned risk management policy with bias testing plan, discrimination monitoring, and incident response.',
+              name: 'Colorado ADMT Act Record Retention Framework',
+              description: '3-year compliance record retention framework with documentation standards for technical documentation, consumer notices, and consumer rights requests.',
               url: 'https://www.haiec.com/sample-reports#colorado-risk-policy',
             },
             {
@@ -171,15 +171,15 @@ export const metadata: Metadata = {
             },
             {
               '@type': 'Question',
-              name: 'What is included in a Colorado AI Act compliance assessment?',
+              name: 'What is included in a Colorado ADMT Act compliance assessment?',
               acceptedAnswer: {
                 '@type': 'Answer',
-                text: 'A Colorado AI Act (SB 26-189) compliance assessment includes 8-section scoring against statutory requirements, CRS §6-1-1703 deployer impact assessment, consumer notice templates per CRS §6-1-1704, NIST AI RMF-aligned risk management policy, and a phased remediation roadmap with cost estimates. The compliance deadline is June 30, 2026.',
+                text: 'A Colorado ADMT Act (SB 26-189) compliance assessment includes covered ADMT classification, developer technical documentation review, consumer notice template generation, post-adverse-outcome disclosure procedures, record retention framework, and a phased remediation roadmap with cost estimates. The compliance deadline is January 1, 2027.',
               },
             },
             {
               '@type': 'Question',
-              name: 'How does HAIEC ensure compliance report accuracy?',
+              name: 'How does HAIEC support compliance report accuracy?',
               acceptedAnswer: {
                 '@type': 'Answer',
                 text: 'HAIEC uses deterministic, rule-based engines — not AI or ML models. Every report is reproducible: the same inputs always produce the same outputs. All evidence is SHA-256 hashed for tamper-evident verification. Reports map findings to specific statutory references and control IDs.',

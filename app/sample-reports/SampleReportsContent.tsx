@@ -169,7 +169,7 @@ const artifacts: SampleArtifact[] = [
     product: 'Compliance Wizard',
     productIcon: FileText,
     category: 'report',
-    description: 'SB 26-189 compliance assessment with section-by-section scoring across 8 requirement areas, critical gap analysis, remediation roadmap, and resource estimates. Deadline: June 30, 2026.',
+    description: 'SB 26-189 compliance assessment with covered ADMT classification, technical documentation review, consumer notice evaluation, post-adverse-outcome disclosure procedures, and record retention framework. Effective: January 1, 2027.',
     proves: [
       '8-section compliance scoring against SB 26-189 requirements',
       'Critical gaps with statutory references',
@@ -237,11 +237,11 @@ const artifacts: SampleArtifact[] = [
   },
   {
     id: 'colorado-risk-policy',
-    name: 'Colorado AI Risk Management Policy',
+    name: 'Colorado ADMT Act Record Retention Framework',
     product: 'Colorado AI Service',
     productIcon: FileText,
     category: 'report',
-    description: 'CRS §6-1-1702(2) & §6-1-1703(2) risk management policy with NIST AI RMF alignment, risk categories, bias testing plan, discrimination monitoring, incident response, and governance structure.',
+    description: 'SB 26-189 3-year compliance record retention framework with documentation standards for technical documentation, consumer notices, post-adverse-outcome disclosures, and consumer rights requests.',
     proves: [
       'NIST/ISO-aligned for safe harbor defense',
       'Risk matrix with 5 categories and ownership',
