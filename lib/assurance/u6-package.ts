@@ -29,6 +29,7 @@ import {
   PackageVerificationResult,
   PublicVerificationResult,
 } from './u6-types';
+import { resolvePublicProfileLabel } from './u6-public-profile-label';
 
 export type { U6Package } from './u6-types';
 
@@ -229,10 +230,11 @@ export function buildPublicVerificationResult(
     evaluatedAt: pkg.receipt.evaluationSnapshotAt,
     methodologyVersion: pkg.receipt.assuranceMethodologyVersion,
     reportSchemaVersion: pkg.report.reportVersion,
-    profileLabel: pkg.receipt.profileId,
+    // Defect 3: Public-safe profile label — bounded allowlist, not raw profileId
+    profileLabel: resolvePublicProfileLabel(pkg.receipt.profileId),
     profileVersion: pkg.receipt.profileVersion,
-    // Part 22: Construct safe scope summary, not regex-redacted private scope
-    scopeSummary: `HAIEC Assurance evaluation completed under ${pkg.receipt.profileId ?? 'the selected Assurance Profile'}. The public verification confirms the recorded decision and package integrity without exposing private Evidence or operating-envelope identifiers.`,
+    // Defect 3: Construct safe scope summary using public label, not profileId
+    scopeSummary: `HAIEC Assurance evaluation completed under ${resolvePublicProfileLabel(pkg.receipt.profileId)}. The public verification confirms the recorded decision and package integrity without exposing private Evidence or operating-envelope identifiers.`,
     receiptHash: pkg.receipt.receiptHash,
     merkleRoot: pkg.merkleRoot,
     merkleStatus: pkg.merkleStatus,
@@ -243,65 +245,120 @@ export function buildPublicVerificationResult(
 }
 
 export function resolveBuildIdentity(
-  _evaluation: AssuranceEvaluation,
+  evaluation: AssuranceEvaluation,
   projectedEvidence: DecisionEvidenceProjection[],
 ): BuildIdentity {
-  // Part 12: Source-truth Build Identity resolution from EXACT Evidence selected for the evaluated run.
+  // Defect 5/6/7: Source-truth Build Identity resolution from EXACT Evidence selected for the evaluated run.
   // Allowed sources by strength:
-  //   1. persisted evaluation buildBinding if exact and available
-  //   2. exact-run CI Evidence with an exact commit/build reference
-  //   3. exact-run Static REPOSITORY target.version if it is a valid Git commit SHA
-  //   4. exact canonical Evidence provenance if an explicit build/package/container identity already exists
+  //   1. persisted evaluation buildBinding if exact and available (BUILD_PROFILE_BINDING)
+  //   2. exact-run CI Evidence with an exact commit/build reference (ORCHESTRATOR_CI_COMMIT)
+  //   3. exact-run Static REPOSITORY target.version if valid Git SHA (STATIC_REPOSITORY_COMMIT)
+  //   4. exact canonical Evidence provenance (EVIDENCE_PROVENANCE)
+  //
+  // Defect 7: Non-conflicting identifiers across dimensions are preserved.
+  //   gitCommit + containerDigest + packageDigest can coexist.
+  //   Only conflicting values for the SAME dimension → BUILD_IDENTITY_CONFLICT.
+  //
+  // Defect 8: CI exact-run binding is NOT currently available in projectEvidenceForRun().
+  //   ci-cd-scanner and sarif-import are not bound to orchestrator runs.
+  //   Therefore ORCHESTRATOR_CI_COMMIT is not currently produced from Evidence.
+  //   This is a truthful limitation, not a failure.
 
-  const gitCommits = new Set<string>();
-  const containerDigests = new Set<string>();
-  const packageDigests = new Set<string>();
+  const v1_1 = evaluation as AssuranceEvaluationV1_1;
+
+  // Source 1: buildBinding (Defect 5)
+  if (v1_1.buildBinding) {
+    const bb = v1_1.buildBinding;
+    const identity: BuildIdentity = {
+      source: 'BUILD_PROFILE_BINDING',
+    };
+    if (bb.gitCommit) identity.gitCommit = bb.gitCommit;
+    if (bb.containerDigest) identity.containerDigest = bb.containerDigest;
+    if (bb.packageDigest) identity.packageDigest = bb.packageDigest;
+    if (bb.applicationVersion) identity.applicationVersion = bb.applicationVersion;
+    // Only return if at least one identifier is present
+    if (identity.gitCommit || identity.containerDigest || identity.packageDigest || identity.applicationVersion) {
+      return identity;
+    }
+  }
+
+  // Collect identifiers from Evidence, tracking source per dimension
+  const gitCommits = new Map<string, string>(); // value → source label
+  const containerDigests = new Map<string, string>();
+  const packageDigests = new Map<string, string>();
 
   for (const ev of projectedEvidence) {
-    // Source 3: target.version as Git commit SHA
+    const producerId = ev.producerId as string;
+
+    // Source 3: target.version as Git commit SHA (Defect 6: label by producer)
     const targetVersion = ev.target?.version;
     if (targetVersion && isValidGitSha(targetVersion)) {
-      gitCommits.add(targetVersion);
+      // Defect 6: Static evidence gets STATIC_REPOSITORY_COMMIT, not ORCHESTRATOR_CI_COMMIT
+      // Defect 8: CI producer would get ORCHESTRATOR_CI_COMMIT, but ci-cd-scanner is not currently bound
+      const sourceLabel = producerId === 'ci-cd-scanner' ? 'ORCHESTRATOR_CI_COMMIT' : 'STATIC_REPOSITORY_COMMIT';
+      gitCommits.set(targetVersion, sourceLabel);
     }
 
     // Source 4: provenance refs with explicit build/package/container identity
     for (const ref of ev.provenanceRefs ?? []) {
       const refAny = ref as any;
       if (refAny.gitCommit && isValidGitSha(refAny.gitCommit)) {
-        gitCommits.add(refAny.gitCommit);
+        gitCommits.set(refAny.gitCommit, 'EVIDENCE_PROVENANCE');
       }
       if (refAny.containerDigest) {
-        containerDigests.add(refAny.containerDigest);
+        containerDigests.set(refAny.containerDigest, 'EVIDENCE_PROVENANCE');
       }
       if (refAny.packageDigest) {
-        packageDigests.add(refAny.packageDigest);
+        packageDigests.set(refAny.packageDigest, 'EVIDENCE_PROVENANCE');
       }
     }
   }
 
-  // Part 12: Conflict detection
-  if (gitCommits.size > 1) {
+  // Defect 7: Conflict detection per dimension. Non-conflicting dimensions coexist.
+  const hasGitConflict = gitCommits.size > 1;
+  const hasContainerConflict = containerDigests.size > 1;
+  const hasPackageConflict = packageDigests.size > 1;
+
+  if (hasGitConflict || hasContainerConflict || hasPackageConflict) {
     return { source: 'NOT_PROVIDED', explanation: 'BUILD_IDENTITY_CONFLICT' };
   }
+
+  // Defect 7: Build identity preserving all non-conflicting identifiers
+  const identity: BuildIdentity = {};
+  const sources: string[] = [];
+
   if (gitCommits.size === 1) {
-    return { source: 'ORCHESTRATOR_CI_COMMIT', gitCommit: Array.from(gitCommits)[0] };
+    const [commit, source] = Array.from(gitCommits.entries())[0];
+    identity.gitCommit = commit;
+    sources.push(source);
   }
 
-  if (containerDigests.size > 1) {
-    return { source: 'NOT_PROVIDED', explanation: 'BUILD_IDENTITY_CONFLICT' };
-  }
   if (containerDigests.size === 1) {
-    return { source: 'EVIDENCE_PROVENANCE', containerDigest: Array.from(containerDigests)[0] };
+    const [digest, source] = Array.from(containerDigests.entries())[0];
+    identity.containerDigest = digest;
+    sources.push(source);
   }
 
-  if (packageDigests.size > 1) {
-    return { source: 'NOT_PROVIDED', explanation: 'BUILD_IDENTITY_CONFLICT' };
-  }
   if (packageDigests.size === 1) {
-    return { source: 'EVIDENCE_PROVENANCE', packageDigest: Array.from(packageDigests)[0] };
+    const [digest, source] = Array.from(packageDigests.entries())[0];
+    identity.packageDigest = digest;
+    sources.push(source);
   }
 
-  // Part 12: No exact build evidence
+  if (sources.length > 0) {
+    // Defect 7: Source is the strongest source that contributed.
+    // Priority: BUILD_PROFILE_BINDING > ORCHESTRATOR_CI_COMMIT > STATIC_REPOSITORY_COMMIT > EVIDENCE_PROVENANCE
+    if (sources.includes('ORCHESTRATOR_CI_COMMIT')) {
+      identity.source = 'ORCHESTRATOR_CI_COMMIT';
+    } else if (sources.includes('STATIC_REPOSITORY_COMMIT')) {
+      identity.source = 'STATIC_REPOSITORY_COMMIT';
+    } else {
+      identity.source = 'EVIDENCE_PROVENANCE';
+    }
+    return identity;
+  }
+
+  // No exact build evidence
   return { source: 'NOT_PROVIDED', explanation: 'BUILD_IDENTITY_NOT_PROVIDED' };
 }
 

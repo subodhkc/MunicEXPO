@@ -114,6 +114,8 @@ export async function persistAssuranceEvaluation(
           // Section 13: Persist five-plane comparison as concise JSON
           fivePlaneResult: buildPersistedFivePlaneResult(v1_1) as any,
           applicableClaimKeys: (v1_1.applicableClaimKeys ?? []) as any,
+          // Defect 5: Persist buildBinding if supplied (supported contract, currently not populated)
+          buildBinding: (v1_1 as any).buildBinding ?? null,
         },
       });
     }
@@ -334,6 +336,8 @@ function reconstructEvaluation(record: any): AssuranceEvaluation {
         capable: [],
         observed: [],
       },
+      // Defect 5: Reconstruct buildBinding if persisted
+      buildBinding: (binding as any).buildBinding ?? undefined,
     };
     return v1_1;
   }

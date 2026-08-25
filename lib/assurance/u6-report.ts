@@ -92,9 +92,11 @@ export function buildUnifiedAssuranceReport(
       profileVersion: v1_1.profileVersion,
       profileDigest: v1_1.profileDigest,
       profileDigestResolved: v1_1.profileDigestResolved,
-      // Part 35: Preserve profile source references if persisted in the evaluation.
-      // Do not reconstruct from the internet at report-generation time.
-      sourceReferences: (v1_1 as any).profileSourceReferences ?? [],
+      // Defect 13: Profile source references are NOT persisted in the current evaluation contract.
+      // ResolvedProfile does not carry sourceReferences; AssuranceEvaluationV1_1 does not define profileSourceReferences.
+      // Leave empty and document: PROFILE_SOURCE_REFERENCES_NOT_PERSISTED
+      // Do not fetch sources from the internet at report time.
+      sourceReferences: [],
       applicableClaimKeys: v1_1.applicableClaimKeys ?? [],
       claimPackVersions: v1_1.claimPackVersions,
       rulePackVersions: v1_1.rulePackVersions,
@@ -621,12 +623,16 @@ function buildLimitations(
     if (plane.status === 'NOT_SUPPORTED_BY_CURRENT_PRODUCER') add({ code: 'PLANE_NOT_SUPPORTED', explanation: `${plane.plane} not supported by current producer`, scope: plane.plane });
   }
 
-  // Part 13: Build Identity limitation
+  // Part 13 / Defect 12: Build Identity limitation — fix dead branch
+  // CONFLICT and NOT_PROVIDED both use source=NOT_PROVIDED but different explanations.
+  // Check explanation FIRST to distinguish them.
   if (buildIdentity) {
     if (buildIdentity.source === 'NOT_PROVIDED') {
-      add({ code: buildIdentity.explanation ?? 'BUILD_IDENTITY_NOT_PROVIDED', explanation: 'Build Identity was not established from the evaluated Evidence. Positive Assurance mark is ineligible.', scope: 'build_identity' });
-    } else if (buildIdentity.explanation === 'BUILD_IDENTITY_CONFLICT') {
-      add({ code: 'BUILD_IDENTITY_CONFLICT', explanation: 'Conflicting build identities were found in the evaluated Evidence. Positive Assurance mark is ineligible.', scope: 'build_identity' });
+      if (buildIdentity.explanation === 'BUILD_IDENTITY_CONFLICT') {
+        add({ code: 'BUILD_IDENTITY_CONFLICT', explanation: 'Conflicting build identities were found in the evaluated Evidence. Positive Assurance mark is ineligible.', scope: 'build_identity' });
+      } else {
+        add({ code: 'BUILD_IDENTITY_NOT_PROVIDED', explanation: 'Build Identity was not established from the evaluated Evidence. Positive Assurance mark is ineligible.', scope: 'build_identity' });
+      }
     }
   }
 
@@ -714,11 +720,16 @@ function buildDispositionExplanation(evaluation: AssuranceEvaluation): string {
 
 function deriveEvidenceCoverageStatus(projectedEvidence: DecisionEvidenceProjection[]): any {
   // Part 29: Account for all failure/uncertainty states.
+  // Defect 4: NOT_ASSESSED != COMPLETE
   if (projectedEvidence.length === 0) return 'NOT_EVALUATED';
 
   const failureOutcomes = ['FAILED', 'ERROR', 'TIMEOUT', 'CANCELLED'];
   const hasFailed = projectedEvidence.some(ev => failureOutcomes.includes(ev.producerOutcome as string));
   if (hasFailed) return 'PARTIAL';
+
+  // Defect 4: NOT_ASSESSED coverage prevents COMPLETE — use UNKNOWN (evidence exists but coverage not established)
+  const hasNotAssessed = projectedEvidence.some(ev => ev.coverageStatus === 'NOT_ASSESSED');
+  if (hasNotAssessed) return 'UNKNOWN';
 
   const hasUnknown = projectedEvidence.some(ev => ev.coverageStatus === 'UNKNOWN' || ev.producerOutcome === 'UNKNOWN');
   if (hasUnknown) return 'UNKNOWN';
@@ -731,6 +742,13 @@ function deriveEvidenceCoverageStatus(projectedEvidence: DecisionEvidenceProject
     ev.producerOutcome === 'UNSUPPORTED'
   );
   if (hasPartial) return 'PARTIAL';
+
+  // COMPLETE only when every relevant projected Evidence item has defensible COMPLETE coverage
+  // and no failure/uncertainty condition applies.
+  const allComplete = projectedEvidence.every(ev =>
+    ev.coverageStatus === 'COMPLETE' && ev.producerOutcome === 'COMPLETE'
+  );
+  if (!allComplete) return 'UNKNOWN';
 
   return 'COMPLETE';
 }

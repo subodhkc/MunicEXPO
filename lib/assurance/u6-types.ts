@@ -28,7 +28,7 @@ export interface BuildIdentity {
   gitCommit?: string;
   containerDigest?: string;
   packageDigest?: string;
-  source?: 'BUILD_PROFILE_BINDING' | 'EVIDENCE_PROVENANCE' | 'ORCHESTRATOR_CI_COMMIT' | 'NOT_PROVIDED';
+  source?: 'BUILD_PROFILE_BINDING' | 'EVIDENCE_PROVENANCE' | 'ORCHESTRATOR_CI_COMMIT' | 'STATIC_REPOSITORY_COMMIT' | 'NOT_PROVIDED';
   explanation?: string;
 }
 

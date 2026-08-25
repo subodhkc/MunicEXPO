@@ -16,6 +16,7 @@ import {
 } from './u6-types';
 import { AssuranceEvaluation, AssuranceEvaluationV1_1 } from './types';
 import { projectEvidenceForRun } from '@/lib/decision-pipeline/evidence-projection';
+import { resolvePublicProfileLabel } from './u6-public-profile-label';
 
 export interface PackageIssueResult {
   status: 'CREATED' | 'IDEMPOTENT' | 'CONFLICT';
@@ -405,15 +406,31 @@ export async function getPublicVerification(
 
   // Part 21-22: Strict public allowlist — no private identifiers leaked.
   // Part 25: Include assurance mark eligibility for public packages.
+  // Defect 1: Load persisted evaluationStatus from assurance_evaluations.
+  // Defect 2: Load operatingEnvelopeState and authoritySourceLabel from profile binding.
   let assuranceMark: PublicVerificationResult['assuranceMark'] | undefined;
   if (row.publicationState === 'PUBLIC') {
+    const evalRow = await prisma.assurance_evaluations.findUnique({
+      where: { id: row.assuranceEvaluationId },
+      select: { evaluationStatus: true },
+    });
+    const bindingRow = await (prisma as any).assurance_evaluation_profile_bindings.findUnique({
+      where: { assuranceEvaluationId: row.assuranceEvaluationId },
+      select: { operatingEnvelopeState: true, operatingEnvelopeAuthoritySourceLabel: true },
+    });
+    const persistedEvaluationStatus = evalRow?.evaluationStatus ?? 'UNKNOWN';
+    const persistedEnvelopeState = bindingRow?.operatingEnvelopeState ?? undefined;
+    const persistedAuthorityLabel = bindingRow?.operatingEnvelopeAuthoritySourceLabel ?? undefined;
+
     const { evaluateAssuranceMarkEligibility } = await import('./u6-badge');
     const markResult = evaluateAssuranceMarkEligibility({
       pkg,
       packageVerification: verify,
       anchorValid: verify.valid,
       publicationState: row.publicationState,
-      evaluationStatus: 'COMPLETED',
+      evaluationStatus: persistedEvaluationStatus,
+      operatingEnvelopeState: persistedEnvelopeState,
+      authoritySourceLabel: persistedAuthorityLabel,
     });
     if (markResult.eligible) {
       const { POSITIVE_MARK_LABEL, POSITIVE_MARK_STATUS } = await import('./u6-badge');
@@ -433,10 +450,10 @@ export async function getPublicVerification(
     evaluatedAt: pkg.receipt.evaluationSnapshotAt,
     methodologyVersion: pkg.receipt.assuranceMethodologyVersion,
     reportSchemaVersion: pkg.report.reportVersion,
-    // Part 22: Public-safe profile label — use profileId (not internal IDs)
-    profileLabel: pkg.receipt.profileId,
+    // Defect 3: Public-safe profile label — use bounded allowlist resolver, not raw profileId
+    profileLabel: resolvePublicProfileLabel(pkg.receipt.profileId),
     profileVersion: pkg.receipt.profileVersion,
-    // Part 22: Construct safe scope summary, not regex-redacted private scope
+    // Part 22: Construct safe scope summary using public label, not profileId
     scopeSummary: buildPublicScopeSummary(pkg),
     receiptHash: pkg.receipt.receiptHash,
     merkleRoot: pkg.merkleRoot,
@@ -450,11 +467,12 @@ export async function getPublicVerification(
 
 /**
  * Part 22: Construct a public-safe scope summary from safe structured values.
+ * Defect 3: Use public profile label, never raw profileId.
  * Never expose private identifiers (orgId, aiSystemId, envelopeId, etc.).
  */
 function buildPublicScopeSummary(pkg: U6Package): string {
-  const profile = pkg.receipt.profileId ?? 'the selected Assurance Profile';
-  return `HAIEC Assurance evaluation completed under ${profile}. The public verification confirms the recorded decision and package integrity without exposing private Evidence or operating-envelope identifiers.`;
+  const profileLabel = resolvePublicProfileLabel(pkg.receipt.profileId);
+  return `HAIEC Assurance evaluation completed under ${profileLabel}. The public verification confirms the recorded decision and package integrity without exposing private Evidence or operating-envelope identifiers.`;
 }
 
 async function reconstructPackageFromRow(row: any): Promise<U6Package> {
