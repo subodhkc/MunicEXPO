@@ -370,10 +370,16 @@ export const ERICSSON_ORAN_POC_ARCHITECTURE = {
 
 export const O_RAN_COMPLIANCE_MAPPINGS: FrameworkMappingEntry[] = [
   {
+    // Part 34: O-RAN source truth — use exact public document names, not invented control IDs.
+    // R1-SEC-01/R1-SEC-02 are NOT official O-RAN control identifiers.
     framework: 'O-RAN_SECURITY_REQUIREMENTS',
-    controlIds: ['R1-SEC-01', 'R1-SEC-02'],
-    mappingStrength: 'EXACT_RULE_MAPPING',
-    sourceReference: { type: 'O_RAN_SPEC', identifier: 'O-RAN-WG6.R1-Application-Protocols', version: 'v11.00' },
+    controlIds: ['UNVERIFIED_EXTERNAL_MAPPING'],
+    mappingStrength: 'HEURISTIC_SUGGESTION',
+    sourceReference: {
+      type: 'O_RAN_SPEC',
+      identifier: 'O-RAN-WG6.R1-Application-Protocols',
+      version: 'v11.00',
+    },
   },
   {
     framework: 'NIST_AI_RMF',

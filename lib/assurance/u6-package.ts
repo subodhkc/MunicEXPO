@@ -125,12 +125,82 @@ export function verifyAssurancePackage(pkg: U6Package): PackageVerificationResul
   // Top-level package digest
   checks.packageDigestValid = computePackageDigestFromPackage(pkg) === pkg.semanticPackageDigest;
 
-  // Identity consistency
-  checks.evaluationIdentityValid = pkg.receipt.assuranceEvaluationId === pkg.assuranceEvaluationId;
-  checks.profileIdentityValid = pkg.receipt.profileId === pkg.report.profile.profileId;
-  checks.envelopeIdentityValid = pkg.receipt.operatingEnvelopeId === pkg.report.operatingEnvelope?.envelopeId;
-  checks.buildIdentityValid = JSON.stringify(pkg.receipt.buildIdentity) === JSON.stringify(pkg.buildIdentity);
-  checks.syntheticIdentityValid = pkg.receipt.syntheticClassification === pkg.syntheticClassification;
+  // ── Cross-object identity binding (Part 10) ──────────────────────────
+  // PACKAGE ↔ REPORT
+  checks.evaluationIdentityValid =
+    pkg.assuranceEvaluationId === pkg.report.assuranceEvaluationId &&
+    pkg.receipt.assuranceEvaluationId === pkg.assuranceEvaluationId;
+  checks.organizationIdentityValid =
+    pkg.organizationId === pkg.report.organizationId &&
+    pkg.receipt.organizationId === pkg.organizationId;
+  checks.aiSystemIdentityValid =
+    pkg.aiSystemId === pkg.report.aiSystemId &&
+    pkg.receipt.aiSystemId === pkg.aiSystemId;
+  checks.orchestratorRunIdentityValid =
+    pkg.orchestratorRunId === pkg.report.orchestratorRunId &&
+    pkg.receipt.orchestratorRunId === pkg.orchestratorRunId;
+
+  // Schema version binding across package ↔ report ↔ bundle ↔ receipt
+  checks.schemaVersionBindingValid =
+    pkg.reportSchemaVersion === pkg.report.reportVersion &&
+    pkg.bundleSchemaVersion === pkg.bundle.bundleVersion &&
+    pkg.receiptSchemaVersion === pkg.receipt.receiptVersion;
+
+  // Profile identity binding
+  checks.profileIdentityValid =
+    pkg.receipt.profileId === pkg.report.profile.profileId &&
+    pkg.receipt.profileVersion === pkg.report.profile.profileVersion &&
+    pkg.receipt.profileDigestResolved === pkg.report.profile.profileDigestResolved;
+
+  // Operating envelope identity binding
+  checks.envelopeIdentityValid =
+    pkg.report.operatingEnvelope === undefined ||
+    (pkg.receipt.operatingEnvelopeId === pkg.report.operatingEnvelope.envelopeId &&
+     pkg.receipt.operatingEnvelopeVersion === pkg.report.operatingEnvelope.envelopeVersion &&
+     pkg.receipt.operatingEnvelopeDigest === pkg.report.operatingEnvelope.envelopeDigest);
+
+  // Authority source label binding
+  checks.authoritySourceBindingValid =
+    pkg.authoritySourceLabel === undefined ||
+    pkg.authoritySourceLabel === pkg.report.operatingEnvelope?.authoritySourceLabel;
+
+  // Build identity binding — canonical comparison, not JSON.stringify (Part 9)
+  checks.buildIdentityValid =
+    canonicalSerialize(pkg.receipt.buildIdentity) === canonicalSerialize(pkg.buildIdentity) &&
+    canonicalSerialize(pkg.report.buildIdentity) === canonicalSerialize(pkg.buildIdentity);
+
+  // Synthetic classification binding
+  checks.syntheticIdentityValid =
+    pkg.receipt.syntheticClassification === pkg.syntheticClassification &&
+    pkg.report.syntheticClassification === pkg.syntheticClassification;
+
+  // Report evidence bundle summary ↔ actual bundle
+  checks.reportBundleSummaryValid =
+    pkg.report.evidenceBundle.bundleDigest === pkg.bundle.bundleDigest &&
+    pkg.report.evidenceBundle.merkleRoot === pkg.bundle.merkleRoot &&
+    pkg.report.evidenceBundle.merkleStatus === pkg.bundle.merkleStatus &&
+    pkg.report.evidenceBundle.membershipCount === pkg.bundle.members.length;
+
+  // Report decision receipt summary ↔ actual receipt
+  checks.reportReceiptSummaryValid =
+    pkg.report.decisionReceipt.receiptVersion === pkg.receipt.receiptVersion &&
+    pkg.report.decisionReceipt.receiptId === pkg.receipt.receiptId &&
+    pkg.report.decisionReceipt.receiptHash === pkg.receipt.receiptHash;
+
+  // Receipt ↔ report digest binding
+  checks.receiptReportDigestValid =
+    pkg.receipt.semanticReportDigest === pkg.report.reportDigest &&
+    pkg.receipt.semanticReportDigest === pkg.semanticReportDigest;
+
+  // Receipt ↔ bundle digest binding
+  checks.receiptBundleDigestValid =
+    pkg.receipt.evidenceBundleDigest === pkg.bundle.bundleDigest &&
+    pkg.receipt.evidenceBundleDigest === pkg.bundleDigest;
+
+  // Receipt ↔ Merkle root binding
+  checks.receiptMerkleRootValid =
+    pkg.receipt.evidenceMerkleRoot === pkg.bundle.merkleRoot &&
+    pkg.receipt.evidenceMerkleRoot === pkg.merkleRoot;
 
   const allValid = Object.values(checks).every(v => v === true);
   return {
@@ -147,9 +217,10 @@ export function buildPublicVerificationResult(
   revokedAt?: string,
 ): PublicVerificationResult {
   const verifyResult = verifyAssurancePackage(pkg);
+  // Part 8: Pure helpers may only say INTERNALLY_CONSISTENT — they did not query the HAIEC persistence anchor.
   const status: PublicVerificationResult['verificationStatus'] =
     publicationState === 'REVOKED' ? 'REVOKED' :
-    verifyResult.valid ? 'INTEGRITY_VERIFIED_AGAINST_HAIEC_RECORD' : 'INVALID_PACKAGE';
+    verifyResult.valid ? 'INTERNALLY_CONSISTENT' : 'INVALID_PACKAGE';
   return {
     publicVerificationId,
     publicationState,
@@ -160,7 +231,8 @@ export function buildPublicVerificationResult(
     reportSchemaVersion: pkg.report.reportVersion,
     profileLabel: pkg.receipt.profileId,
     profileVersion: pkg.receipt.profileVersion,
-    scopeSummary: sanitizePublicScope(pkg.report.scopeStatement),
+    // Part 22: Construct safe scope summary, not regex-redacted private scope
+    scopeSummary: `HAIEC Assurance evaluation completed under ${pkg.receipt.profileId ?? 'the selected Assurance Profile'}. The public verification confirms the recorded decision and package integrity without exposing private Evidence or operating-envelope identifiers.`,
     receiptHash: pkg.receipt.receiptHash,
     merkleRoot: pkg.merkleRoot,
     merkleStatus: pkg.merkleStatus,
@@ -172,10 +244,72 @@ export function buildPublicVerificationResult(
 
 export function resolveBuildIdentity(
   _evaluation: AssuranceEvaluation,
-  _projectedEvidence: DecisionEvidenceProjection[],
+  projectedEvidence: DecisionEvidenceProjection[],
 ): BuildIdentity {
-  // U6: source-truth build identity resolver placeholder.
+  // Part 12: Source-truth Build Identity resolution from EXACT Evidence selected for the evaluated run.
+  // Allowed sources by strength:
+  //   1. persisted evaluation buildBinding if exact and available
+  //   2. exact-run CI Evidence with an exact commit/build reference
+  //   3. exact-run Static REPOSITORY target.version if it is a valid Git commit SHA
+  //   4. exact canonical Evidence provenance if an explicit build/package/container identity already exists
+
+  const gitCommits = new Set<string>();
+  const containerDigests = new Set<string>();
+  const packageDigests = new Set<string>();
+
+  for (const ev of projectedEvidence) {
+    // Source 3: target.version as Git commit SHA
+    const targetVersion = ev.target?.version;
+    if (targetVersion && isValidGitSha(targetVersion)) {
+      gitCommits.add(targetVersion);
+    }
+
+    // Source 4: provenance refs with explicit build/package/container identity
+    for (const ref of ev.provenanceRefs ?? []) {
+      const refAny = ref as any;
+      if (refAny.gitCommit && isValidGitSha(refAny.gitCommit)) {
+        gitCommits.add(refAny.gitCommit);
+      }
+      if (refAny.containerDigest) {
+        containerDigests.add(refAny.containerDigest);
+      }
+      if (refAny.packageDigest) {
+        packageDigests.add(refAny.packageDigest);
+      }
+    }
+  }
+
+  // Part 12: Conflict detection
+  if (gitCommits.size > 1) {
+    return { source: 'NOT_PROVIDED', explanation: 'BUILD_IDENTITY_CONFLICT' };
+  }
+  if (gitCommits.size === 1) {
+    return { source: 'ORCHESTRATOR_CI_COMMIT', gitCommit: Array.from(gitCommits)[0] };
+  }
+
+  if (containerDigests.size > 1) {
+    return { source: 'NOT_PROVIDED', explanation: 'BUILD_IDENTITY_CONFLICT' };
+  }
+  if (containerDigests.size === 1) {
+    return { source: 'EVIDENCE_PROVENANCE', containerDigest: Array.from(containerDigests)[0] };
+  }
+
+  if (packageDigests.size > 1) {
+    return { source: 'NOT_PROVIDED', explanation: 'BUILD_IDENTITY_CONFLICT' };
+  }
+  if (packageDigests.size === 1) {
+    return { source: 'EVIDENCE_PROVENANCE', packageDigest: Array.from(packageDigests)[0] };
+  }
+
+  // Part 12: No exact build evidence
   return { source: 'NOT_PROVIDED', explanation: 'BUILD_IDENTITY_NOT_PROVIDED' };
+}
+
+/**
+ * Part 12: Validate that a string is a plausible Git commit SHA (40-char hex or 7+ char hex prefix).
+ */
+function isValidGitSha(sha: string): boolean {
+  return /^[0-9a-f]{40}$/.test(sha) || /^[0-9a-f]{7,}$/.test(sha);
 }
 
 export function computePackageDigest(
@@ -233,10 +367,4 @@ function resolveAuthoritySourceLabel(_evaluation: AssuranceEvaluation, v1_1?: As
   return v1_1?.operatingEnvelopeAuthoritySourceLabel ?? 'UNKNOWN';
 }
 
-function sanitizePublicScope(scope: string): string {
-  // U6: strip internal-looking identifiers from the public scope statement.
-  return scope
-    .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '<ID>')
-    .replace(/env-[a-z0-9-]+/gi, '<ENVELOPE>')
-    .replace(/run-[a-z0-9-]+/gi, '<RUN>');
-}
+// sanitizePublicScope removed — Part 22: use buildPublicScopeSummary() in u6-package-service.ts instead

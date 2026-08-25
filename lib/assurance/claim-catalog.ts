@@ -207,7 +207,8 @@ export const CONTROL_CLAIM_CATALOG: ControlClaimDefinition[] = [
     contradictionConditions: ['system_not_in_inventory'],
     manualReviewConditions: ['incomplete_inventory_metadata'],
     frameworkMappings: [
-      { framework: 'NIST_AI_RMF', controlIds: ['IDENTIFY-1.1'] },
+      // Part 33: NIST AI RMF 1.0 — AI system inventory maps to GOVERN-1.6
+      { framework: 'NIST_AI_RMF', controlIds: ['GOVERN-1.6'] },
       { framework: 'ISO_42001', controlIds: ['5.2'] },
     ],
     mandatory: true,

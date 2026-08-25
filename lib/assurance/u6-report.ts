@@ -15,6 +15,7 @@ import {
   AssurancePlane,
   CapabilityFact,
   ClaimEvaluationResult,
+  ClaimState,
   PlaneAvailability,
 } from './types';
 import { CONTROL_CLAIM_CATALOG } from './claim-catalog';
@@ -70,7 +71,7 @@ export function buildUnifiedAssuranceReport(
   const claimResults = buildReportClaimResults(evaluation.claimResults, v1_1.fivePlaneComparisons || [], v1_1.applicableClaimKeys ?? []);
   const claimSummary = buildClaimSummary(evaluation.claimResults);
   const evidenceCoverage = buildProducerCoverageFromEvidence(projectedEvidence);
-  const limitations = buildLimitations(evaluation, projectedEvidence, v1_1.planeAvailability ?? []);
+  const limitations = buildLimitations(evaluation, projectedEvidence, v1_1.planeAvailability ?? [], buildIdentity);
 
   const report: UnifiedAssuranceReport = {
     reportVersion: U6_REPORT_SCHEMA_VERSION,
@@ -91,7 +92,9 @@ export function buildUnifiedAssuranceReport(
       profileVersion: v1_1.profileVersion,
       profileDigest: v1_1.profileDigest,
       profileDigestResolved: v1_1.profileDigestResolved,
-      sourceReferences: [],
+      // Part 35: Preserve profile source references if persisted in the evaluation.
+      // Do not reconstruct from the internet at report-generation time.
+      sourceReferences: (v1_1 as any).profileSourceReferences ?? [],
       applicableClaimKeys: v1_1.applicableClaimKeys ?? [],
       claimPackVersions: v1_1.claimPackVersions,
       rulePackVersions: v1_1.rulePackVersions,
@@ -288,6 +291,7 @@ export function verifyBundleProof(bundle: EvidenceBundle, leafHash: string, proo
  * Build a public-safe verification result from a receipt.
  */
 export function publicVerification(receipt: AssuranceDecisionReceipt): PublicVerificationResult {
+  // Part 8: Pure helper — maximum status is INTERNALLY_CONSISTENT.
   return {
     publicVerificationId: '',
     publicationState: 'PUBLIC',
@@ -416,7 +420,7 @@ function buildReportClaimResults(
       excludedCount: c.excludedCount,
       evidenceSetDigest: c.evidenceSet.setDigest,
       relevantPlaneComparisons: comparisons.filter((comp: any) => comp.mappedClaimKey === c.claimKey).map((comp: any) => comp.capabilityKey),
-      frameworkMappings: buildFrameworkAlignmentForClaim(c.claimKey),
+      frameworkMappings: buildFrameworkAlignmentForClaim(c.claimKey, c.claimState),
       limitations,
     };
   });
@@ -506,30 +510,95 @@ function buildScopeStatement(evaluation: AssuranceEvaluation, v1_1: AssuranceEva
 }
 
 function buildProducerCoverageFromEvidence(projectedEvidence: DecisionEvidenceProjection[]): ProducerCoverageItem[] {
-  const groups = new Map<string, ProducerCoverageItem>();
+  // Part 28: Deterministic aggregation — fail closed on conflicting outcomes.
+  const groups = new Map<string, {
+    producerId: string;
+    producerRunId: string | null;
+    outcomes: string[];
+    coverageStatuses: string[];
+    coverageRatios: number[];
+    limitations: string[];
+    evidenceCount: number;
+    targetSummary: { targetType: string; targetId?: string }[];
+  }>();
+
   for (const ev of projectedEvidence) {
     const key = `${ev.producerId}|${ev.producerRunId ?? ''}`;
     const existing = groups.get(key);
     if (existing) {
       existing.evidenceCount += 1;
-      (ev.limitations ?? []).forEach(l => { if (!existing.limitations.includes(l.description ?? l)) existing.limitations.push(l.description ?? l); });
+      existing.outcomes.push(ev.producerOutcome ?? 'UNKNOWN');
+      existing.coverageStatuses.push(ev.coverageStatus ?? 'UNKNOWN');
+      if (ev.coverageRatio != null) existing.coverageRatios.push(ev.coverageRatio);
+      (ev.limitations ?? []).forEach(l => {
+        const desc = (l as any).description ?? (l as any).code ?? String(l);
+        if (!existing.limitations.includes(desc)) existing.limitations.push(desc);
+      });
+      if (ev.target && !existing.targetSummary.some(t => t.targetType === ev.target.type && t.targetId === ev.target.id)) {
+        existing.targetSummary.push({ targetType: ev.target.type, targetId: ev.target.id });
+      }
     } else {
       groups.set(key, {
         producerId: ev.producerId,
         producerRunId: ev.producerRunId ?? null,
-        producerOutcome: ev.producerOutcome ?? 'UNKNOWN',
-        coverageStatus: ev.coverageStatus ?? 'UNKNOWN',
-        coverageRatio: ev.coverageRatio ?? null,
+        outcomes: [ev.producerOutcome ?? 'UNKNOWN'],
+        coverageStatuses: [ev.coverageStatus ?? 'UNKNOWN'],
+        coverageRatios: ev.coverageRatio != null ? [ev.coverageRatio] : [],
         limitations: (ev.limitations ?? []).map(l => (l as any).description ?? (l as any).code ?? String(l)),
         evidenceCount: 1,
         targetSummary: ev.target ? [{ targetType: ev.target.type, targetId: ev.target.id }] : [],
       });
     }
   }
-  return Array.from(groups.values()).sort((a, b) => `${a.producerId}|${a.producerRunId ?? ''}`.localeCompare(`${b.producerId}|${b.producerRunId ?? ''}`));
+
+  return Array.from(groups.values()).map(g => ({
+    producerId: g.producerId,
+    producerRunId: g.producerRunId,
+    producerOutcome: aggregateProducerOutcome(g.outcomes),
+    coverageStatus: aggregateCoverageStatus(g.coverageStatuses),
+    coverageRatio: aggregateCoverageRatio(g.coverageRatios),
+    limitations: g.limitations,
+    evidenceCount: g.evidenceCount,
+    targetSummary: g.targetSummary,
+  })).sort((a, b) => `${a.producerId}|${a.producerRunId ?? ''}`.localeCompare(`${b.producerId}|${b.producerRunId ?? ''}`));
 }
 
-function buildLimitations(evaluation: AssuranceEvaluation, projectedEvidence: DecisionEvidenceProjection[] = [], planeAvailability: PlaneAvailability[] = []): LimitationItem[] {
+/**
+ * Part 28: Deterministic producer outcome aggregation — fail-closed precedence.
+ */
+function aggregateProducerOutcome(outcomes: string[]): string {
+  const severity = ['FAILED', 'ERROR', 'TIMEOUT', 'CANCELLED', 'PARTIAL', 'UNKNOWN', 'SKIPPED', 'NOT_RUN', 'UNSUPPORTED', 'COMPLETE'];
+  for (const s of severity) {
+    if (outcomes.includes(s)) return s;
+  }
+  return 'UNKNOWN';
+}
+
+/**
+ * Part 28: Deterministic coverage status aggregation.
+ */
+function aggregateCoverageStatus(statuses: string[]): string {
+  if (statuses.includes('UNKNOWN')) return 'UNKNOWN';
+  if (statuses.includes('PARTIAL')) return 'PARTIAL';
+  if (statuses.every(s => s === 'COMPLETE')) return 'COMPLETE';
+  return 'UNKNOWN';
+}
+
+/**
+ * Part 28: Deterministic coverage ratio — null if incompatible scopes.
+ */
+function aggregateCoverageRatio(ratios: number[]): number | null {
+  if (ratios.length === 0) return null;
+  if (ratios.every(r => r === ratios[0])) return ratios[0];
+  return null;
+}
+
+function buildLimitations(
+  evaluation: AssuranceEvaluation,
+  projectedEvidence: DecisionEvidenceProjection[] = [],
+  planeAvailability: PlaneAvailability[] = [],
+  buildIdentity?: BuildIdentity,
+): LimitationItem[] {
   const limitations: Map<string, LimitationItem> = new Map();
   const add = (item: LimitationItem) => { if (!limitations.has(item.code)) limitations.set(item.code, item); };
 
@@ -552,6 +621,15 @@ function buildLimitations(evaluation: AssuranceEvaluation, projectedEvidence: De
     if (plane.status === 'NOT_SUPPORTED_BY_CURRENT_PRODUCER') add({ code: 'PLANE_NOT_SUPPORTED', explanation: `${plane.plane} not supported by current producer`, scope: plane.plane });
   }
 
+  // Part 13: Build Identity limitation
+  if (buildIdentity) {
+    if (buildIdentity.source === 'NOT_PROVIDED') {
+      add({ code: buildIdentity.explanation ?? 'BUILD_IDENTITY_NOT_PROVIDED', explanation: 'Build Identity was not established from the evaluated Evidence. Positive Assurance mark is ineligible.', scope: 'build_identity' });
+    } else if (buildIdentity.explanation === 'BUILD_IDENTITY_CONFLICT') {
+      add({ code: 'BUILD_IDENTITY_CONFLICT', explanation: 'Conflicting build identities were found in the evaluated Evidence. Positive Assurance mark is ineligible.', scope: 'build_identity' });
+    }
+  }
+
   return Array.from(limitations.values()).sort((a, b) => a.code.localeCompare(b.code));
 }
 
@@ -569,7 +647,7 @@ function buildFrameworkAlignment(claimResults: ClaimEvaluationResult[]): Framewo
           mappingStrength: m.mappingStrength ?? 'HEURISTIC',
           evidenceClaimKey: c.claimKey,
           claimState: c.claimState,
-          alignmentStatement: `Evidence supports ${c.claimKey}: maps to ${m.framework} ${controlId}`,
+          alignmentStatement: buildAlignmentStatement(c.claimState, c.claimKey, m.framework, controlId),
         });
       }
     }
@@ -577,7 +655,7 @@ function buildFrameworkAlignment(claimResults: ClaimEvaluationResult[]): Framewo
   return items;
 }
 
-function buildFrameworkAlignmentForClaim(claimKey: string): FrameworkAlignmentItem[] {
+function buildFrameworkAlignmentForClaim(claimKey: string, claimState?: ClaimState): FrameworkAlignmentItem[] {
   const def = CONTROL_CLAIM_CATALOG.find(x => x.claimKey === claimKey);
   if (!(def as any)?.frameworkMappings) return [];
   return (def as any).frameworkMappings.map((m: any) => {
@@ -588,9 +666,40 @@ function buildFrameworkAlignmentForClaim(claimKey: string): FrameworkAlignmentIt
       control: controlId,
       mappingStrength: m.mappingStrength ?? 'HEURISTIC',
       evidenceClaimKey: claimKey,
-      alignmentStatement: `Evidence supports ${claimKey}: maps to ${m.framework} ${controlId}`,
+      claimState,
+      alignmentStatement: buildAlignmentStatement(claimState ?? 'NOT_ASSESSED', claimKey, m.framework, controlId),
     };
   });
+}
+
+/**
+ * Part 32: Claim-state-aware framework alignment wording.
+ * Never uses "compliant" or "supports" for non-SUPPORTED claims.
+ */
+function buildAlignmentStatement(
+  claimState: ClaimState,
+  claimKey: string,
+  framework: string,
+  controlId: string,
+): string {
+  switch (claimState) {
+    case 'SUPPORTED':
+      return `Evidence supporting this Control Claim was evaluated in relation to ${framework} ${controlId}.`;
+    case 'PARTIALLY_SUPPORTED':
+      return `This Control Claim is mapped to ${framework} ${controlId}; supporting Evidence is partial.`;
+    case 'INSUFFICIENT_EVIDENCE':
+      return `This Control Claim is mapped to ${framework} ${controlId}; available Evidence is insufficient for the claim.`;
+    case 'REVIEW_REQUIRED':
+      return `This Control Claim is mapped to ${framework} ${controlId}; additional review is required.`;
+    case 'CONTRADICTED':
+      return `Evidence contradicts this Control Claim, which is mapped to ${framework} ${controlId}.`;
+    case 'NOT_ASSESSED':
+      return `This Control Claim is mapped to ${framework} ${controlId}; it was not sufficiently assessed in this evaluation.`;
+    case 'NOT_APPLICABLE':
+      return `This Control Claim is mapped to ${framework} ${controlId} but was determined not applicable within the evaluated scope.`;
+    default:
+      return `This Control Claim is mapped to ${framework} ${controlId}.`;
+  }
 }
 
 function buildDispositionExplanation(evaluation: AssuranceEvaluation): string {
@@ -604,11 +713,26 @@ function buildDispositionExplanation(evaluation: AssuranceEvaluation): string {
 }
 
 function deriveEvidenceCoverageStatus(projectedEvidence: DecisionEvidenceProjection[]): any {
+  // Part 29: Account for all failure/uncertainty states.
   if (projectedEvidence.length === 0) return 'NOT_EVALUATED';
-  const hasPartial = projectedEvidence.some(ev => (ev.coverageStatus === 'PARTIAL' || ev.coverageStatus === 'UNKNOWN' || (ev.producerOutcome as any) === 'ERROR' || (ev.producerOutcome as any) === 'NOT_ASSESSED'));
-  const hasUnknown = projectedEvidence.some(ev => ev.coverageStatus === 'UNKNOWN');
+
+  const failureOutcomes = ['FAILED', 'ERROR', 'TIMEOUT', 'CANCELLED'];
+  const hasFailed = projectedEvidence.some(ev => failureOutcomes.includes(ev.producerOutcome as string));
+  if (hasFailed) return 'PARTIAL';
+
+  const hasUnknown = projectedEvidence.some(ev => ev.coverageStatus === 'UNKNOWN' || ev.producerOutcome === 'UNKNOWN');
   if (hasUnknown) return 'UNKNOWN';
-  return hasPartial ? 'PARTIAL' : 'COMPLETE';
+
+  const hasPartial = projectedEvidence.some(ev =>
+    ev.coverageStatus === 'PARTIAL' ||
+    ev.producerOutcome === 'PARTIAL' ||
+    ev.producerOutcome === 'SKIPPED' ||
+    ev.producerOutcome === 'NOT_RUN' ||
+    ev.producerOutcome === 'UNSUPPORTED'
+  );
+  if (hasPartial) return 'PARTIAL';
+
+  return 'COMPLETE';
 }
 
 function buildBundleSummary(bundle: EvidenceBundle): EvidenceBundleSummary {

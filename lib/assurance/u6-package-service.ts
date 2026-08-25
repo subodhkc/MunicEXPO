@@ -51,6 +51,29 @@ export async function getEvaluationOwnership(evaluationId: string): Promise<{ id
 }
 
 /**
+ * Part 2: Resource-first package ownership — load minimal fields before authorization.
+ * Do NOT load full Evidence before authorization.
+ */
+export async function getPackageOwnership(packageId: string): Promise<{
+  packageId: string;
+  organizationId: string;
+  assuranceEvaluationId: string;
+  publicationState: string;
+} | null> {
+  const row = await (prisma as any).assurance_packages.findFirst({
+    where: { packageId },
+    select: {
+      packageId: true,
+      organizationId: true,
+      assuranceEvaluationId: true,
+      publicationState: true,
+    },
+  });
+  if (!row) return null;
+  return row;
+}
+
+/**
  * Load the full AssuranceEvaluation for package building after authorization.
  *
  * Reconstructs the U5 evaluation contract from persisted records using the
@@ -234,7 +257,29 @@ export async function publishAssurancePackage(
   packageId: string,
   organizationId: string,
   actor: string,
-): Promise<{ publicVerificationId: string } | null> {
+): Promise<{ publicVerificationId: string; status: 'CREATED' | 'IDEMPOTENT' } | null> {
+  // Part 17: Atomic publication — use conditional update to prevent races.
+  // Part 19: Repeated publish of already-PUBLIC package returns existing alias.
+
+  // First check if already PUBLIC (idempotent case)
+  const alreadyPublic = await (prisma as any).assurance_packages.findFirst({
+    where: { packageId, organizationId, publicationState: 'PUBLIC' },
+    select: { id: true, publicVerificationId: true },
+  });
+  if (alreadyPublic?.publicVerificationId) {
+    return { publicVerificationId: alreadyPublic.publicVerificationId, status: 'IDEMPOTENT' };
+  }
+
+  // Check for REVOKED — fail closed (Part 19)
+  const revoked = await (prisma as any).assurance_packages.findFirst({
+    where: { packageId, organizationId, publicationState: 'REVOKED' },
+    select: { id: true },
+  });
+  if (revoked) {
+    throw new Error('CANNOT_REPUBLISH_REVOKED_PACKAGE');
+  }
+
+  // Load the PRIVATE package
   const existing = await (prisma as any).assurance_packages.findFirst({
     where: { packageId, organizationId, publicationState: 'PRIVATE' },
   });
@@ -247,8 +292,11 @@ export async function publishAssurancePackage(
   }
 
   const publicVerificationId = nanoid(24);
-  await (prisma as any).assurance_packages.update({
-    where: { id: existing.id },
+
+  // Part 17: Atomic conditional update — only transitions if still PRIVATE.
+  // If two concurrent requests race, only one will update a row (updateMany returns count).
+  const result = await (prisma as any).assurance_packages.updateMany({
+    where: { id: existing.id, publicationState: 'PRIVATE' },
     data: {
       publicationState: 'PUBLIC',
       publicVerificationId,
@@ -257,7 +305,20 @@ export async function publishAssurancePackage(
     },
   });
 
-  return { publicVerificationId };
+  if (result.count === 0) {
+    // Another concurrent request won the race — return the existing public alias.
+    const winner = await (prisma as any).assurance_packages.findFirst({
+      where: { packageId, organizationId, publicationState: 'PUBLIC' },
+      select: { publicVerificationId: true },
+    });
+    if (winner?.publicVerificationId) {
+      return { publicVerificationId: winner.publicVerificationId, status: 'IDEMPOTENT' };
+    }
+    // Package may have been revoked concurrently
+    return null;
+  }
+
+  return { publicVerificationId, status: 'CREATED' };
 }
 
 export async function revokeAssurancePackage(
@@ -265,14 +326,36 @@ export async function revokeAssurancePackage(
   organizationId: string,
   actor: string,
   reason: string,
-): Promise<boolean> {
+): Promise<{ status: 'REVOKED' | 'ALREADY_REVOKED' | 'NOT_PUBLIC' } | null> {
+  // Part 20: Revoke only PUBLIC packages. PRIVATE cannot be revoked as published.
+  // Part 20: Repeated revoke returns deterministic already-revoked result.
+
+  // Check if already revoked (idempotent)
+  const alreadyRevoked = await (prisma as any).assurance_packages.findFirst({
+    where: { packageId, organizationId, publicationState: 'REVOKED' },
+    select: { id: true },
+  });
+  if (alreadyRevoked) {
+    return { status: 'ALREADY_REVOKED' };
+  }
+
+  // Check if package exists and is PUBLIC
   const existing = await (prisma as any).assurance_packages.findFirst({
     where: { packageId, organizationId, publicationState: 'PUBLIC' },
   });
-  if (!existing) return false;
+  if (!existing) {
+    // Check if it's PRIVATE — reject because never publicly issued
+    const privatePkg = await (prisma as any).assurance_packages.findFirst({
+      where: { packageId, organizationId, publicationState: 'PRIVATE' },
+      select: { id: true },
+    });
+    if (privatePkg) return { status: 'NOT_PUBLIC' };
+    return null; // Not found
+  }
 
-  await (prisma as any).assurance_packages.update({
-    where: { id: existing.id },
+  // Atomic conditional update
+  const result = await (prisma as any).assurance_packages.updateMany({
+    where: { id: existing.id, publicationState: 'PUBLIC' },
     data: {
       publicationState: 'REVOKED',
       revokedAt: new Date(),
@@ -281,7 +364,16 @@ export async function revokeAssurancePackage(
     },
   });
 
-  return true;
+  if (result.count === 0) {
+    // Concurrent operation — check if already revoked
+    const recheck = await (prisma as any).assurance_packages.findFirst({
+      where: { packageId, organizationId, publicationState: 'REVOKED' },
+      select: { id: true },
+    });
+    return recheck ? { status: 'ALREADY_REVOKED' } : null;
+  }
+
+  return { status: 'REVOKED' };
 }
 
 export async function verifyPersistedAssurancePackage(
@@ -301,13 +393,37 @@ export async function getPublicVerification(
   });
   if (!row) return null;
 
+  // Part 23: PRIVATE packages are not publicly resolvable.
   if (row.publicationState === 'PRIVATE') return null;
 
   const pkg = await reconstructPackageFromRow(row);
   const verify = verifyAssurancePackage(pkg);
+  // Part 8: This loads from persistence, so anchored wording is correct.
   const status: PublicVerificationResult['verificationStatus'] =
     row.publicationState === 'REVOKED' ? 'REVOKED' :
     verify.valid ? 'INTEGRITY_VERIFIED_AGAINST_HAIEC_RECORD' : 'INVALID_PACKAGE';
+
+  // Part 21-22: Strict public allowlist — no private identifiers leaked.
+  // Part 25: Include assurance mark eligibility for public packages.
+  let assuranceMark: PublicVerificationResult['assuranceMark'] | undefined;
+  if (row.publicationState === 'PUBLIC') {
+    const { evaluateAssuranceMarkEligibility } = await import('./u6-badge');
+    const markResult = evaluateAssuranceMarkEligibility({
+      pkg,
+      packageVerification: verify,
+      anchorValid: verify.valid,
+      publicationState: row.publicationState,
+      evaluationStatus: 'COMPLETED',
+    });
+    if (markResult.eligible) {
+      const { POSITIVE_MARK_LABEL, POSITIVE_MARK_STATUS } = await import('./u6-badge');
+      assuranceMark = {
+        label: POSITIVE_MARK_LABEL,
+        status: POSITIVE_MARK_STATUS,
+        eligible: true,
+      };
+    }
+  }
 
   return {
     publicVerificationId,
@@ -317,16 +433,28 @@ export async function getPublicVerification(
     evaluatedAt: pkg.receipt.evaluationSnapshotAt,
     methodologyVersion: pkg.receipt.assuranceMethodologyVersion,
     reportSchemaVersion: pkg.report.reportVersion,
+    // Part 22: Public-safe profile label — use profileId (not internal IDs)
     profileLabel: pkg.receipt.profileId,
     profileVersion: pkg.receipt.profileVersion,
-    scopeSummary: pkg.report.scopeStatement,
+    // Part 22: Construct safe scope summary, not regex-redacted private scope
+    scopeSummary: buildPublicScopeSummary(pkg),
     receiptHash: pkg.receipt.receiptHash,
     merkleRoot: pkg.merkleRoot,
     merkleStatus: pkg.merkleStatus,
     syntheticClassification: pkg.syntheticClassification,
     publishedAt: row.publishedAt?.toISOString(),
     revokedAt: row.revokedAt?.toISOString(),
+    assuranceMark,
   };
+}
+
+/**
+ * Part 22: Construct a public-safe scope summary from safe structured values.
+ * Never expose private identifiers (orgId, aiSystemId, envelopeId, etc.).
+ */
+function buildPublicScopeSummary(pkg: U6Package): string {
+  const profile = pkg.receipt.profileId ?? 'the selected Assurance Profile';
+  return `HAIEC Assurance evaluation completed under ${profile}. The public verification confirms the recorded decision and package integrity without exposing private Evidence or operating-envelope identifiers.`;
 }
 
 async function reconstructPackageFromRow(row: any): Promise<U6Package> {

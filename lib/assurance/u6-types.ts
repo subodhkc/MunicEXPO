@@ -323,4 +323,9 @@ export interface PublicVerificationResult {
   syntheticClassification?: 'NONE' | 'SYNTHETIC_REFERENCE' | 'UNKNOWN';
   publishedAt?: string;
   revokedAt?: string;
+  assuranceMark?: {
+    label: string;
+    status: string;
+    eligible: boolean;
+  };
 }
