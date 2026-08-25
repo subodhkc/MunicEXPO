@@ -3,7 +3,7 @@ import SampleReportsContent from './SampleReportsContent'
 
 export const metadata: Metadata = {
   title: 'Sample AI Compliance Reports | NYC LL144 Bias Audit, Colorado AI Act, SOC 2, HIPAA | HAIEC',
-  description: 'Preview real AI compliance reports before you buy. NYC Local Law 144 bias audit reports, Colorado AI Act SB24-205 impact assessments, SOC 2 Type II audit reports, HIPAA compliance artifacts, EU AI Act documentation, and AI security scanner reports. Deterministic, SHA-256 verified, audit-grade output.',
+  description: 'Preview real AI compliance reports before you buy. NYC Local Law 144 bias audit reports, Colorado AI Act SB 26-189 impact assessments, SOC 2 Type II audit reports, HIPAA compliance artifacts, EU AI Act documentation, and AI security scanner reports. Deterministic, SHA-256 verified, audit-grade output.',
   keywords: [
     'NYC Local Law 144 sample bias audit report',
     'NYC LL144 compliance report example',
@@ -14,7 +14,7 @@ export const metadata: Metadata = {
     'LL144 public disclosure example',
     'NYC employer AI audit requirements',
     'Colorado AI Act compliance report',
-    'Colorado SB24-205 sample report',
+    'Colorado SB 26-189 sample report',
     'Colorado AI impact assessment template',
     'Colorado AI consumer notice example',
     'Colorado AI risk management policy sample',
@@ -97,7 +97,7 @@ export const metadata: Metadata = {
               '@type': 'ListItem',
               position: 4,
               name: 'Colorado AI Act Compliance Assessment',
-              description: 'SB24-205 compliance assessment with 8-section scoring, critical gap analysis, and phased remediation roadmap.',
+              description: 'SB 26-189 compliance assessment with 8-section scoring, critical gap analysis, and phased remediation roadmap.',
               url: 'https://www.haiec.com/sample-reports#colorado-ai-act',
             },
             {
@@ -174,7 +174,7 @@ export const metadata: Metadata = {
               name: 'What is included in a Colorado AI Act compliance assessment?',
               acceptedAnswer: {
                 '@type': 'Answer',
-                text: 'A Colorado AI Act (SB24-205) compliance assessment includes 8-section scoring against statutory requirements, CRS §6-1-1703 deployer impact assessment, consumer notice templates per CRS §6-1-1704, NIST AI RMF-aligned risk management policy, and a phased remediation roadmap with cost estimates. The compliance deadline is June 30, 2026.',
+                text: 'A Colorado AI Act (SB 26-189) compliance assessment includes 8-section scoring against statutory requirements, CRS §6-1-1703 deployer impact assessment, consumer notice templates per CRS §6-1-1704, NIST AI RMF-aligned risk management policy, and a phased remediation roadmap with cost estimates. The compliance deadline is June 30, 2026.',
               },
             },
             {
