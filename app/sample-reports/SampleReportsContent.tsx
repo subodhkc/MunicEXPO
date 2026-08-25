@@ -169,9 +169,9 @@ const artifacts: SampleArtifact[] = [
     product: 'Compliance Wizard',
     productIcon: FileText,
     category: 'report',
-    description: 'SB24-205 compliance assessment with section-by-section scoring across 8 requirement areas, critical gap analysis, remediation roadmap, and resource estimates. Deadline: June 30, 2026.',
+    description: 'SB 26-189 compliance assessment with section-by-section scoring across 8 requirement areas, critical gap analysis, remediation roadmap, and resource estimates. Deadline: June 30, 2026.',
     proves: [
-      '8-section compliance scoring against SB24-205 requirements',
+      '8-section compliance scoring against SB 26-189 requirements',
       'Critical gaps with statutory references',
       'Phased remediation roadmap with cost estimates',
     ],
