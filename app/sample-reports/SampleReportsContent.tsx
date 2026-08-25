@@ -63,7 +63,7 @@ const artifacts: SampleArtifact[] = [
     category: 'artifact',
     description: 'Shareable compliance artifact with cryptographic verification. Maps findings to SOC 2, GDPR, ISO 27001, and OWASP controls. Includes contract-ready language.',
     proves: [
-      'Evidence hash (SHA-256) for tamper-proof verification',
+      'Evidence hash (SHA-256) for tamper-evident verification',
       'Compliance framework mapping with control IDs',
       'Legal use cases: VSQ, RFP, due diligence, insurance',
     ],

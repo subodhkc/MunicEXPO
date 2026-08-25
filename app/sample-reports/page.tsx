@@ -182,7 +182,7 @@ export const metadata: Metadata = {
               name: 'How does HAIEC ensure compliance report accuracy?',
               acceptedAnswer: {
                 '@type': 'Answer',
-                text: 'HAIEC uses deterministic, rule-based engines — not AI or ML models. Every report is reproducible: the same inputs always produce the same outputs. All evidence is SHA-256 hashed for tamper-proof verification. Reports map findings to specific statutory references and control IDs.',
+                text: 'HAIEC uses deterministic, rule-based engines — not AI or ML models. Every report is reproducible: the same inputs always produce the same outputs. All evidence is SHA-256 hashed for tamper-evident verification. Reports map findings to specific statutory references and control IDs.',
               },
             },
             {
