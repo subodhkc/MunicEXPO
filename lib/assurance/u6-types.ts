@@ -32,6 +32,68 @@ export interface BuildIdentity {
   explanation?: string;
 }
 
+// ─── PX1.2 — Evaluated Scope Manifest (Section 16) ──────────────────────────
+//
+// Additive type. Does NOT alter U5 evaluation. Does NOT create a parallel
+// scope engine. This is the smallest deterministic structure to state:
+//   - which AI System was evaluated
+//   - which connected assets were included
+//   - which environment
+//   - which repository/commit/build
+//   - which runtime endpoint
+//   - which producer runs
+//   - which assets were explicitly NOT evaluated
+//   - what identity was unresolved
+//   - what limitations remained
+//
+// An Assurance Result applies to: AI System + Evaluated Scope.
+// Never imply whole-system evaluation when only one asset was inspected.
+//
+// Conceptually:
+//   AssuranceResult = f(AI_System, Evaluated_Scope, Evidence, Profile, Operating_Envelope)
+//
+// All fields are optional because not every evaluation touches every asset
+// type. The manifest is populated from persisted state, not invented.
+
+export interface EvaluatedScopeAssetEntry {
+  /** Asset ID (ai_system_assets.id) or external locator if not yet bound */
+  assetId?: string;
+  assetType: string;
+  displayName: string;
+  /** Was this asset included in the evaluation? */
+  evaluated: boolean;
+  /** If not evaluated, why (NOT_EVALUATED, UNAVAILABLE, NOT_REGISTERED) */
+  notEvaluatedReason?: string;
+  /** Build/commit/endpoint identity captured for this asset, if any */
+  identitySnapshot?: {
+    gitCommit?: string;
+    containerDigest?: string;
+    endpoint?: string;
+    environment?: string;
+  };
+}
+
+export interface EvaluatedScopeManifest {
+  /** AI System ID (ai_systems.id) — canonical primary identity */
+  aiSystemId: string;
+  /** Orchestrator run ID that produced the evaluated Evidence */
+  orchestratorRunId?: string;
+  /** Environment evaluated (production, staging, development, testing) */
+  environment?: string;
+  /** Connected assets in scope, with evaluated/not-evaluated status */
+  assets: EvaluatedScopeAssetEntry[];
+  /** Producer runs included in this evaluation */
+  producerRunIds?: string[];
+  /** Assets explicitly NOT evaluated (subset of assets where evaluated=false) */
+  notEvaluatedAssets?: EvaluatedScopeAssetEntry[];
+  /** Identity dimensions that remained unresolved */
+  unresolvedIdentity?: string[];
+  /** Limitations that remained (e.g., BUILD_IDENTITY_NOT_PROVIDED) */
+  limitations?: string[];
+  /** Human-readable scope summary for display (derived, not authoritative) */
+  scopeSummary: string;
+}
+
 export interface U6Package {
   packageSchemaVersion: typeof U6_REPORT_SCHEMA_VERSION;
   packageId: string;
