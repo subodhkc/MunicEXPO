@@ -93,9 +93,14 @@ describe('[PX1.2 §4] Connected Asset Model — ai_system_assets', () => {
     expect(schema).toContain('REGISTERED')
   })
 
-  it('evaluationState defaults to NOT_EVALUATED', () => {
-    expect(schema).toContain('evaluationState')
-    expect(schema).toContain('NOT_EVALUATED')
+  it('evaluationState is NOT stored on Connected Asset (PX1.2A-R2)', () => {
+    // evaluationState was removed — it is temporal, not current topology
+    // Check that no field declaration line contains evaluationState
+    const assetsBlock = schema.match(/model ai_system_assets \{[\s\S]*?\}/)?.[0] || ''
+    const fieldLines = assetsBlock.split('\n').filter(l =>
+      l.trim().startsWith('evaluationState') && !l.trim().startsWith('//')
+    )
+    expect(fieldLines).toHaveLength(0)
   })
 
   it('assetIdentityKey exists for idempotent binding (Section 6)', () => {
@@ -137,16 +142,15 @@ describe('[PX1.2A-R §5] Three orthogonal state dimensions', () => {
     expect(assetsLib).toContain('CONFLICTED')
   })
 
-  it('evaluationState includes NOT_EVALUATED/PARTIAL/EVALUATED/FAILED', () => {
-    expect(assetsLib).toContain('NOT_EVALUATED')
-    expect(assetsLib).toContain('PARTIAL')
-    expect(assetsLib).toContain('EVALUATED')
-    expect(assetsLib).toContain('FAILED')
+  it('evaluationState is NOT in connected-assets.ts (PX1.2A-R2)', () => {
+    // evaluationState removed — evaluation inclusion is in EvaluatedScopeAssetSnapshot
+    expect(assetsLib).not.toContain('EVALUATION_STATES')
+    expect(assetsLib).not.toContain("'PARTIAL'")
+    expect(assetsLib).not.toContain("'FAILED'")
   })
 
-  it('CONNECTED and EVALUATED are in separate dimension arrays', () => {
+  it('two orthogonal dimensions: CONNECTION_STATES and IDENTITY_STATES', () => {
     expect(assetsLib).toContain('CONNECTION_STATES')
-    expect(assetsLib).toContain('EVALUATION_STATES')
     expect(assetsLib).toContain('IDENTITY_STATES')
   })
 })

@@ -1,20 +1,52 @@
 /**
- * PX1.2 — Evaluated Scope Digest (Sections 11-12, corrected in PX1.2A-R)
+ * PX1.2 — Evaluated Scope Digest (Sections 9-14, purified in PX1.2A-R2)
  *
  * Deterministic scope digest using EXISTING canonical serialization and
  * crypto/hash infrastructure. Does NOT invent another cryptographic
  * implementation.
  *
- * Required invariants:
- *   same semantic scope → same scopeDigest
- *   changed evaluated asset identity/scope → different scopeDigest
- *   array ordering must not create nondeterministic digest changes where
- *   order is semantically irrelevant
+ * SCOPE DIGEST = semantic identity of evaluated boundary
+ * EVIDENCE SET DIGEST = semantic identity of Evidence membership (distinct)
+ * EVALUATION IDENTITY = which evaluation/run produced the result (distinct)
  *
  * scopeDigest = WHAT WAS IN SCOPE
- * evidenceSetDigest = WHICH EVIDENCE SUPPORTED THE EVALUATION (distinct)
+ * evidenceSetDigest = WHICH EVIDENCE SUPPORTED THE EVALUATION
  *
  * Do not collapse scopeDigest and evidenceSetDigest.
+ *
+ * ─── Included in scopeDigest (scope-semantic) ───────────────────────────
+ *
+ *   aiSystemId              — which AI System was evaluated
+ *   environment             — environment is part of scope boundary
+ *   assetSnapshots[].scope-semantic fields:
+ *     assetId               — canonical asset identity
+ *     assetType             — what kind of asset
+ *     canonicalLocator      — stable/canonical locator identity
+ *     identityStateAtEvaluation — identity state at evaluation time
+ *     environment           — per-asset environment if part of scope
+ *     gitCommit             — exact source identity
+ *     containerDigest       — exact container identity
+ *     packageDigest         — exact build identity
+ *     interfaceSpecDigest   — exact interface spec identity
+ *     interfaceSpecVersion  — interface spec version
+ *     endpoint              — exact endpoint identity
+ *     evaluationInclusionState — was this asset included in scope?
+ *     notEvaluatedReason    — why not (scope-relevant)
+ *
+ * ─── Excluded from scopeDigest (operational/evaluation identity) ────────
+ *
+ *   evaluationSnapshotAt    — wall-clock timestamp (evaluation identity)
+ *   orchestratorRunId       — which run (evaluation identity)
+ *   producerRunIds          — which producers ran (evidence identity)
+ *   displayName             — display-only, not scope identity
+ *   scopeSummary            — display-only, not scope identity
+ *   scopeDigest             — would be circular
+ *
+ * Changing displayName or scopeSummary must NOT change scopeDigest.
+ * Changing evaluationSnapshotAt, orchestratorRunId, or producerRunIds
+ * must NOT change scopeDigest.
+ * Changing gitCommit, containerDigest, endpoint, interfaceSpecDigest,
+ * asset inclusion, or environment MUST change scopeDigest.
  */
 
 import { canonicalSerialize } from '@/lib/evidence/deterministic-serialization';
@@ -30,58 +62,65 @@ import { EVALUATED_SCOPE_SCHEMA_VERSION } from './u6-types';
 const SET_LIKE_SCOPE_FIELDS = new Set<string>(['assetSnapshots']);
 
 /**
- * Semantic sort key for asset snapshots — deterministic ordering by
- * stable identity fields.
+ * Build a deliberate scope-semantic projection from an asset snapshot.
+ *
+ * Only scope-semantic fields are included. Display-only fields (displayName)
+ * and evaluation-identity fields (producerRunIds) are excluded.
  */
-function assetSnapshotSortKey(item: unknown): string {
-  if (typeof item !== 'object' || item === null) {
-    return JSON.stringify(item);
-  }
-  const obj = item as Record<string, unknown>;
-  return [
-    String(obj.assetId ?? ''),
-    String(obj.assetType ?? ''),
-    String(obj.canonicalLocator ?? ''),
-    String(obj.gitCommit ?? ''),
-    String(obj.containerDigest ?? ''),
-    String(obj.endpoint ?? ''),
-    String(obj.interfaceSpecDigest ?? ''),
-  ].join('\x1F');
+function projectAssetScopeSemantic(asset: EvaluatedScopeAssetSnapshot): Record<string, unknown> {
+  return {
+    assetId: asset.assetId ?? '',
+    assetType: asset.assetType ?? '',
+    canonicalLocator: asset.canonicalLocator ?? '',
+    identityStateAtEvaluation: asset.identityStateAtEvaluation ?? '',
+    environment: asset.environment ?? '',
+    gitCommit: asset.gitCommit ?? '',
+    containerDigest: asset.containerDigest ?? '',
+    packageDigest: asset.packageDigest ?? '',
+    interfaceSpecDigest: asset.interfaceSpecDigest ?? '',
+    interfaceSpecVersion: asset.interfaceSpecVersion ?? '',
+    endpoint: asset.endpoint ?? '',
+    evaluationInclusionState: asset.evaluationInclusionState ?? '',
+    notEvaluatedReason: asset.notEvaluatedReason ?? '',
+  };
 }
 
 /**
- * Compute a deterministic scope digest from an EvaluatedScopeSnapshot.
+ * Compute a deterministic scope digest from scope-semantic fields ONLY.
  *
- * Excludes the scopeDigest itself (would be circular) and scopeSummary
- * (display-derived, not authoritative). Includes all semantic identity:
- *   - scopeSchemaVersion, organizationId, aiSystemId, evaluationSnapshotAt
- *   - orchestratorRunId, environment
- *   - assetSnapshots (set-like: sorted by semantic key)
- *   - producerRunIds (set-like: sorted)
- *   - unresolvedIdentity, limitations
+ * Excludes: evaluationSnapshotAt, orchestratorRunId, producerRunIds,
+ * displayName, scopeSummary, scopeDigest (circular).
+ *
+ * Includes: aiSystemId, environment, assetSnapshots (scope-semantic
+ * projection only), unresolvedIdentity, limitations.
  */
 export function computeScopeDigest(
   snapshot: Omit<EvaluatedScopeSnapshot, 'scopeDigest' | 'scopeSummary'>
 ): string {
-  const semantic: Record<string, unknown> = {
+  // Deliberate scope-semantic projection — NOT hashing every property
+  const scopeSemantic: Record<string, unknown> = {
     scopeSchemaVersion: snapshot.scopeSchemaVersion ?? EVALUATED_SCOPE_SCHEMA_VERSION,
     organizationId: snapshot.organizationId,
     aiSystemId: snapshot.aiSystemId,
-    evaluationSnapshotAt: snapshot.evaluationSnapshotAt,
-    orchestratorRunId: snapshot.orchestratorRunId ?? '',
     environment: snapshot.environment ?? '',
-    assetSnapshots: snapshot.assetSnapshots ?? [],
-    producerRunIds: (snapshot.producerRunIds ?? []).slice().sort(),
+    // Project only scope-semantic fields from each asset snapshot
+    assetSnapshots: (snapshot.assetSnapshots ?? []).map(projectAssetScopeSemantic),
     unresolvedIdentity: (snapshot.unresolvedIdentity ?? []).slice().sort(),
     limitations: (snapshot.limitations ?? []).slice().sort(),
   };
 
-  const canonical = canonicalSerialize(semantic, SET_LIKE_SCOPE_FIELDS);
+  // NOTE: evaluationSnapshotAt, orchestratorRunId, producerRunIds are
+  // deliberately EXCLUDED — they are evaluation/evidence identity, not
+  // scope identity.
+  const canonical = canonicalSerialize(scopeSemantic, SET_LIKE_SCOPE_FIELDS);
   return hashTextContent(canonical);
 }
 
 /**
  * Build a complete EvaluatedScopeSnapshot with computed scopeDigest.
+ *
+ * evaluationSnapshotAt and orchestratorRunId are stored on the snapshot
+ * for historical record but do NOT affect scopeDigest.
  */
 export function buildEvaluatedScopeSnapshot(
   input: Omit<EvaluatedScopeSnapshot, 'scopeDigest' | 'scopeSummary'> & {
@@ -109,14 +148,12 @@ export function buildEvaluatedScopeSnapshot(
  *   - scopeDigest mismatch
  *   - asset identity snapshot changed inside package
  *
- * Returns true ONLY when recomputing the digest from the snapshot's semantic
- * content produces the same scopeDigest.
+ * Returns true ONLY when recomputing the digest from the snapshot's
+ * scope-semantic content produces the same scopeDigest.
  */
 export function verifyScopeDigest(snapshot: EvaluatedScopeSnapshot): boolean {
   const recomputed = computeScopeDigest(snapshot);
   return recomputed === snapshot.scopeDigest;
 }
 
-// Re-export for test access
-export { assetSnapshotSortKey };
 export type { EvaluatedScopeSnapshot, EvaluatedScopeAssetSnapshot };
