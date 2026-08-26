@@ -32,15 +32,22 @@ export interface BuildIdentity {
   explanation?: string;
 }
 
-// ─── PX1.2 — Evaluated Scope Manifest (Section 16) ──────────────────────────
+// ─── PX1.2 — Evaluated Scope Snapshot (Sections 9-14, corrected in PX1.2A-R) ─
+//
+// CONNECTED ASSET = mutable current system topology
+// EVALUATED SCOPE SNAPSHOT = immutable historical evaluation input
+//
+// Never derive a historical result from CURRENT mutable asset state.
 //
 // Additive type. Does NOT alter U5 evaluation. Does NOT create a parallel
-// scope engine. This is the smallest deterministic structure to state:
+// scope engine. This is the smallest deterministic immutable snapshot to
+// state:
 //   - which AI System was evaluated
-//   - which connected assets were included
+//   - which connected assets were included (with identity at evaluation time)
 //   - which environment
 //   - which repository/commit/build
 //   - which runtime endpoint
+//   - which interface specification digest/version
 //   - which producer runs
 //   - which assets were explicitly NOT evaluated
 //   - what identity was unresolved
@@ -52,47 +59,82 @@ export interface BuildIdentity {
 // Conceptually:
 //   AssuranceResult = f(AI_System, Evaluated_Scope, Evidence, Profile, Operating_Envelope)
 //
-// All fields are optional because not every evaluation touches every asset
-// type. The manifest is populated from persisted state, not invented.
+// scopeDigest = WHAT WAS IN SCOPE (computed via canonical serialization)
+// evidenceSetDigest = WHICH EVIDENCE SUPPORTED THE EVALUATION (distinct)
+//
+// Historical evaluations without persisted scope must remain readable:
+//   EVALUATED_SCOPE_NOT_CAPTURED — do not issue a false new digest for old
+//   evaluations.
 
-export interface EvaluatedScopeAssetEntry {
+export const EVALUATED_SCOPE_SCHEMA_VERSION = '1.0';
+
+export interface EvaluatedScopeAssetSnapshot {
   /** Asset ID (ai_system_assets.id) or external locator if not yet bound */
   assetId?: string;
   assetType: string;
   displayName: string;
+  /** Stable/canonical locator identity at evaluation time */
+  canonicalLocator?: string;
+  /** Identity state at evaluation (NOT_VERIFIED | VERIFIED | CONFLICTED) */
+  identityStateAtEvaluation?: string;
+  /** Environment at evaluation time */
+  environment?: string;
+  /** Build identity captured for this asset at evaluation time */
+  gitCommit?: string;
+  containerDigest?: string;
+  packageDigest?: string;
+  /** Interface specification digest/version (for INTERFACE_SPECIFICATION assets) */
+  interfaceSpecDigest?: string;
+  interfaceSpecVersion?: string;
+  /** Endpoint identity at evaluation time */
+  endpoint?: string;
   /** Was this asset included in the evaluation? */
-  evaluated: boolean;
-  /** If not evaluated, why (NOT_EVALUATED, UNAVAILABLE, NOT_REGISTERED) */
+  evaluationInclusionState: 'EVALUATED' | 'NOT_EVALUATED' | 'UNAVAILABLE';
+  /** If not evaluated, why */
   notEvaluatedReason?: string;
-  /** Build/commit/endpoint identity captured for this asset, if any */
-  identitySnapshot?: {
-    gitCommit?: string;
-    containerDigest?: string;
-    endpoint?: string;
-    environment?: string;
-  };
+  /** Producer/evidence references for this asset */
+  producerRunIds?: string[];
 }
 
-export interface EvaluatedScopeManifest {
+export interface EvaluatedScopeSnapshot {
+  /** Schema version for deterministic parsing */
+  scopeSchemaVersion: typeof EVALUATED_SCOPE_SCHEMA_VERSION;
+  /** Organization ID — tenant scoping */
+  organizationId: string;
   /** AI System ID (ai_systems.id) — canonical primary identity */
   aiSystemId: string;
+  /** When the scope snapshot was captured (immutable) */
+  evaluationSnapshotAt: string;
   /** Orchestrator run ID that produced the evaluated Evidence */
   orchestratorRunId?: string;
   /** Environment evaluated (production, staging, development, testing) */
   environment?: string;
-  /** Connected assets in scope, with evaluated/not-evaluated status */
-  assets: EvaluatedScopeAssetEntry[];
+  /** Asset snapshots at evaluation time (immutable) */
+  assetSnapshots: EvaluatedScopeAssetSnapshot[];
   /** Producer runs included in this evaluation */
   producerRunIds?: string[];
-  /** Assets explicitly NOT evaluated (subset of assets where evaluated=false) */
-  notEvaluatedAssets?: EvaluatedScopeAssetEntry[];
   /** Identity dimensions that remained unresolved */
   unresolvedIdentity?: string[];
   /** Limitations that remained (e.g., BUILD_IDENTITY_NOT_PROVIDED) */
   limitations?: string[];
+  /**
+   * Deterministic scope digest — same semantic scope → same digest.
+   * Computed via canonicalSerialize + hashTextContent (existing infrastructure).
+   * Changed evaluated asset identity/scope → different digest.
+   * Array ordering does not create nondeterministic digest changes where
+   * order is semantically irrelevant (assetSnapshots is set-like: sorted by
+   * semantic key before serialization).
+   */
+  scopeDigest: string;
   /** Human-readable scope summary for display (derived, not authoritative) */
   scopeSummary: string;
 }
+
+/**
+ * Bounded limitation marker for historical evaluations without persisted scope.
+ * Do NOT issue a false new scope digest for old evaluations.
+ */
+export const EVALUATED_SCOPE_NOT_CAPTURED = 'EVALUATED_SCOPE_NOT_CAPTURED';
 
 export interface U6Package {
   packageSchemaVersion: typeof U6_REPORT_SCHEMA_VERSION;

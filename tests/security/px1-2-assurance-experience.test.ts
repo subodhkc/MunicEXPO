@@ -83,8 +83,23 @@ describe('[PX1.2 §4] Connected Asset Model — ai_system_assets', () => {
     expect(assetsBlock).not.toMatch(/organizationId\s+String\?/)
   })
 
-  it('verificationState defaults to NOT_VERIFIED (S0 containment)', () => {
+  it('identityState defaults to NOT_VERIFIED (S0 containment)', () => {
+    expect(schema).toContain('identityState')
     expect(schema).toContain('NOT_VERIFIED')
+  })
+
+  it('connectionState defaults to REGISTERED', () => {
+    expect(schema).toContain('connectionState')
+    expect(schema).toContain('REGISTERED')
+  })
+
+  it('evaluationState defaults to NOT_EVALUATED', () => {
+    expect(schema).toContain('evaluationState')
+    expect(schema).toContain('NOT_EVALUATED')
+  })
+
+  it('assetIdentityKey exists for idempotent binding (Section 6)', () => {
+    expect(schema).toContain('assetIdentityKey')
   })
 
   it('asset types are defined and validated', () => {
@@ -92,6 +107,7 @@ describe('[PX1.2 §4] Connected Asset Model — ai_system_assets', () => {
     expect(assetsLib).toContain('RUNTIME_ENDPOINT')
     expect(assetsLib).toContain('CONTAINER_IMAGE')
     expect(assetsLib).toContain('PROVIDER_PROJECT')
+    expect(assetsLib).toContain('INTERFACE_SPECIFICATION')
     expect(assetsLib).toContain('isAssetType')
   })
 
@@ -105,23 +121,33 @@ describe('[PX1.2 §4] Connected Asset Model — ai_system_assets', () => {
 
 // ─── Section 5: Connection / Evaluation States — semantic separation ────────
 
-describe('[PX1.2 §5] Connection / evaluation state semantic separation', () => {
+describe('[PX1.2A-R §5] Three orthogonal state dimensions', () => {
   const assetsLib = readFile('lib/ai-inventory/connected-assets.ts')
 
-  it('verification states include REGISTERED/DISCOVERED/CONNECTED/EVALUATED/NOT_EVALUATED/UNAVAILABLE', () => {
-    expect(assetsLib).toContain('NOT_VERIFIED')
+  it('connectionState includes REGISTERED/DISCOVERED/CONNECTED/UNAVAILABLE', () => {
+    expect(assetsLib).toContain('REGISTERED')
     expect(assetsLib).toContain('DISCOVERED')
     expect(assetsLib).toContain('CONNECTED')
-    expect(assetsLib).toContain('EVALUATED')
-    expect(assetsLib).toContain('NOT_EVALUATED')
     expect(assetsLib).toContain('UNAVAILABLE')
   })
 
-  it('CONNECTED != EVALUATED (distinct states in the enum)', () => {
-    const states = ['CONNECTED', 'EVALUATED']
-    for (const s of states) {
-      expect(assetsLib).toContain(`'${s}'`)
-    }
+  it('identityState includes NOT_VERIFIED/VERIFIED/CONFLICTED', () => {
+    expect(assetsLib).toContain('NOT_VERIFIED')
+    expect(assetsLib).toContain('VERIFIED')
+    expect(assetsLib).toContain('CONFLICTED')
+  })
+
+  it('evaluationState includes NOT_EVALUATED/PARTIAL/EVALUATED/FAILED', () => {
+    expect(assetsLib).toContain('NOT_EVALUATED')
+    expect(assetsLib).toContain('PARTIAL')
+    expect(assetsLib).toContain('EVALUATED')
+    expect(assetsLib).toContain('FAILED')
+  })
+
+  it('CONNECTED and EVALUATED are in separate dimension arrays', () => {
+    expect(assetsLib).toContain('CONNECTION_STATES')
+    expect(assetsLib).toContain('EVALUATION_STATES')
+    expect(assetsLib).toContain('IDENTITY_STATES')
   })
 })
 
@@ -145,33 +171,49 @@ describe('[PX1.2 §4,13] Connected asset tenant binding', () => {
 
 // ─── Section 16: Evaluated Scope is explicit/bounded ────────────────────────
 
-describe('[PX1.2 §16] Evaluated Scope Manifest', () => {
+describe('[PX1.2A-R §16] Evaluated Scope Snapshot', () => {
   const types = readFile('lib/assurance/u6-types.ts')
 
-  it('EvaluatedScopeManifest type exists', () => {
-    expect(types).toContain('export interface EvaluatedScopeManifest')
+  it('EvaluatedScopeSnapshot type exists (immutable snapshot)', () => {
+    expect(types).toContain('export interface EvaluatedScopeSnapshot')
   })
 
-  it('manifest is anchored to aiSystemId (canonical identity)', () => {
+  it('snapshot is anchored to aiSystemId (canonical identity)', () => {
     expect(types).toContain('aiSystemId: string')
   })
 
-  it('manifest includes evaluated AND not-evaluated assets', () => {
-    expect(types).toContain('EvaluatedScopeAssetEntry')
-    expect(types).toContain('evaluated: boolean')
-    expect(types).toContain('notEvaluatedReason')
+  it('snapshot includes evaluated AND not-evaluated assets', () => {
+    expect(types).toContain('EvaluatedScopeAssetSnapshot')
+    expect(types).toContain('evaluationInclusionState')
+    expect(types).toContain('NOT_EVALUATED')
   })
 
-  it('manifest captures identity snapshots (commit/digest/endpoint)', () => {
-    expect(types).toContain('identitySnapshot')
+  it('snapshot captures identity at evaluation time (commit/digest/endpoint)', () => {
     expect(types).toContain('gitCommit')
     expect(types).toContain('containerDigest')
     expect(types).toContain('endpoint')
   })
 
-  it('manifest tracks unresolved identity and limitations', () => {
+  it('snapshot tracks unresolved identity and limitations', () => {
     expect(types).toContain('unresolvedIdentity')
     expect(types).toContain('limitations')
+  })
+
+  it('snapshot includes scopeDigest (deterministic)', () => {
+    expect(types).toContain('scopeDigest')
+  })
+
+  it('snapshot includes scopeSchemaVersion', () => {
+    expect(types).toContain('scopeSchemaVersion')
+  })
+
+  it('includes interface specification digest for INTERFACE_SPECIFICATION assets', () => {
+    expect(types).toContain('interfaceSpecDigest')
+    expect(types).toContain('interfaceSpecVersion')
+  })
+
+  it('EVALUATED_SCOPE_NOT_CAPTURED marker exists for historical compat', () => {
+    expect(types).toContain('EVALUATED_SCOPE_NOT_CAPTURED')
   })
 
   it('does NOT create a parallel scope engine (additive type only)', () => {
@@ -323,26 +365,32 @@ describe('[PX1.2 §38] Product Truth — new invariants', () => {
   })
 })
 
-// ─── Section 14: Enterprise deployment — local/Docker only ──────────────────
+// ─── Section 14: Enterprise positioning — Lab POC, not self-hosted platform ──
 
-describe('[PX1.2 §14] Enterprise deployment — local/Docker only, contact Subodh Kc', () => {
+describe('[PX1.2A-R §14] Enterprise positioning — Lab POC only', () => {
   const terminology = readFile('docs/architecture/PX1-2-TERMINOLOGY-INVARIANTS.md')
   const pricing = readFile('app/pricing/page.tsx')
 
-  it('terminology contract states enterprise is local/Docker only', () => {
-    expect(terminology).toContain('local deployment / Docker only')
-    expect(terminology).toContain('Subodh Kc')
-    expect(terminology).toContain('Enterprise POC')
+  it('terminology contract states Enterprise Lab POC != self-hosted platform', () => {
+    expect(terminology).toContain('Enterprise Lab POC')
+    expect(terminology).toContain('self-hosted HAIEC platform')
   })
 
-  it('pricing page enterprise tier states contact Subodh Kc', () => {
-    expect(pricing).toContain('Contact Subodh Kc')
-    expect(pricing).toContain('Self-Hosted Deployment')
-    expect(pricing).toContain('Local / Docker')
+  it('terminology contract states fully self-hosted HAIEC Platform is FUTURE / NOT AVAILABLE', () => {
+    expect(terminology).toContain('FUTURE / NOT AVAILABLE')
+  })
+
+  it('pricing page does NOT claim self-hosted deployment', () => {
+    expect(pricing).not.toContain('Self-Hosted Deployment')
+    expect(pricing).not.toContain('Local / Docker')
+  })
+
+  it('pricing page FIRM tier remains "Manage it for Clients" (not converted to Enterprise self-host)', () => {
+    expect(pricing).toContain('Manage it for Clients')
   })
 
   it('does not advertise a managed-cloud Enterprise tier as generally available', () => {
-    expect(terminology).toContain('no managed-cloud Enterprise tier advertised as generally available')
+    expect(terminology).toContain('FUTURE / NOT AVAILABLE')
   })
 })
 
