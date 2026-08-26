@@ -1,19 +1,28 @@
 /**
- * UX0-R1 — Comprehensive Metadata Em-Dash Guard
+ * UX0-R2 — AST-Based Metadata Em-Dash Guard
  *
- * Discovers ALL active metadata files and validates no em dash (—)
- * is present in title, description, openGraph, or twitter fields.
+ * Uses the TypeScript compiler API to accurately parse metadata exports
+ * and check for em dashes in metadata string fields.
  *
- * Excludes: Old Files/, test fixtures, demo artifacts, historical docs.
+ * Reports accurate counts:
+ *   CANDIDATE_FILES_SCANNED
+ *   FILES_WITH_METADATA_EXPORTS
+ *   FILES_WITH_GENERATE_METADATA
+ *   ACTUAL_METADATA_DEFINITIONS_CHECKED
+ *
+ * Checks: title, description, openGraph.title, openGraph.description,
+ *         twitter.title, twitter.description, image alt, headline (JSON-LD)
+ *
+ * Excludes body-copy data arrays.
  */
 
 import { describe, it, expect } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as ts from 'typescript';
 
 const cwd = process.cwd();
 
-// Excluded paths — historical artifacts, not active metadata
 const EXCLUDED_PATTERNS = [
   'Old Files',
   'node_modules',
@@ -29,104 +38,215 @@ function isExcluded(filePath: string): boolean {
   return EXCLUDED_PATTERNS.some((p) => filePath.includes(p));
 }
 
-/** Recursively find all files matching a pattern, excluding historical artifacts. */
-function findFiles(dir: string, ext: string, results: string[] = []): string[] {
+function findFiles(dir: string, exts: string[], results: string[] = []): string[] {
   if (!fs.existsSync(dir)) return results;
   const entries = fs.readdirSync(dir, { withFileTypes: true });
   for (const entry of entries) {
     const fullPath = path.join(dir, entry.name);
     if (isExcluded(fullPath)) continue;
     if (entry.isDirectory()) {
-      findFiles(fullPath, ext, results);
-    } else if (entry.name.endsWith(ext)) {
+      findFiles(fullPath, exts, results);
+    } else if (exts.some((ext) => entry.name.endsWith(ext))) {
       results.push(fullPath);
     }
   }
   return results;
 }
 
-/** Extract metadata-relevant string literals from a file. */
-function extractMetadataStrings(content: string): string[] {
-  const strings: string[] = [];
+/**
+ * Recursively collect all string literal values from a TypeScript node,
+ * but only within metadata-relevant property assignments.
+ */
+function collectMetadataStrings(node: ts.Node, strings: string[]): void {
+  const text = node.getText();
 
-  for (const m of content.matchAll(/title:\s*['"`]([^'"`]+)['"`]/g)) strings.push(m[1]);
-  for (const m of content.matchAll(/description:\s*['"`]([^'"`]+)['"`]/g)) strings.push(m[1]);
-  for (const m of content.matchAll(/alt:\s*['"`]([^'"`]+)['"`]/g)) strings.push(m[1]);
-  for (const m of content.matchAll(/headline:\s*['"`]([^'"`]+)['"`]/g)) strings.push(m[1]);
+  // Match property assignments with metadata-relevant keys
+  // We look for PropertyAssignment nodes whose name is a metadata field
+  if (ts.isPropertyAssignment(node)) {
+    const name = node.name.getText().replace(/['"`]/g, '');
+    const METADATA_KEYS = ['title', 'description', 'alt', 'headline', 'name'];
 
-  return strings;
+    if (METADATA_KEYS.includes(name)) {
+      // Extract string literal value from the initializer
+      const init = node.initializer;
+      if (ts.isStringLiteral(init)) {
+        strings.push(init.text);
+      } else if (ts.isNoSubstitutionTemplateLiteral(init)) {
+        strings.push(init.text);
+      } else if (ts.isTemplateExpression(init)) {
+        // For template expressions with substitutions, check the head and middle parts
+        strings.push(init.head.text);
+        for (const part of init.templateSpans) {
+          if (ts.isTemplateMiddlePart(part)) {
+            strings.push(part.text);
+          }
+        }
+      } else if (ts.isObjectLiteralExpression(init)) {
+        // Nested object (e.g., openGraph: { title: ... }) — recurse
+        for (const child of init.properties) {
+          collectMetadataStrings(child, strings);
+        }
+      } else if (ts.isArrayLiteralExpression(init)) {
+        // Array of objects (e.g., images: [{ alt: ... }])
+        for (const elem of init.elements) {
+          if (ts.isObjectLiteralExpression(elem)) {
+            for (const child of elem.properties) {
+              collectMetadataStrings(child, strings);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Recurse into child nodes
+  ts.forEachChild(node, (child) => collectMetadataStrings(child, strings));
 }
 
-describe('[UX0-R1] Comprehensive metadata em-dash guard', () => {
-  // Find all metadata.ts files
-  const metadataFiles = findFiles(path.join(cwd, 'app'), '.ts')
-    .filter((f) => f.endsWith('metadata.ts'));
+/**
+ * Parse a file and extract all metadata string values from:
+ * 1. export const metadata = { ... }
+ * 2. generateMetadata(): Metadata { return { ... } }
+ * 3. JSON-LD structured data (application/ld+json)
+ */
+function extractMetadataFromSource(
+  filePath: string
+): { hasMetadataExport: boolean; hasGenerateMetadata: boolean; strings: string[] } {
+  const content = fs.readFileSync(filePath, 'utf-8');
+  const sourceFile = ts.createSourceFile(filePath, content, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 
-  // Find all layout.tsx and page.tsx files that may export metadata
-  const layoutFiles = findFiles(path.join(cwd, 'app'), '.tsx')
-    .filter((f) => f.endsWith('layout.tsx') || f.endsWith('page.tsx'));
+  const strings: string[] = [];
+  let hasMetadataExport = false;
+  let hasGenerateMetadata = false;
 
-  const allFiles = [...metadataFiles, ...layoutFiles];
-  const discoveredCount = allFiles.length;
+  function visit(node: ts.Node) {
+    // export const metadata = { ... }
+    if (
+      ts.isVariableStatement(node) &&
+      node.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)
+    ) {
+      for (const decl of node.declarationList.declarations) {
+        if (decl.name.getText() === 'metadata') {
+          hasMetadataExport = true;
+          if (decl.initializer && ts.isObjectLiteralExpression(decl.initializer)) {
+            for (const prop of decl.initializer.properties) {
+              collectMetadataStrings(prop, strings);
+            }
+          }
+        }
+      }
+    }
 
-  it(`discovers active metadata files (found ${discoveredCount})`, () => {
-    expect(discoveredCount).toBeGreaterThan(50);
+    // generateMetadata(): Metadata { return { ... } }
+    if (
+      ts.isFunctionDeclaration(node) &&
+      node.name?.getText() === 'generateMetadata'
+    ) {
+      hasGenerateMetadata = true;
+      // Find return statement with object literal
+      function findReturn(n: ts.Node): ts.ObjectLiteralExpression | null {
+        if (ts.isReturnStatement(n) && n.expression && ts.isObjectLiteralExpression(n.expression)) {
+          return n.expression;
+        }
+        let result: ts.ObjectLiteralExpression | null = null;
+        ts.forEachChild(n, (child) => {
+          if (!result) result = findReturn(child);
+        });
+        return result;
+      }
+      const returnObj = findReturn(node);
+      if (returnObj) {
+        for (const prop of returnObj.properties) {
+          collectMetadataStrings(prop, strings);
+        }
+      }
+    }
+
+    ts.forEachChild(node, visit);
+  }
+
+  visit(sourceFile);
+
+  // Also check JSON-LD structured data blocks via regex
+  // (these are stringified JSON, not parsed by TS as metadata)
+  const jsonLdMatches = content.matchAll(
+    /'application\/ld\+json':\s*JSON\.stringify\(([\s\S]*?)\)\s*[,}]/g
+  );
+  for (const m of jsonLdMatches) {
+    const jsonLdContent = m[1];
+    // Extract string values from the JSON-LD object
+    for (const sm of jsonLdContent.matchAll(/['"`](?:headline|name|description|title|alt)['"`]\s*:\s*['"`]([^'"`]+)['"`]/g)) {
+      strings.push(sm[1]);
+    }
+  }
+
+  return { hasMetadataExport, hasGenerateMetadata, strings };
+}
+
+describe('[UX0-R2] AST-based metadata em-dash guard', () => {
+  // Find all candidate files
+  const tsFiles = findFiles(path.join(cwd, 'app'), ['.ts']);
+  const tsxFiles = findFiles(path.join(cwd, 'app'), ['.tsx']);
+  const allCandidates = [...tsFiles, ...tsxFiles];
+  const candidateCount = allCandidates.length;
+
+  // Process each file
+  const filesWithMetadata: string[] = [];
+  const filesWithGenerateMetadata: string[] = [];
+  const allMetadataStrings: { file: string; value: string }[] = [];
+
+  for (const filePath of allCandidates) {
+    try {
+      const result = extractMetadataFromSource(filePath);
+      if (result.hasMetadataExport) {
+        filesWithMetadata.push(filePath);
+      }
+      if (result.hasGenerateMetadata) {
+        filesWithGenerateMetadata.push(filePath);
+      }
+      for (const s of result.strings) {
+        allMetadataStrings.push({ file: filePath, value: s });
+      }
+    } catch {
+      // Skip files that fail to parse
+    }
+  }
+
+  const metadataDefinitionCount = filesWithMetadata.length + filesWithGenerateMetadata.length;
+
+  it(`CANDIDATE_FILES_SCANNED = ${candidateCount} (must be > 50)`, () => {
+    expect(candidateCount).toBeGreaterThan(50);
   });
 
-  // Test each file for em dashes in metadata fields
-  for (const filePath of allFiles) {
+  it(`FILES_WITH_METADATA_EXPORTS = ${filesWithMetadata.length}`, () => {
+    expect(filesWithMetadata.length).toBeGreaterThan(0);
+  });
+
+  it(`FILES_WITH_GENERATE_METADATA = ${filesWithGenerateMetadata.length}`, () => {
+    // May be 0, just report
+    expect(filesWithGenerateMetadata.length).toBeGreaterThanOrEqual(0);
+  });
+
+  it(`ACTUAL_METADATA_DEFINITIONS_CHECKED = ${metadataDefinitionCount}`, () => {
+    expect(metadataDefinitionCount).toBeGreaterThan(0);
+  });
+
+  // Test each file with metadata for em dashes
+  const filesToCheck = [...new Set([...filesWithMetadata, ...filesWithGenerateMetadata])];
+
+  for (const filePath of filesToCheck) {
     const relPath = path.relative(cwd, filePath);
     it(`${relPath} has no em dash in metadata fields`, () => {
-      const content = fs.readFileSync(filePath, 'utf-8');
-
-      // Only check files that actually export metadata
-      if (!content.includes('metadata') && !content.includes('Metadata')) {
-        return; // skip non-metadata files
-      }
-
-      // Extract only the metadata export portion of the file.
-      // This avoids matching description: fields in data arrays (body copy).
-      // Look for `export const metadata` or `export const metadata: Metadata` blocks.
-      const metadataBlockMatch = content.match(
-        /export\s+const\s+metadata(?:\s*:\s*Metadata)?\s*=\s*\{([\s\S]*?)\n\}/
-      );
-      if (!metadataBlockMatch) {
-        // Also check generateMetadata return objects
-        const genMetaMatch = content.match(/generateMetadata[\s\S]*?return\s*\{([\s\S]*?)\n\s*\}/);
-        if (!genMetaMatch) return; // no metadata export found, skip
-        var checkContent = genMetaMatch[1];
-      } else {
-        var checkContent = metadataBlockMatch[1];
-      }
-
-      // Also check JSON-LD structured data blocks (application/ld+json)
-      const jsonLdMatches = content.matchAll(/'application\/ld\+json':\s*JSON\.stringify\(([\s\S]*?)\)\s*[,}]/g);
-      for (const m of jsonLdMatches) {
-        checkContent += '\n' + m[1];
-      }
-
-      const strings: string[] = [];
-
-      // title: '...' — only within metadata block
-      for (const m of checkContent.matchAll(/title:\s*['"`]([^'"`]+)['"`]/g)) {
-        strings.push(m[1]);
-      }
-      // description: '...' — only within metadata block
-      for (const m of checkContent.matchAll(/description:\s*['"`]([^'"`]+)['"`]/g)) {
-        strings.push(m[1]);
-      }
-      // alt: '...' (in metadata image objects)
-      for (const m of checkContent.matchAll(/alt:\s*['"`]([^'"`]+)['"`]/g)) {
-        strings.push(m[1]);
-      }
-      // headline: '...' (structured data)
-      for (const m of checkContent.matchAll(/headline:\s*['"`]([^'"`]+)['"`]/g)) {
-        strings.push(m[1]);
-      }
-
-      for (const s of strings) {
+      const result = extractMetadataFromSource(filePath);
+      for (const s of result.strings) {
         expect(s).not.toContain('—');
       }
     });
   }
+
+  // Global em-dash count across all metadata strings
+  it('ACTIVE_METADATA_EM_DASH_COUNT = 0', () => {
+    const emDashCount = allMetadataStrings.filter((s) => s.value.includes('—')).length;
+    expect(emDashCount).toBe(0);
+  });
 });
