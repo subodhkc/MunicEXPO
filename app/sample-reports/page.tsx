@@ -39,7 +39,7 @@ export const metadata: Metadata = {
     'AI compliance sample deliverables',
   ],
   openGraph: {
-    title: 'Sample AI Compliance Reports — NYC LL144, Colorado AI Act, SOC 2, HIPAA',
+    title: 'Sample AI Compliance Reports | NYC LL144, Colorado AI Act, SOC 2, HIPAA',
     description: 'Preview real compliance reports: NYC LL144 bias audits, Colorado AI Act impact assessments, SOC 2 audit reports, HIPAA artifacts, and AI security scanner output. SHA-256 verified, deterministic, audit-grade.',
     type: 'website',
     url: 'https://www.haiec.com/sample-reports',
@@ -49,13 +49,13 @@ export const metadata: Metadata = {
         url: 'https://www.haiec.com/og-sample-reports.jpg',
         width: 1200,
         height: 630,
-        alt: 'HAIEC Sample Compliance Reports — NYC LL144, Colorado AI Act, SOC 2, HIPAA',
+        alt: 'HAIEC Sample Compliance Reports | NYC LL144, Colorado AI Act, SOC 2, HIPAA',
       },
     ],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Sample AI Compliance Reports — NYC LL144, Colorado AI Act, SOC 2, HIPAA',
+    title: 'Sample AI Compliance Reports | NYC LL144, Colorado AI Act, SOC 2, HIPAA',
     description: 'Preview real compliance reports before you buy. NYC bias audits, Colorado AI Act assessments, SOC 2 reports, HIPAA artifacts. Deterministic, SHA-256 verified.',
   },
   alternates: {
@@ -182,7 +182,7 @@ export const metadata: Metadata = {
               name: 'How does HAIEC support compliance report accuracy?',
               acceptedAnswer: {
                 '@type': 'Answer',
-                text: 'HAIEC uses deterministic, rule-based engines — not AI or ML models. Every report is reproducible: the same inputs always produce the same outputs. All evidence is SHA-256 hashed for tamper-evident verification. Reports map findings to specific statutory references and control IDs.',
+                text: 'HAIEC uses deterministic, rule-based engines - not AI or ML models. Every report is reproducible: the same inputs always produce the same outputs. All evidence is SHA-256 hashed for tamper-evident verification. Reports map findings to specific statutory references and control IDs.',
               },
             },
             {
