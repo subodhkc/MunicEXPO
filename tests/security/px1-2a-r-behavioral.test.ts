@@ -218,7 +218,7 @@ const baseSnapshot = {
   environment: 'production',
   assetSnapshots: [
     {
-      assetId: 'asset-1',
+      connectedAssetId: 'asset-1',
       assetType: 'SOURCE_REPOSITORY',
       displayName: 'main-repo',
       canonicalLocator: 'github.com/org/repo-123',
@@ -226,7 +226,7 @@ const baseSnapshot = {
       evaluationInclusionState: 'EVALUATED' as const,
     },
     {
-      assetId: 'asset-2',
+      connectedAssetId: 'asset-2',
       assetType: 'RUNTIME_ENDPOINT',
       displayName: 'api-endpoint',
       canonicalLocator: 'https://api.example.com',
@@ -377,7 +377,7 @@ describe('[PX1.2A-R2 §18-D] Asset missing from evaluation', () => {
       assetSnapshots: [
         ...baseSnapshot.assetSnapshots,
         {
-          assetId: 'asset-3',
+          connectedAssetId: 'asset-3',
           assetType: 'CONTAINER_IMAGE',
           displayName: 'docker-image',
           evaluationInclusionState: 'NOT_EVALUATED' as const,
@@ -439,7 +439,7 @@ describe('[PX1.2A-R2 §18-E] Receipt verification — scope digest', () => {
       assetSnapshots: [
         ...snapshot.assetSnapshots,
         {
-          assetId: 'injected-asset',
+          connectedAssetId: 'injected-asset',
           assetType: 'CONTAINER_IMAGE',
           displayName: 'injected',
           evaluationInclusionState: 'EVALUATED' as const,
@@ -478,5 +478,234 @@ describe('[PX1.2A-R2 §18-E] Receipt verification — scope digest', () => {
       evaluationSnapshotAt: '2027-01-01T00:00:00Z',
     };
     expect(verifyScopeDigest(retime)).toBe(true);
+  });
+});
+
+// ─── R3 §5 — connectedAssetId vs canonicalLocator separation ────────────────
+
+describe('[PX1.2A-R3 §5] EvaluatedScopeAssetSnapshot — identity field separation', () => {
+  it('connectedAssetId is NOT a required field (canonicalLocator can stand alone)', () => {
+    const snapshot = buildEvaluatedScopeSnapshot({
+      ...baseSnapshot,
+      assetSnapshots: [
+        {
+          // No connectedAssetId — canonicalLocator identifies the target
+          assetType: 'SOURCE_REPOSITORY',
+          displayName: 'unbound-repo',
+          canonicalLocator: 'github.com/org/repo-unbound',
+          gitCommit: 'abc123',
+          evaluationInclusionState: 'EVALUATED' as const,
+        },
+      ],
+    });
+    expect(snapshot.assetSnapshots[0].connectedAssetId).toBeUndefined();
+    expect(snapshot.assetSnapshots[0].canonicalLocator).toBe('github.com/org/repo-unbound');
+    expect(snapshot.scopeDigest).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('adding connectedAssetId changes digest (binding is scope identity)', () => {
+    const withoutBinding = buildEvaluatedScopeSnapshot({
+      ...baseSnapshot,
+      assetSnapshots: [
+        {
+          assetType: 'SOURCE_REPOSITORY',
+          displayName: 'repo',
+          canonicalLocator: 'github.com/org/repo-123',
+          gitCommit: 'abc123',
+          evaluationInclusionState: 'EVALUATED' as const,
+        },
+      ],
+    });
+    const withBinding = buildEvaluatedScopeSnapshot({
+      ...baseSnapshot,
+      assetSnapshots: [
+        {
+          ...withoutBinding.assetSnapshots[0],
+          connectedAssetId: 'asset-bound-1',
+        },
+      ],
+    });
+    expect(withoutBinding.scopeDigest).not.toBe(withBinding.scopeDigest);
+  });
+
+  it('same canonicalLocator + no connectedAssetId → deterministic digest', () => {
+    const snap1 = buildEvaluatedScopeSnapshot({
+      ...baseSnapshot,
+      assetSnapshots: [
+        {
+          assetType: 'SOURCE_REPOSITORY',
+          displayName: 'repo',
+          canonicalLocator: 'github.com/org/repo-det',
+          gitCommit: 'abc123',
+          evaluationInclusionState: 'EVALUATED' as const,
+        },
+      ],
+    });
+    const snap2 = buildEvaluatedScopeSnapshot({
+      ...baseSnapshot,
+      assetSnapshots: [
+        {
+          assetType: 'SOURCE_REPOSITORY',
+          displayName: 'different-display-name',
+          canonicalLocator: 'github.com/org/repo-det',
+          gitCommit: 'abc123',
+          evaluationInclusionState: 'EVALUATED' as const,
+        },
+      ],
+    });
+    expect(snap1.scopeDigest).toBe(snap2.scopeDigest);
+  });
+});
+
+// ─── R3 §6 — scopeLimitations vs generic evidence limitations ───────────────
+
+describe('[PX1.2A-R3 §6] scopeLimitations — scope-boundary only', () => {
+  it('scopeLimitations change → digest changes', () => {
+    const without = buildEvaluatedScopeSnapshot({
+      ...baseSnapshot,
+      scopeLimitations: [],
+    });
+    const withLimit = buildEvaluatedScopeSnapshot({
+      ...baseSnapshot,
+      scopeLimitations: ['ASSET_IDENTITY_UNRESOLVED'],
+    });
+    expect(without.scopeDigest).not.toBe(withLimit.scopeDigest);
+  });
+
+  it('different scopeLimitations → different digest', () => {
+    const a = buildEvaluatedScopeSnapshot({
+      ...baseSnapshot,
+      scopeLimitations: ['ASSET_IDENTITY_UNRESOLVED'],
+    });
+    const b = buildEvaluatedScopeSnapshot({
+      ...baseSnapshot,
+      scopeLimitations: ['ENVIRONMENT_NOT_ESTABLISHED'],
+    });
+    expect(a.scopeDigest).not.toBe(b.scopeDigest);
+  });
+
+  it('scopeLimitations ordering does not change digest (set-like)', () => {
+    const a = buildEvaluatedScopeSnapshot({
+      ...baseSnapshot,
+      scopeLimitations: ['LIMIT_A', 'LIMIT_B'],
+    });
+    const b = buildEvaluatedScopeSnapshot({
+      ...baseSnapshot,
+      scopeLimitations: ['LIMIT_B', 'LIMIT_A'],
+    });
+    expect(a.scopeDigest).toBe(b.scopeDigest);
+  });
+});
+
+// ─── R3 §2 — State preservation on re-connect (contract-level) ─────────────
+
+describe('[PX1.2A-R3 §2] Re-connect state preservation contract', () => {
+  it('CreateAssetResult no longer carries idempotent flag (Section 4)', () => {
+    // The idempotent boolean was removed because no caller consumed it.
+    // The result contract is now: { ok, asset?, reason? }
+    // Importing the type and checking shape at the type level is enforced by tsc.
+    // Here we verify the source no longer exports an idempotent field.
+    // (Behavioral: the function still returns the canonical asset on retry.)
+    // This is a static guard against re-introduction.
+    const fs = require('fs');
+    const path = require('path');
+    const src = fs.readFileSync(
+      path.join(process.cwd(), 'lib/ai-inventory/connected-assets.ts'),
+      'utf-8'
+    );
+    expect(src).not.toMatch(/idempotent\??\s*:/);
+  });
+
+  it('create path defaults connectionState to REGISTERED when omitted', () => {
+    // Contract: CREATE → connectionState = input.connectionState ?? 'REGISTERED'
+    // This is enforced in the createData block of createConnectedAsset.
+    const fs = require('fs');
+    const path = require('path');
+    const src = fs.readFileSync(
+      path.join(process.cwd(), 'lib/ai-inventory/connected-assets.ts'),
+      'utf-8'
+    );
+    // The create path must default to REGISTERED
+    expect(src).toMatch(/connectionState:\s*input\.connectionState\s*\?\?\s*'REGISTERED'/);
+  });
+
+  it('update path preserves existing state when connectionState omitted (undefined)', () => {
+    // Contract: UPDATE → connectionState = input.connectionState ?? undefined
+    // Prisma treats undefined as "do not change this field".
+    // This prevents CONNECTED → REGISTERED downgrade.
+    const fs = require('fs');
+    const path = require('path');
+    const src = fs.readFileSync(
+      path.join(process.cwd(), 'lib/ai-inventory/connected-assets.ts'),
+      'utf-8'
+    );
+    // The update path must use ?? undefined (NOT ?? 'REGISTERED')
+    expect(src).toMatch(/connectionState:\s*input\.connectionState\s*\?\?\s*undefined/);
+  });
+});
+
+// ─── R3 §3 — P2002 bounded retry (contract-level) ──────────────────────────
+
+describe('[PX1.2A-R3 §3] P2002 concurrency handling contract', () => {
+  it('handles P2002 with bounded retry (finds canonical existing)', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const src = fs.readFileSync(
+      path.join(process.cwd(), 'lib/ai-inventory/connected-assets.ts'),
+      'utf-8'
+    );
+    expect(src).toMatch(/P2002/);
+    expect(src).toMatch(/isPrismaUniqueConstraintError/);
+    // Bounded: single retry via findFirst, not a loop
+    expect(src).toMatch(/findFirst/);
+  });
+
+  it('does NOT swallow non-P2002 errors (re-throws)', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const src = fs.readFileSync(
+      path.join(process.cwd(), 'lib/ai-inventory/connected-assets.ts'),
+      'utf-8'
+    );
+    // Non-P2002 must propagate — throw err outside the P2002 branch
+    expect(src).toMatch(/throw err/);
+  });
+});
+
+// ─── R3 §1 — Schema/migration unique index alignment ───────────────────────
+
+describe('[PX1.2A-R3 §1] Schema ↔ migration unique index alignment', () => {
+  it('Prisma schema declares compound unique (aiSystemId, assetIdentityKey)', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const schema = fs.readFileSync(
+      path.join(process.cwd(), 'prisma/schema.prisma'),
+      'utf-8'
+    );
+    expect(schema).toMatch(/@@unique\(\[aiSystemId,\s*assetIdentityKey\]\)/);
+  });
+
+  it('migration SQL uses normal unique index (no partial WHERE predicate)', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const migration = fs.readFileSync(
+      path.join(process.cwd(), 'prisma/migrations/20260826000000_px1_2_ai_system_assets/migration.sql'),
+      'utf-8'
+    );
+    // Must have the unique index
+    expect(migration).toMatch(/CREATE UNIQUE INDEX.*ai_system_assets_aiSystemId_assetIdentityKey_key/);
+    // Must NOT have a partial index predicate
+    expect(migration).not.toMatch(/WHERE\s+"assetIdentityKey"\s+IS\s+NOT\s+NULL/i);
+  });
+
+  it('migration index name matches Prisma convention', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const migration = fs.readFileSync(
+      path.join(process.cwd(), 'prisma/migrations/20260826000000_px1_2_ai_system_assets/migration.sql'),
+      'utf-8'
+    );
+    // Prisma names compound unique indexes as <table>_<col1>_<col2>_key
+    expect(migration).toMatch(/ai_system_assets_aiSystemId_assetIdentityKey_key/);
   });
 });

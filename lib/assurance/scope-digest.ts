@@ -19,9 +19,9 @@
  *   aiSystemId              — which AI System was evaluated
  *   environment             — environment is part of scope boundary
  *   assetSnapshots[].scope-semantic fields:
- *     assetId               — canonical asset identity
+ *     connectedAssetId      — canonical Connected Asset ID (ai_system_assets.id only)
  *     assetType             — what kind of asset
- *     canonicalLocator      — stable/canonical locator identity
+ *     canonicalLocator      — stable/canonical external locator identity
  *     identityStateAtEvaluation — identity state at evaluation time
  *     environment           — per-asset environment if part of scope
  *     gitCommit             — exact source identity
@@ -32,6 +32,10 @@
  *     endpoint              — exact endpoint identity
  *     evaluationInclusionState — was this asset included in scope?
  *     notEvaluatedReason    — why not (scope-relevant)
+ *
+ *   unresolvedIdentity      — scope identity dimensions unresolved
+ *   scopeLimitations        — limitations defining the evaluated boundary ONLY
+ *                             (SCOPE_LIMITATION != GENERIC_EVIDENCE_LIMITATION)
  *
  * ─── Excluded from scopeDigest (operational/evaluation identity) ────────
  *
@@ -69,7 +73,7 @@ const SET_LIKE_SCOPE_FIELDS = new Set<string>(['assetSnapshots']);
  */
 function projectAssetScopeSemantic(asset: EvaluatedScopeAssetSnapshot): Record<string, unknown> {
   return {
-    assetId: asset.assetId ?? '',
+    connectedAssetId: asset.connectedAssetId ?? '',
     assetType: asset.assetType ?? '',
     canonicalLocator: asset.canonicalLocator ?? '',
     identityStateAtEvaluation: asset.identityStateAtEvaluation ?? '',
@@ -106,7 +110,7 @@ export function computeScopeDigest(
     // Project only scope-semantic fields from each asset snapshot
     assetSnapshots: (snapshot.assetSnapshots ?? []).map(projectAssetScopeSemantic),
     unresolvedIdentity: (snapshot.unresolvedIdentity ?? []).slice().sort(),
-    limitations: (snapshot.limitations ?? []).slice().sort(),
+    scopeLimitations: (snapshot.scopeLimitations ?? []).slice().sort(),
   };
 
   // NOTE: evaluationSnapshotAt, orchestratorRunId, producerRunIds are

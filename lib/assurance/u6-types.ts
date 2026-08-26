@@ -69,11 +69,20 @@ export interface BuildIdentity {
 export const EVALUATED_SCOPE_SCHEMA_VERSION = '1.0';
 
 export interface EvaluatedScopeAssetSnapshot {
-  /** Asset ID (ai_system_assets.id) or external locator if not yet bound */
-  assetId?: string;
+  /**
+   * Connected Asset ID (ai_system_assets.id) ONLY — never a URL, digest,
+   * or external provider ID. When no Connected Asset binding exists,
+   * this is undefined and canonicalLocator identifies the evaluated target.
+   *
+   * CONNECTED_ASSET_ID != EXTERNAL_LOCATOR
+   */
+  connectedAssetId?: string;
   assetType: string;
   displayName: string;
-  /** Stable/canonical locator identity at evaluation time */
+  /**
+   * External/provider/source stable locator identity at evaluation time.
+   * Can exist without connectedAssetId when no canonical asset binding exists.
+   */
   canonicalLocator?: string;
   /** Identity state at evaluation (NOT_VERIFIED | VERIFIED | CONFLICTED) */
   identityStateAtEvaluation?: string;
@@ -115,8 +124,16 @@ export interface EvaluatedScopeSnapshot {
   producerRunIds?: string[];
   /** Identity dimensions that remained unresolved */
   unresolvedIdentity?: string[];
-  /** Limitations that remained (e.g., BUILD_IDENTITY_NOT_PROVIDED) */
-  limitations?: string[];
+  /**
+   * Scope limitations — limitations defining the evaluated boundary ONLY.
+   * Examples: asset identity unresolved, deployment identity unavailable,
+   * specified asset excluded from evaluation, environment not established.
+   *
+   * SCOPE_LIMITATION != GENERIC_EVIDENCE_LIMITATION
+   * Generic Evidence producer limitations remain on Evidence/evaluation and
+   * do NOT change scopeDigest unless they actually change WHAT was in scope.
+   */
+  scopeLimitations?: string[];
   /**
    * Deterministic scope digest — same semantic scope → same digest.
    * Computed via canonicalSerialize + hashTextContent (existing infrastructure).
