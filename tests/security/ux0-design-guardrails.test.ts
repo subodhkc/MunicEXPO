@@ -82,10 +82,11 @@ describe('[UX0] Design system CSS conflicts removed', () => {
     expect(content).not.toMatch(/^\.flex\s*\{/m);
   });
 
-  it('haiec-design-system.css primary is emerald (not forest green)', () => {
+  it('haiec-design-system.css primary is forest green (shared product/dashboard theme, not changed by UX0)', () => {
     const content = readActiveFile('styles/haiec-design-system.css');
-    expect(content).toMatch(/--haiec-primary:\s*#10B981/);
-    expect(content).not.toMatch(/--haiec-primary:\s*#228B22/);
+    // UX0-R1: reverted global --haiec-primary to forest green to preserve dashboard/product theme.
+    // Public marketing pages use Tailwind emerald classes directly, not this CSS variable.
+    expect(content).toMatch(/--haiec-primary:\s*#228B22/);
   });
 });
 
@@ -178,5 +179,43 @@ describe('[UX0] Navigation has no glassmorphism', () => {
   it('AutoHideNavigation mobile menu has no gradient buttons', () => {
     const content = readActiveFile('components/AutoHideNavigation.tsx');
     expect(content).not.toMatch(/from-emerald-600 to-teal-600/);
+  });
+});
+
+// ─── K. No temporary scratch files ──────────────────────────────────────────
+
+describe('[UX0-R1] No temporary scratch files', () => {
+  it('no _ux0-*.txt or _br1-*.txt files in repo root', () => {
+    const rootFiles = fs.readdirSync(cwd);
+    const scratchFiles = rootFiles.filter(
+      (f) => f.startsWith('_ux0-') || f.startsWith('_br1-') || f.startsWith('_r2-') || f.startsWith('_r3-') || f.startsWith('_px1-')
+    );
+    expect(scratchFiles).toHaveLength(0);
+  });
+});
+
+// ─── L. Public theme isolation from dashboard ───────────────────────────────
+
+describe('[UX0-R1] Public theme isolated from dashboard', () => {
+  it('haiec-design-system.css --haiec-primary is forest green (not changed to emerald)', () => {
+    // The global CSS variable is shared with dashboard/product/checkout.
+    // UX0 must not change it. Public marketing uses Tailwind emerald classes.
+    const content = readActiveFile('styles/haiec-design-system.css');
+    expect(content).toMatch(/--haiec-primary:\s*#228B22/);
+    expect(content).not.toMatch(/--haiec-primary:\s*#10B981/);
+  });
+
+  it('tailwind config has heading font family', () => {
+    const content = readActiveFile('tailwind.config.js');
+    expect(content).toMatch(/heading.*Space.Grotesk/);
+  });
+});
+
+// ─── M. Section spacing matches documentation ───────────────────────────────
+
+describe('[UX0-R1] Section spacing consistency', () => {
+  it('globals.css .section uses py-20 lg:py-28 (canonical spacing)', () => {
+    const content = readActiveFile('app/globals.css');
+    expect(content).toMatch(/\.section\s*\{[^}]*py-20[^}]*lg:py-28/s);
   });
 });
