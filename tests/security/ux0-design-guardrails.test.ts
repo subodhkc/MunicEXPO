@@ -57,7 +57,7 @@ describe('[UX0] DynamicCTA is stable (no rotating)', () => {
 
   it('DynamicCTA uses emerald (not blue/gradient)', () => {
     const content = readActiveFile('components/DynamicCTA.tsx');
-    expect(content).toMatch(/bg-emerald-600/);
+    expect(content).toMatch(/bg-emerald-700/);
     expect(content).not.toMatch(/from-blue/);
     expect(content).not.toMatch(/gradient/);
   });
