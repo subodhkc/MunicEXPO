@@ -59,6 +59,24 @@ describe('[PX1.2B §11] Connected Asset API — tenant isolation', () => {
     // organizationId must come from auth, not caller
     expect(listContent).not.toMatch(/body.*organizationId/);
   });
+
+  it('POST rejects client-supplied connectionState (Section 9)', () => {
+    expect(listContent).toContain('Client cannot set connectionState or identityState');
+  });
+
+  it('POST schema does NOT include connectionState field (Section 9)', () => {
+    // The zod schema should not have connectionState
+    expect(listContent).not.toMatch(/connectionState.*z\.string/);
+  });
+
+  it('POST schema does NOT include identityState field (Section 9)', () => {
+    expect(listContent).not.toMatch(/identityState.*z\.string/);
+  });
+
+  it('POST validates connectionChoice + assetType pair consistency (Section 13)', () => {
+    expect(listContent).toContain('CONNECTION_TO_ASSET_TYPE');
+    expect(listContent).toContain('not valid for connectionChoice');
+  });
 });
 
 // ─── Asset Mutation API — tenant isolation ──────────────────────────────────
@@ -76,6 +94,15 @@ describe('[PX1.2B §11] Asset Mutation API — tenant isolation', () => {
 
   it('PATCH updateMany is scoped by aiSystemId AND organizationId', () => {
     expect(content).toContain('where: { id: assetId, aiSystemId: systemId, organizationId: orgId }');
+  });
+
+  it('PATCH rejects client-supplied connectionState or identityState (Section 9)', () => {
+    expect(content).toContain('Client cannot set connectionState or identityState via PATCH');
+  });
+
+  it('PATCH schema does NOT include connectionState or identityState (Section 9)', () => {
+    expect(content).not.toMatch(/connectionState.*z\.string/);
+    expect(content).not.toMatch(/identityState.*z\.string/);
   });
 
   it('DELETE uses requireOrganizationAccess', () => {
@@ -240,5 +267,106 @@ describe('[PX1.2B §11] Cross-tenant attachment fails closed', () => {
 
   it('listConnectedAssets filters by both aiSystemId AND organizationId', () => {
     expect(assetContent).toContain('where: { aiSystemId, organizationId }');
+  });
+});
+
+// ─── Evidence Resolver — tenant isolation (PX1.2B-R1 Section 3-5) ───────────
+
+describe('[PX1.2B-R1 §3-5] Evidence resolver — tenant isolation', () => {
+  const content = readFile('lib/ai-inventory/system-evidence-resolver.ts');
+
+  it('verifies AI System org binding before querying evidence', () => {
+    expect(content).toContain('verifyAISystemOrgBinding');
+  });
+
+  it('returns null when system does not belong to org (fail closed)', () => {
+    expect(content).toContain('return null');
+  });
+
+  it('all evidence queries are scoped by organizationId', () => {
+    expect(content).toContain('organizationId');
+    // Raw SQL queries must include organizationId filter
+    expect(content).toMatch(/WHERE.*organizationId/s);
+  });
+
+  it('does NOT use sourceType=orchestrator_run as binding (Section 3)', () => {
+    // The resolver should not query evidence with sourceType='orchestrator_run'
+    expect(content).not.toMatch(/sourceType:\s*['"]orchestrator_run['"]/);
+  });
+
+  it('uses metadata.target for deterministic binding (Section 4)', () => {
+    expect(content).toContain("metadata->'target'->>'type'");
+    expect(content).toContain("metadata->'target'->>'id'");
+  });
+
+  it('supports Connected Asset binding path (Section 4B)', () => {
+    expect(content).toContain("metadata->'target'->>'connectedAssetId'");
+  });
+
+  it('Connected Asset query is scoped by organizationId', () => {
+    expect(content).toContain('ai_system_assets.findMany');
+    // The asset query must filter by organizationId
+    expect(content).toMatch(/where:\s*\{\s*aiSystemId.*organizationId/s);
+  });
+});
+
+// ─── Assurance COMPLETED filter (PX1.2B-R1 Section 20) ──────────────────────
+
+describe('[PX1.2B-R1 §20] Assurance latest = COMPLETED only', () => {
+  const workspaceContent = readFile('lib/ai-inventory/system-workspace.ts');
+  const listContent = readFile('lib/ai-inventory/system-list-summary.ts');
+
+  it('workspace filters assurance_evaluations by evaluationStatus=COMPLETED', () => {
+    expect(workspaceContent).toContain("evaluationStatus: 'COMPLETED'");
+  });
+
+  it('list summary filters assurance_evaluations by evaluationStatus=COMPLETED', () => {
+    expect(listContent).toContain("evaluationStatus: 'COMPLETED'");
+  });
+
+  it('LATEST_ROW != LATEST_VALID_ASSURANCE — only COMPLETED counts', () => {
+    // Both files must filter by COMPLETED, not just take the latest row
+    expect(workspaceContent).toContain('COMPLETED');
+    expect(listContent).toContain('COMPLETED');
+  });
+});
+
+// ─── Org KPI pagination independence (PX1.2B-R1 Section 21) ─────────────────
+
+describe('[PX1.2B-R1 §21] Org KPI pagination independence', () => {
+  const content = readFile('lib/ai-inventory/system-list-summary.ts');
+
+  it('has a separate org-level KPI calculation function', () => {
+    expect(content).toContain('calculateOrgLevelKpis');
+  });
+
+  it('org KPIs use groupBy, not page-scoped counts', () => {
+    expect(content).toContain('groupBy');
+  });
+
+  it('org KPI totalSystems does NOT use search filter', () => {
+    // The org KPI query should count all systems, not just search results
+    expect(content).toMatch(/prisma\.ai_systems\.count.*where:\s*\{\s*organizationId\s*\}/s);
+  });
+});
+
+// ─── Evidence coverage from canonical coverage, not claim counts (Section 6) ─
+
+describe('[PX1.2B-R1 §6] Evidence coverage from canonical coverage', () => {
+  const content = readFile('lib/ai-inventory/system-workspace.ts');
+
+  it('uses resolveSystemEvidence for evidence binding', () => {
+    expect(content).toContain('resolveSystemEvidence');
+  });
+
+  it('does NOT derive coverage from claim counts', () => {
+    // The old code used claimCounts to derive coverage — that's removed
+    // Check that there's no code path that sets coverage from claimCounts
+    expect(content).not.toMatch(/coverage\s*=\s*['"]PARTIAL['"]\s*;\s*coveragePartial\s*=\s*true\s*;\s*\}\s*else if\s*\(hasEvidence\s*&&\s*hasAssurance/);
+  });
+
+  it('CLAIM_COUNT != EVIDENCE_COVERAGE — coverage comes from resolver', () => {
+    expect(content).toContain('evidenceResult');
+    expect(content).toMatch(/evidenceResult\?\.coverage|evidenceResult\.coverage/);
   });
 });
