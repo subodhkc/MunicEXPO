@@ -394,9 +394,9 @@ describe('[PX1.2B-H1/H2 §2] System coverage — ALL_COMPLETE != SYSTEM_COMPLETE
     expect(content).toContain('PRODUCER_COVERAGE != SYSTEM_EVIDENCE_SET_COVERAGE');
   });
 
-  it('generic aggregate is UNKNOWN when current evidence exists', () => {
-    // H2: NO current → NOT_ASSESSED, SOME current → UNKNOWN
-    expect(content).toMatch(/hasCurrentEvidence.*UNKNOWN/s);
+  it('generic aggregate is UNKNOWN when active system evidence exists', () => {
+    // H3: NO active system-associated → NOT_ASSESSED, SOME → UNKNOWN
+    expect(content).toMatch(/hasActiveSystemEvidence.*UNKNOWN/s);
   });
 });
 
@@ -463,8 +463,11 @@ describe('[PX1.2B-H2 §15-17] System delete safety — reference-based, not asse
     expect(content).toContain('audit_orchestrator_runs.count');
   });
 
-  it('checks for completed assurance evaluations before delete', () => {
-    expect(content).toContain("evaluationStatus: 'COMPLETED'");
+  it('checks for ALL assurance evaluations before delete (PX1.2B-H3 Section 13 — not just COMPLETED)', () => {
+    // H3: ALL persisted assurance_evaluations block, not just COMPLETED
+    expect(content).toContain('ALL assurance_evaluations block');
+    // Must NOT filter by evaluationStatus: 'COMPLETED' in the delete check
+    expect(content).not.toMatch(/assurance_evaluations\.count.*evaluationStatus.*COMPLETED/s);
   });
 
   it('checks for assurance packages before delete', () => {
@@ -520,45 +523,54 @@ describe('[PX1.2B-H1 §3] Assurance copy — no misleading "Assured"', () => {
 
 // ─── PX1.2B-H2: Receipt Exact Evaluation Matching (Section 11) ─────────────
 
-describe('[PX1.2B-H2 §11] Receipt matches exact latest evaluation ID', () => {
+describe('[PX1.2B-H2 §11 / PX1.2B-H3 §5-9] Receipt matches exact latest evaluation ID', () => {
   const workspaceContent = readFile('lib/ai-inventory/system-workspace.ts');
   const listContent = readFile('lib/ai-inventory/system-list-summary.ts');
+  const receiptProjectionContent = readFile('lib/ai-inventory/system-receipt-projection.ts');
 
-  it('workspace loads packages with assuranceEvaluationId for matching', () => {
-    expect(workspaceContent).toContain('assuranceEvaluationId');
-  });
-
-  it('workspace matches package to latest evaluation ID', () => {
-    expect(workspaceContent).toContain('matchingPackage');
+  it('workspace uses canonical receipt projection for matching', () => {
+    expect(workspaceContent).toContain('resolveEvaluationReceipt');
     expect(workspaceContent).toContain('latestEvalId');
   });
 
-  it('list summary loads packages with assuranceEvaluationId for batch matching', () => {
-    expect(listContent).toContain('assuranceEvaluationId');
+  it('receipt projection queries by exact evaluation ID (Section 8)', () => {
+    expect(receiptProjectionContent).toContain('assuranceEvaluationId');
+    expect(receiptProjectionContent).toContain('evaluationId');
   });
 
-  it('list summary indexes packages by (aiSystemId, assuranceEvaluationId)', () => {
-    expect(listContent).toContain('packagesBySystemEval');
+  it('list summary uses canonical receipt projection batch (Section 9)', () => {
+    expect(listContent).toContain('resolveReceiptStateBatch');
+  });
+
+  it('receipt projection derives state from ALL matching packages (Section 5-6)', () => {
+    expect(receiptProjectionContent).toContain('deriveReceiptState');
+    expect(receiptProjectionContent).toContain('publicationStates');
   });
 
   it('ANY_SYSTEM_RECEIPT != LATEST_EVALUATION_RECEIPT — matching is by eval ID', () => {
-    // Both files must use assuranceEvaluationId for matching, not just aiSystemId count
-    expect(workspaceContent).toMatch(/assuranceEvaluationId.*latestEval/);
-    expect(listContent).toMatch(/assuranceEvaluationId/);
+    // Receipt projection must query by assuranceEvaluationId, not just aiSystemId
+    expect(receiptProjectionContent).toMatch(/assuranceEvaluationId.*evaluationId/);
+  });
+
+  it('INDEX_RECEIPT_STATE == WORKSPACE_RECEIPT_STATE — shared helper (Section 9)', () => {
+    expect(receiptProjectionContent).toContain('INDEX_RECEIPT_STATE');
+    expect(workspaceContent).toContain('resolveEvaluationReceipt');
+    expect(listContent).toContain('resolveReceiptStateBatch');
   });
 });
 
 // ─── PX1.2B-H2: Receipt Publication State (Section 12) ─────────────────────
 
-describe('[PX1.2B-H2 §12] Receipt publication state — PRIVATE/PUBLIC/REVOKED', () => {
+describe('[PX1.2B-H2 §12 / PX1.2B-H3 §6] Receipt publication state — PRIVATE/PUBLIC/REVOKED', () => {
   const workspaceContent = readFile('lib/ai-inventory/system-workspace.ts');
   const nextActionContent = readFile('lib/ai-inventory/system-next-action.ts');
+  const receiptProjectionContent = readFile('lib/ai-inventory/system-receipt-projection.ts');
 
-  it('workspace determines matchingReceiptState from publicationState', () => {
+  it('receipt projection determines state from publicationState (deterministic)', () => {
+    expect(receiptProjectionContent).toContain('PUBLIC_RECEIPT');
+    expect(receiptProjectionContent).toContain('PRIVATE_RECEIPT');
+    expect(receiptProjectionContent).toContain('REVOKED_RECEIPT');
     expect(workspaceContent).toContain('matchingReceiptState');
-    expect(workspaceContent).toContain('PUBLIC_RECEIPT');
-    expect(workspaceContent).toContain('PRIVATE_RECEIPT');
-    expect(workspaceContent).toContain('REVOKED_RECEIPT');
   });
 
   it('next-action engine handles REVOKED_RECEIPT as non-completion', () => {
@@ -590,23 +602,23 @@ describe('[PX1.2B-H2 §3-4] Current vs historical evidence projection', () => {
     expect(resolverContent).toContain('assetRetiredMap');
   });
 
-  it('batch resolver hasEvidence is based on current evidence only', () => {
-    expect(resolverContent).toContain('hasCurrentEvidence');
-    expect(resolverContent).toContain('hasHistoricalEvidenceOnly');
+  it('batch resolver hasEvidence is based on active system evidence only', () => {
+    expect(resolverContent).toContain('hasActiveSystemEvidence');
+    expect(resolverContent).toContain('hasHistoricalAssetEvidenceOnly');
   });
 
-  it('workspace exposes current vs historical evidence counts', () => {
-    expect(workspaceContent).toContain('currentEvidenceCount');
-    expect(workspaceContent).toContain('historicalEvidenceCount');
-    expect(workspaceContent).toContain('hasHistoricalEvidenceOnly');
+  it('workspace exposes active system vs historical evidence counts', () => {
+    expect(workspaceContent).toContain('activeSystemEvidenceCount');
+    expect(workspaceContent).toContain('historicalAssetEvidenceCount');
+    expect(workspaceContent).toContain('hasHistoricalAssetEvidenceOnly');
   });
 
   it('list summary hasEvidence excludes retired-asset-only evidence', () => {
-    expect(listContent).toContain('hasHistoricalEvidenceOnly');
+    expect(listContent).toContain('hasHistoricalAssetEvidenceOnly');
   });
 
-  it('RETIRED_ASSET_EVIDENCE != CURRENT_TOPOLOGY_EVIDENCE — lock in source', () => {
-    expect(resolverContent).toContain('RETIRED_ASSET_EVIDENCE != CURRENT_TOPOLOGY_EVIDENCE');
+  it('RETIRED_ASSET_EVIDENCE != ACTIVE_SYSTEM_EVIDENCE — lock in source', () => {
+    expect(resolverContent).toContain('RETIRED_ASSET_EVIDENCE != ACTIVE_SYSTEM_EVIDENCE');
   });
 });
 
@@ -688,7 +700,7 @@ describe('[PX1.2B-H2 §6] Generic system coverage — NO→NOT_ASSESSED, SOME→
     expect(resolverContent).toContain('hasPartialProducerEvidence');
   });
 
-  it('generic coverage is UNKNOWN when current evidence exists', () => {
-    expect(resolverContent).toMatch(/hasCurrentEvidence.*UNKNOWN/s);
+  it('generic coverage is UNKNOWN when active system evidence exists', () => {
+    expect(resolverContent).toMatch(/hasActiveSystemEvidence.*UNKNOWN/s);
   });
 });

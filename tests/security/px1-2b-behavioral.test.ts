@@ -193,8 +193,8 @@ describe('[PX1.2B-H2 §13] Next-action deterministic rules (9-step)', () => {
     hasAssets: false,
     unresolvedIdentityCount: 0,
     conflictedIdentityCount: 0,
-    hasCurrentEvidence: false,
-    hasHistoricalEvidenceOnly: false,
+    hasActiveSystemEvidence: false,
+    hasHistoricalAssetEvidenceOnly: false,
     hasPartialProducerEvidence: false,
     hasAssurance: false,
     latestDisposition: null,
@@ -233,7 +233,7 @@ describe('[PX1.2B-H2 §13] Next-action deterministic rules (9-step)', () => {
       ...baseState,
       hasAssets: true,
       unresolvedIdentityCount: 0,
-      hasCurrentEvidence: false,
+      hasActiveSystemEvidence: false,
     });
     expect(action.stage).toBe('COLLECT_EVIDENCE');
   });
@@ -243,8 +243,8 @@ describe('[PX1.2B-H2 §13] Next-action deterministic rules (9-step)', () => {
       ...baseState,
       hasAssets: true,
       unresolvedIdentityCount: 0,
-      hasCurrentEvidence: false,
-      hasHistoricalEvidenceOnly: true,
+      hasActiveSystemEvidence: false,
+      hasHistoricalAssetEvidenceOnly: true,
     });
     expect(action.stage).toBe('COLLECT_EVIDENCE');
     expect(action.description).toContain('Historical');
@@ -255,7 +255,7 @@ describe('[PX1.2B-H2 §13] Next-action deterministic rules (9-step)', () => {
       ...baseState,
       hasAssets: true,
       unresolvedIdentityCount: 0,
-      hasCurrentEvidence: true,
+      hasActiveSystemEvidence: true,
       hasPartialProducerEvidence: true,
     });
     expect(action.stage).toBe('REVIEW_EVIDENCE');
@@ -266,7 +266,7 @@ describe('[PX1.2B-H2 §13] Next-action deterministic rules (9-step)', () => {
       ...baseState,
       hasAssets: true,
       unresolvedIdentityCount: 0,
-      hasCurrentEvidence: true,
+      hasActiveSystemEvidence: true,
       hasPartialProducerEvidence: false,
       hasAssurance: false,
     });
@@ -278,7 +278,7 @@ describe('[PX1.2B-H2 §13] Next-action deterministic rules (9-step)', () => {
       ...baseState,
       hasAssets: true,
       unresolvedIdentityCount: 0,
-      hasCurrentEvidence: true,
+      hasActiveSystemEvidence: true,
       hasPartialProducerEvidence: false,
       hasAssurance: true,
       latestDisposition: 'BLOCK',
@@ -292,7 +292,7 @@ describe('[PX1.2B-H2 §13] Next-action deterministic rules (9-step)', () => {
       ...baseState,
       hasAssets: true,
       unresolvedIdentityCount: 0,
-      hasCurrentEvidence: true,
+      hasActiveSystemEvidence: true,
       hasPartialProducerEvidence: false,
       hasAssurance: true,
       latestDisposition: 'REVIEW',
@@ -305,7 +305,7 @@ describe('[PX1.2B-H2 §13] Next-action deterministic rules (9-step)', () => {
       ...baseState,
       hasAssets: true,
       unresolvedIdentityCount: 0,
-      hasCurrentEvidence: true,
+      hasActiveSystemEvidence: true,
       hasPartialProducerEvidence: false,
       hasAssurance: true,
       latestDisposition: 'ALLOW',
@@ -319,7 +319,7 @@ describe('[PX1.2B-H2 §13] Next-action deterministic rules (9-step)', () => {
       ...baseState,
       hasAssets: true,
       unresolvedIdentityCount: 0,
-      hasCurrentEvidence: true,
+      hasActiveSystemEvidence: true,
       hasPartialProducerEvidence: false,
       hasAssurance: true,
       latestDisposition: 'ALLOW',
@@ -334,7 +334,7 @@ describe('[PX1.2B-H2 §13] Next-action deterministic rules (9-step)', () => {
       ...baseState,
       hasAssets: true,
       unresolvedIdentityCount: 0,
-      hasCurrentEvidence: true,
+      hasActiveSystemEvidence: true,
       hasPartialProducerEvidence: false,
       hasAssurance: true,
       latestDisposition: 'ALLOW',
@@ -358,7 +358,7 @@ describe('[PX1.2B-H2 §13] Next-action deterministic rules (9-step)', () => {
     const action = computeNextAction({
       ...baseState,
       hasAssets: false,
-      hasCurrentEvidence: false,
+      hasActiveSystemEvidence: false,
     });
     expect(action.stage).toBe('CONNECT');
   });
@@ -396,8 +396,8 @@ describe('[PX1.2B §21] Truth invariants', () => {
       hasAssets: false,
       unresolvedIdentityCount: 0,
       conflictedIdentityCount: 0,
-      hasCurrentEvidence: false,
-      hasHistoricalEvidenceOnly: false,
+      hasActiveSystemEvidence: false,
+      hasHistoricalAssetEvidenceOnly: false,
       hasPartialProducerEvidence: false,
       hasAssurance: false,
       latestDisposition: null,
@@ -412,8 +412,8 @@ describe('[PX1.2B §21] Truth invariants', () => {
       hasAssets: true,
       unresolvedIdentityCount: 0,
       conflictedIdentityCount: 0,
-      hasCurrentEvidence: true,
-      hasHistoricalEvidenceOnly: false,
+      hasActiveSystemEvidence: true,
+      hasHistoricalAssetEvidenceOnly: false,
       hasPartialProducerEvidence: false,
       hasAssurance: true,
       latestDisposition: 'ALLOW',
@@ -439,8 +439,8 @@ describe('[PX1.2B-R1 §28] New behavioral invariants', () => {
       hasAssets: true,
       unresolvedIdentityCount: 0,
       conflictedIdentityCount: 0,
-      hasCurrentEvidence: false,
-      hasHistoricalEvidenceOnly: false,
+      hasActiveSystemEvidence: false,
+      hasHistoricalAssetEvidenceOnly: false,
       hasPartialProducerEvidence: false,
       hasAssurance: true,
       latestDisposition: 'ALLOW',
@@ -455,8 +455,8 @@ describe('[PX1.2B-R1 §28] New behavioral invariants', () => {
       hasAssets: true,
       unresolvedIdentityCount: 0,
       conflictedIdentityCount: 0,
-      hasCurrentEvidence: true,
-      hasHistoricalEvidenceOnly: false,
+      hasActiveSystemEvidence: true,
+      hasHistoricalAssetEvidenceOnly: false,
       hasPartialProducerEvidence: true,
       hasAssurance: false,
       latestDisposition: null,
@@ -524,8 +524,8 @@ describe('[PX1.2B-H2 §6] System evidence coverage aggregation', () => {
   //   ONE OR MORE CURRENT-BOUND → UNKNOWN
   // (ANY_PARTIAL → PARTIAL is REMOVED for generic system coverage)
 
-  function aggregateCoverageH2(hasCurrentEvidence: boolean): string {
-    if (!hasCurrentEvidence) return 'NOT_ASSESSED';
+  function aggregateCoverageH2(hasActiveSystemEvidence: boolean): string {
+    if (!hasActiveSystemEvidence) return 'NOT_ASSESSED';
     return 'UNKNOWN'; // cannot prove required set is complete
   }
 
@@ -592,8 +592,8 @@ describe('[PX1.2B-H2 §3-4] Current vs Historical evidence projection', () => {
       'utf-8'
     );
     // Verify the resolver has the current/historical split logic
-    expect(content).toContain('hasCurrentEvidence');
-    expect(content).toContain('hasHistoricalEvidenceOnly');
+    expect(content).toContain('hasActiveSystemEvidence');
+    expect(content).toContain('hasHistoricalAssetEvidenceOnly');
   });
 
   it('HISTORICAL_BINDING != CURRENT_TOPOLOGY_ELIGIBILITY', () => {
@@ -610,8 +610,8 @@ describe('[PX1.2B-H2 §8] Identity CONFLICTED handling', () => {
     hasAssets: true,
     unresolvedIdentityCount: 0,
     conflictedIdentityCount: 0,
-    hasCurrentEvidence: true,
-    hasHistoricalEvidenceOnly: false,
+    hasActiveSystemEvidence: true,
+    hasHistoricalAssetEvidenceOnly: false,
     hasPartialProducerEvidence: false,
     hasAssurance: true,
     latestDisposition: 'ALLOW',
@@ -649,8 +649,8 @@ describe('[PX1.2B-H2 §9] BLOCK + receipt never COMPLETE', () => {
     hasAssets: true,
     unresolvedIdentityCount: 0,
     conflictedIdentityCount: 0,
-    hasCurrentEvidence: true,
-    hasHistoricalEvidenceOnly: false,
+    hasActiveSystemEvidence: true,
+    hasHistoricalAssetEvidenceOnly: false,
     hasPartialProducerEvidence: false,
     hasAssurance: true,
     latestDisposition: 'BLOCK',
@@ -697,8 +697,8 @@ describe('[PX1.2B-H2 §11-12] Receipt exact evaluation matching', () => {
     hasAssets: true,
     unresolvedIdentityCount: 0,
     conflictedIdentityCount: 0,
-    hasCurrentEvidence: true,
-    hasHistoricalEvidenceOnly: false,
+    hasActiveSystemEvidence: true,
+    hasHistoricalAssetEvidenceOnly: false,
     hasPartialProducerEvidence: false,
     hasAssurance: true,
     latestDisposition: 'ALLOW',
@@ -750,8 +750,8 @@ describe('[PX1.2B-H2 §6] Generic system coverage — NO→NOT_ASSESSED, SOME→
       hasAssets: true,
       unresolvedIdentityCount: 0,
       conflictedIdentityCount: 0,
-      hasCurrentEvidence: true,
-      hasHistoricalEvidenceOnly: false,
+      hasActiveSystemEvidence: true,
+      hasHistoricalAssetEvidenceOnly: false,
       hasPartialProducerEvidence: true, // partial producer evidence
       hasAssurance: false,
       latestDisposition: null,
@@ -771,8 +771,8 @@ describe('[PX1.2B-H2 §10] "System assured" overclaim removed', () => {
     hasAssets: true,
     unresolvedIdentityCount: 0,
     conflictedIdentityCount: 0,
-    hasCurrentEvidence: true,
-    hasHistoricalEvidenceOnly: false,
+    hasActiveSystemEvidence: true,
+    hasHistoricalAssetEvidenceOnly: false,
     hasPartialProducerEvidence: false,
     hasAssurance: true,
     latestDisposition: 'ALLOW',
