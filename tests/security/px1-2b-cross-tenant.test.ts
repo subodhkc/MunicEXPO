@@ -384,19 +384,19 @@ describe('[PX1.2B-R1 §6] Evidence coverage from canonical coverage', () => {
 
 // ─── PX1.2B-H1: System Coverage Truthful (Section 2) ───────────────────────
 
-describe('[PX1.2B-H1 §2] System coverage — ALL_COMPLETE != SYSTEM_COMPLETE', () => {
+describe('[PX1.2B-H1/H2 §2] System coverage — ALL_COMPLETE != SYSTEM_COMPLETE', () => {
   const content = readFile('lib/ai-inventory/system-evidence-resolver.ts');
 
   it('does NOT claim COMPLETE when all records are individually COMPLETE', () => {
     // The resolver must NOT set coverage = 'COMPLETE' for generic system
     // LOCK: RECORD_COVERAGE_COMPLETE != SYSTEM_EVIDENCE_SET_COMPLETE
-    expect(content).toContain('ALL_PRESENT_RECORDS_COMPLETE');
-    expect(content).toContain('expected Evidence universe is unknown');
+    // PX1.2B-H2: ANY_PARTIAL → PARTIAL is also removed for generic system coverage
+    expect(content).toContain('PRODUCER_COVERAGE != SYSTEM_EVIDENCE_SET_COVERAGE');
   });
 
-  it('generic aggregate is UNKNOWN when all records are COMPLETE', () => {
-    // The code path for all-complete should result in UNKNOWN, not COMPLETE
-    expect(content).toMatch(/All records individually COMPLETE.*UNKNOWN/s);
+  it('generic aggregate is UNKNOWN when current evidence exists', () => {
+    // H2: NO current → NOT_ASSESSED, SOME current → UNKNOWN
+    expect(content).toMatch(/hasCurrentEvidence.*UNKNOWN/s);
   });
 });
 
@@ -444,17 +444,19 @@ describe('[PX1.2B-H1 §5-6] Asset retirement — domain functions', () => {
   });
 });
 
-// ─── PX1.2B-H1: System Delete Safety (Section 11-12) ───────────────────────
+// ─── PX1.2B-H2: System Delete Safety (Section 15-17) ───────────────────────
 
-describe('[PX1.2B-H1 §11-12] System delete safety — history preservation', () => {
+describe('[PX1.2B-H2 §15-17] System delete safety — reference-based, not asset-existence', () => {
   const content = readFile('app/api/inventory/[id]/route.ts');
 
-  it('checks for historical evidence before delete', () => {
+  it('checks for direct AI System evidence before delete (ANY status — Section 16)', () => {
     expect(content).toContain("metadata->'target'->>'type' = 'AI_SYSTEM'");
+    // H2: must NOT filter by status = 'active' only
+    expect(content).not.toMatch(/status\s*=\s*'active'.*metadata->'target'->>'type' = 'AI_SYSTEM'/s);
   });
 
-  it('checks for connected assets before delete', () => {
-    expect(content).toContain('ai_system_assets.count');
+  it('checks for asset-bound evidence before delete (ANY status — Section 16)', () => {
+    expect(content).toContain("metadata->'target'->>'connectedAssetId'");
   });
 
   it('checks for orchestrator runs before delete', () => {
@@ -469,17 +471,22 @@ describe('[PX1.2B-H1 §11-12] System delete safety — history preservation', ()
     expect(content).toContain('assurance_packages.count');
   });
 
-  it('returns 409 when historical records exist', () => {
+  it('returns 409 when historical references exist', () => {
     expect(content).toContain('409');
     expect(content).toContain('historical evaluation records');
   });
 
-  it('allows delete for empty/never-evaluated systems', () => {
-    expect(content).toContain('Empty / never-evaluated system');
+  it('allows delete for systems with only unreferenced assets (Section 15)', () => {
+    // H2: unreferenced asset rows alone are NOT historical evaluation proof
+    expect(content).toContain('unreferenced asset');
+  });
+
+  it('uses transaction for delete atomicity (Section 17 — BOUNDED_DELETE_RACE)', () => {
+    expect(content).toContain('$transaction');
+    expect(content).toContain('DELETE_RACE_DETECTED');
   });
 
   it('all history checks are tenant-scoped (organizationId)', () => {
-    // All queries must include organizationId
     const orgMatches = content.match(/organizationId/g);
     expect(orgMatches).toBeTruthy();
     expect(orgMatches!.length).toBeGreaterThan(5);
@@ -508,5 +515,180 @@ describe('[PX1.2B-H1 §3] Assurance copy — no misleading "Assured"', () => {
   it('KPI label is "With Assurance", not "Assured"', () => {
     expect(content).toContain('With Assurance');
     expect(content).not.toMatch(/label="Assured"/);
+  });
+});
+
+// ─── PX1.2B-H2: Receipt Exact Evaluation Matching (Section 11) ─────────────
+
+describe('[PX1.2B-H2 §11] Receipt matches exact latest evaluation ID', () => {
+  const workspaceContent = readFile('lib/ai-inventory/system-workspace.ts');
+  const listContent = readFile('lib/ai-inventory/system-list-summary.ts');
+
+  it('workspace loads packages with assuranceEvaluationId for matching', () => {
+    expect(workspaceContent).toContain('assuranceEvaluationId');
+  });
+
+  it('workspace matches package to latest evaluation ID', () => {
+    expect(workspaceContent).toContain('matchingPackage');
+    expect(workspaceContent).toContain('latestEvalId');
+  });
+
+  it('list summary loads packages with assuranceEvaluationId for batch matching', () => {
+    expect(listContent).toContain('assuranceEvaluationId');
+  });
+
+  it('list summary indexes packages by (aiSystemId, assuranceEvaluationId)', () => {
+    expect(listContent).toContain('packagesBySystemEval');
+  });
+
+  it('ANY_SYSTEM_RECEIPT != LATEST_EVALUATION_RECEIPT — matching is by eval ID', () => {
+    // Both files must use assuranceEvaluationId for matching, not just aiSystemId count
+    expect(workspaceContent).toMatch(/assuranceEvaluationId.*latestEval/);
+    expect(listContent).toMatch(/assuranceEvaluationId/);
+  });
+});
+
+// ─── PX1.2B-H2: Receipt Publication State (Section 12) ─────────────────────
+
+describe('[PX1.2B-H2 §12] Receipt publication state — PRIVATE/PUBLIC/REVOKED', () => {
+  const workspaceContent = readFile('lib/ai-inventory/system-workspace.ts');
+  const nextActionContent = readFile('lib/ai-inventory/system-next-action.ts');
+
+  it('workspace determines matchingReceiptState from publicationState', () => {
+    expect(workspaceContent).toContain('matchingReceiptState');
+    expect(workspaceContent).toContain('PUBLIC_RECEIPT');
+    expect(workspaceContent).toContain('PRIVATE_RECEIPT');
+    expect(workspaceContent).toContain('REVOKED_RECEIPT');
+  });
+
+  it('next-action engine handles REVOKED_RECEIPT as non-completion', () => {
+    expect(nextActionContent).toContain('REVOKED_RECEIPT');
+    expect(nextActionContent).toContain('RECEIPT_REVOKED');
+  });
+
+  it('REVOKED receipt does NOT reach ASSURANCE_RECORD_AVAILABLE', () => {
+    expect(nextActionContent).toMatch(/REVOKED_RECEIPT.*RECEIPT_REVOKED/s);
+  });
+});
+
+// ─── PX1.2B-H2: Current vs Historical Evidence (Section 3-4) ───────────────
+
+describe('[PX1.2B-H2 §3-4] Current vs historical evidence projection', () => {
+  const resolverContent = readFile('lib/ai-inventory/system-evidence-resolver.ts');
+  const workspaceContent = readFile('lib/ai-inventory/system-workspace.ts');
+  const listContent = readFile('lib/ai-inventory/system-list-summary.ts');
+
+  it('resolver classifies records by associationClass', () => {
+    expect(resolverContent).toContain('associationClass');
+    expect(resolverContent).toContain('DIRECT_SYSTEM');
+    expect(resolverContent).toContain('CURRENT_ASSET');
+    expect(resolverContent).toContain('RETIRED_ASSET');
+  });
+
+  it('resolver uses asset retiredAt for classification', () => {
+    expect(resolverContent).toContain('retiredAt');
+    expect(resolverContent).toContain('assetRetiredMap');
+  });
+
+  it('batch resolver hasEvidence is based on current evidence only', () => {
+    expect(resolverContent).toContain('hasCurrentEvidence');
+    expect(resolverContent).toContain('hasHistoricalEvidenceOnly');
+  });
+
+  it('workspace exposes current vs historical evidence counts', () => {
+    expect(workspaceContent).toContain('currentEvidenceCount');
+    expect(workspaceContent).toContain('historicalEvidenceCount');
+    expect(workspaceContent).toContain('hasHistoricalEvidenceOnly');
+  });
+
+  it('list summary hasEvidence excludes retired-asset-only evidence', () => {
+    expect(listContent).toContain('hasHistoricalEvidenceOnly');
+  });
+
+  it('RETIRED_ASSET_EVIDENCE != CURRENT_TOPOLOGY_EVIDENCE — lock in source', () => {
+    expect(resolverContent).toContain('RETIRED_ASSET_EVIDENCE != CURRENT_TOPOLOGY_EVIDENCE');
+  });
+});
+
+// ─── PX1.2B-H2: CONFLICTED Identity (Section 8) ────────────────────────────
+
+describe('[PX1.2B-H2 §8] CONFLICTED identity handling', () => {
+  const workspaceContent = readFile('lib/ai-inventory/system-workspace.ts');
+  const listContent = readFile('lib/ai-inventory/system-list-summary.ts');
+  const nextActionContent = readFile('lib/ai-inventory/system-next-action.ts');
+
+  it('workspace counts conflictedIdentityCount', () => {
+    expect(workspaceContent).toContain('conflictedIdentityCount');
+    expect(workspaceContent).toContain("identityState === 'CONFLICTED'");
+  });
+
+  it('list summary counts conflictedIdentityCount', () => {
+    expect(listContent).toContain('conflictedIdentityCount');
+    expect(listContent).toContain("identityState: 'CONFLICTED'");
+  });
+
+  it('next-action engine accepts conflictedIdentityCount in state', () => {
+    expect(nextActionContent).toContain('conflictedIdentityCount');
+  });
+
+  it('org KPI includes CONFLICTED in unresolved identity count', () => {
+    expect(listContent).toContain("identityState: 'CONFLICTED'");
+  });
+});
+
+// ─── PX1.2B-H2: BLOCK Never Complete (Section 9) ───────────────────────────
+
+describe('[PX1.2B-H2 §9] BLOCK never reaches completion', () => {
+  const nextActionContent = readFile('lib/ai-inventory/system-next-action.ts');
+
+  it('BLOCK disposition has ADDRESS_BLOCKERS stage', () => {
+    expect(nextActionContent).toContain('ADDRESS_BLOCKERS');
+    expect(nextActionContent).toContain("latestDisposition === 'BLOCK'");
+  });
+
+  it('BLOCK check comes before ALLOW/receipt checks', () => {
+    const blockIdx = nextActionContent.indexOf("latestDisposition === 'BLOCK'");
+    const allowIdx = nextActionContent.indexOf("latestDisposition === 'ALLOW'");
+    expect(blockIdx).toBeGreaterThan(0);
+    expect(allowIdx).toBeGreaterThan(0);
+    expect(blockIdx).toBeLessThan(allowIdx);
+  });
+});
+
+// ─── PX1.2B-H2: "System assured" Overclaim Removed (Section 10) ────────────
+
+describe('[PX1.2B-H2 §10] "System assured" overclaim removed', () => {
+  const nextActionContent = readFile('lib/ai-inventory/system-next-action.ts');
+
+  it('does NOT contain "System assured" label', () => {
+    expect(nextActionContent).not.toContain('System assured');
+  });
+
+  it('final state is ASSURANCE_RECORD_AVAILABLE, not COMPLETE', () => {
+    expect(nextActionContent).toContain('ASSURANCE_RECORD_AVAILABLE');
+    expect(nextActionContent).not.toMatch(/stage:\s*['"]COMPLETE['"]/);
+  });
+
+  it('final state label is "Latest Assurance record available"', () => {
+    expect(nextActionContent).toContain('Latest Assurance record available');
+  });
+});
+
+// ─── PX1.2B-H2: Generic Coverage Truthful (Section 6) ──────────────────────
+
+describe('[PX1.2B-H2 §6] Generic system coverage — NO→NOT_ASSESSED, SOME→UNKNOWN', () => {
+  const resolverContent = readFile('lib/ai-inventory/system-evidence-resolver.ts');
+
+  it('resolver does NOT use ANY_PARTIAL → PARTIAL for generic system coverage', () => {
+    // H2 removes the "ANY PARTIAL → PARTIAL" rule for generic system coverage
+    expect(resolverContent).toContain('PRODUCER_COVERAGE != SYSTEM_EVIDENCE_SET_COVERAGE');
+  });
+
+  it('resolver exposes hasPartialProducerEvidence as separate indicator', () => {
+    expect(resolverContent).toContain('hasPartialProducerEvidence');
+  });
+
+  it('generic coverage is UNKNOWN when current evidence exists', () => {
+    expect(resolverContent).toMatch(/hasCurrentEvidence.*UNKNOWN/s);
   });
 });
