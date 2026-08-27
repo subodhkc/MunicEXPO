@@ -633,14 +633,17 @@ describe('[PX1.2A-R3 §2] Re-connect state preservation contract', () => {
     // Contract: UPDATE → connectionState = input.connectionState ?? undefined
     // Prisma treats undefined as "do not change this field".
     // This prevents CONNECTED → REGISTERED downgrade.
+    // PX1.2B-H1: When reactivating a retired asset, state returns to REGISTERED.
     const fs = require('fs');
     const path = require('path');
     const src = fs.readFileSync(
       path.join(process.cwd(), 'lib/ai-inventory/connected-assets.ts'),
       'utf-8'
     );
-    // The update path must use ?? undefined (NOT ?? 'REGISTERED')
-    expect(src).toMatch(/connectionState:\s*input\.connectionState\s*\?\?\s*undefined/);
+    // The update path must use ?? undefined (NOT ?? 'REGISTERED') for non-reactivation
+    expect(src).toMatch(/input\.connectionState\s*\?\?\s*undefined/);
+    // PX1.2B-H1: Reactivation path returns to REGISTERED
+    expect(src).toContain('isReactivating');
   });
 });
 
