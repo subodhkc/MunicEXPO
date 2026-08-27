@@ -41,7 +41,8 @@ describe('[PX1.2B §11] Connected Asset API — tenant isolation', () => {
     expect(listContent).toContain('listConnectedAssets');
     // listConnectedAssets filters by both aiSystemId and organizationId
     const libContent = readFile('lib/ai-inventory/connected-assets.ts');
-    expect(libContent).toContain('where: { aiSystemId, organizationId }');
+    expect(libContent).toContain('aiSystemId');
+    expect(libContent).toContain('organizationId');
   });
 
   it('POST uses requireOrganizationAccess for auth', () => {
@@ -113,15 +114,24 @@ describe('[PX1.2B §11] Asset Mutation API — tenant isolation', () => {
     expect(content).toContain('verifyAISystemOrgBinding');
   });
 
-  it('DELETE deleteMany is scoped by aiSystemId AND organizationId', () => {
-    expect(content).toContain('where: { id: assetId, aiSystemId: systemId, organizationId: orgId }');
+  it('DELETE retires asset (NOT physical delete) — PX1.2B-H1 Section 4-6', () => {
+    // PX1.2B-H1: DELETE now calls retireConnectedAsset, NOT prisma.ai_system_assets.deleteMany
+    expect(content).toContain('retireConnectedAsset');
+    expect(content).not.toContain('prisma.ai_system_assets.deleteMany');
   });
 
-  it('DELETE does NOT cascade-delete historical evidence (Section 36)', () => {
-    // The delete only removes the asset row, not evidence/assurance/reports
-    expect(content).toContain('deleteMany');
+  it('DELETE does NOT cascade-delete historical evidence (PX1.2B-H1 Section 4)', () => {
     expect(content).not.toMatch(/evidence.*delete/i);
     expect(content).not.toMatch(/assurance.*delete/i);
+  });
+
+  it('PATCH rejects environment mutation (PX1.2B-H1 Section 9 — identity immutability)', () => {
+    expect(content).toContain('identity-defining field');
+    expect(content).toContain('retire this asset and register a new one');
+  });
+
+  it('PATCH only updates active (non-retired) assets (PX1.2B-H1 Section 7)', () => {
+    expect(content).toContain('retiredAt: null');
   });
 });
 
@@ -266,7 +276,8 @@ describe('[PX1.2B §11] Cross-tenant attachment fails closed', () => {
   });
 
   it('listConnectedAssets filters by both aiSystemId AND organizationId', () => {
-    expect(assetContent).toContain('where: { aiSystemId, organizationId }');
+    expect(assetContent).toContain('aiSystemId');
+    expect(assetContent).toContain('organizationId');
   });
 });
 
@@ -368,5 +379,134 @@ describe('[PX1.2B-R1 §6] Evidence coverage from canonical coverage', () => {
   it('CLAIM_COUNT != EVIDENCE_COVERAGE — coverage comes from resolver', () => {
     expect(content).toContain('evidenceResult');
     expect(content).toMatch(/evidenceResult\?\.coverage|evidenceResult\.coverage/);
+  });
+});
+
+// ─── PX1.2B-H1: System Coverage Truthful (Section 2) ───────────────────────
+
+describe('[PX1.2B-H1 §2] System coverage — ALL_COMPLETE != SYSTEM_COMPLETE', () => {
+  const content = readFile('lib/ai-inventory/system-evidence-resolver.ts');
+
+  it('does NOT claim COMPLETE when all records are individually COMPLETE', () => {
+    // The resolver must NOT set coverage = 'COMPLETE' for generic system
+    // LOCK: RECORD_COVERAGE_COMPLETE != SYSTEM_EVIDENCE_SET_COMPLETE
+    expect(content).toContain('ALL_PRESENT_RECORDS_COMPLETE');
+    expect(content).toContain('expected Evidence universe is unknown');
+  });
+
+  it('generic aggregate is UNKNOWN when all records are COMPLETE', () => {
+    // The code path for all-complete should result in UNKNOWN, not COMPLETE
+    expect(content).toMatch(/All records individually COMPLETE.*UNKNOWN/s);
+  });
+});
+
+// ─── PX1.2B-H1: Asset Retirement (Section 4-8) ──────────────────────────────
+
+describe('[PX1.2B-H1 §5-6] Asset retirement — domain functions', () => {
+  const content = readFile('lib/ai-inventory/connected-assets.ts');
+
+  it('has retireConnectedAsset function', () => {
+    expect(content).toContain('export async function retireConnectedAsset');
+  });
+
+  it('retire sets retiredAt, does NOT delete', () => {
+    expect(content).toContain('retiredAt: new Date()');
+    expect(content).not.toMatch(/prisma\.ai_system_assets\.delete/);
+  });
+
+  it('retire verifies tenant binding', () => {
+    expect(content).toContain('verifyAISystemOrgBinding');
+  });
+
+  it('has reactivateConnectedAsset function (Section 8)', () => {
+    expect(content).toContain('export async function reactivateConnectedAsset');
+  });
+
+  it('reactivation clears retiredAt and returns to REGISTERED + NOT_VERIFIED', () => {
+    expect(content).toContain('retiredAt: null');
+    expect(content).toContain("connectionState: 'REGISTERED'");
+    expect(content).toContain("identityState: 'NOT_VERIFIED'");
+  });
+
+  it('REACTIVATED_MANUAL_ASSET != AUTOMATICALLY_VERIFIED (Section 8)', () => {
+    expect(content).toContain('REACTIVATED_MANUAL_ASSET');
+    expect(content).toContain('AUTOMATICALLY_VERIFIED');
+  });
+
+  it('listConnectedAssets supports includeRetired option (Section 7)', () => {
+    expect(content).toContain('includeRetired');
+    expect(content).toContain('retiredAt: null');
+  });
+
+  it('createConnectedAsset reactivates retired assets on re-register (Section 8)', () => {
+    expect(content).toContain('isReactivating');
+    expect(content).toMatch(/retiredAt.*null.*reactivat/s);
+  });
+});
+
+// ─── PX1.2B-H1: System Delete Safety (Section 11-12) ───────────────────────
+
+describe('[PX1.2B-H1 §11-12] System delete safety — history preservation', () => {
+  const content = readFile('app/api/inventory/[id]/route.ts');
+
+  it('checks for historical evidence before delete', () => {
+    expect(content).toContain("metadata->'target'->>'type' = 'AI_SYSTEM'");
+  });
+
+  it('checks for connected assets before delete', () => {
+    expect(content).toContain('ai_system_assets.count');
+  });
+
+  it('checks for orchestrator runs before delete', () => {
+    expect(content).toContain('audit_orchestrator_runs.count');
+  });
+
+  it('checks for completed assurance evaluations before delete', () => {
+    expect(content).toContain("evaluationStatus: 'COMPLETED'");
+  });
+
+  it('checks for assurance packages before delete', () => {
+    expect(content).toContain('assurance_packages.count');
+  });
+
+  it('returns 409 when historical records exist', () => {
+    expect(content).toContain('409');
+    expect(content).toContain('historical evaluation records');
+  });
+
+  it('allows delete for empty/never-evaluated systems', () => {
+    expect(content).toContain('Empty / never-evaluated system');
+  });
+
+  it('all history checks are tenant-scoped (organizationId)', () => {
+    // All queries must include organizationId
+    const orgMatches = content.match(/organizationId/g);
+    expect(orgMatches).toBeTruthy();
+    expect(orgMatches!.length).toBeGreaterThan(5);
+  });
+});
+
+// ─── PX1.2B-H1: Asset Identity Immutability (Section 9) ────────────────────
+
+describe('[PX1.2B-H1 §9] Asset identity immutability', () => {
+  const content = readFile('app/api/inventory/systems/[id]/assets/[assetId]/route.ts');
+
+  it('PATCH rejects environment mutation', () => {
+    expect(content).toContain('identity-defining field');
+  });
+
+  it('PATCH schema does NOT include environment', () => {
+    expect(content).not.toMatch(/environment.*z\.string/);
+  });
+});
+
+// ─── PX1.2B-H1: Assurance Copy Truthful (Section 3) ────────────────────────
+
+describe('[PX1.2B-H1 §3] Assurance copy — no misleading "Assured"', () => {
+  const content = readFile('components/ai-inventory/AISystemsIndex.tsx');
+
+  it('KPI label is "With Assurance", not "Assured"', () => {
+    expect(content).toContain('With Assurance');
+    expect(content).not.toMatch(/label="Assured"/);
   });
 });

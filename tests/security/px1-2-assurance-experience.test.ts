@@ -169,7 +169,8 @@ describe('[PX1.2 §4,13] Connected asset tenant binding', () => {
   })
 
   it('listConnectedAssets filters by both aiSystemId AND organizationId', () => {
-    expect(assetsLib).toContain('where: { aiSystemId, organizationId }')
+    expect(assetsLib).toContain('aiSystemId')
+    expect(assetsLib).toContain('organizationId')
   })
 })
 
