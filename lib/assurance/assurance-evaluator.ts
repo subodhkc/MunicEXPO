@@ -551,10 +551,17 @@ export function computeDisposition(claimResults: ClaimEvaluationResult[]): Assur
     return claim?.mandatory === true;
   });
 
+  // R4C.1 invariant: ZERO_MANDATORY_APPLICABLE_CLAIMS != ALLOW
+  // If there are zero mandatory claim results at all, there is nothing to
+  // support an ALLOW disposition. Fail closed to REVIEW.
+  if (mandatoryResults.length === 0) {
+    return 'REVIEW';
+  }
+
   // PX1.1R invariant: NOT_APPLICABLE != PASS
   // If all mandatory claims are NOT_APPLICABLE (applicableRequirementCount = 0),
   // do NOT return ALLOW. There is nothing to support an ALLOW disposition.
-  if (mandatoryResults.length > 0 && mandatoryResults.every(r => r.claimState === 'NOT_APPLICABLE')) {
+  if (mandatoryResults.every(r => r.claimState === 'NOT_APPLICABLE')) {
     return 'REVIEW';
   }
 
