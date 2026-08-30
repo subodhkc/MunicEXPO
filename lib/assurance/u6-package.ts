@@ -24,10 +24,16 @@ import {
 } from './u6-report';
 import {
   U6_VERIFICATION_SCHEMA_VERSION,
+  U6_VERIFICATION_SCHEMA_VERSION_G3,
+  U6_RECEIPT_SCHEMA_VERSION,
+  U6_RECEIPT_SCHEMA_VERSION_G3,
+  U6_REPORT_SCHEMA_VERSION,
+  U6_REPORT_SCHEMA_VERSION_G3,
   BuildIdentity,
   U6Package,
   PackageVerificationResult,
   PublicVerificationResult,
+  EvaluatedScopeBinding,
 } from './u6-types';
 import { resolvePublicProfileLabel } from './u6-public-profile-label';
 
@@ -42,6 +48,10 @@ export interface PackageBuildContext {
   approvalReference?: string;
   syntheticClassification?: 'NONE' | 'SYNTHETIC_REFERENCE' | 'UNKNOWN';
   verificationSchemaVersion?: string;
+  // G3-R1: Scope binding — when provided, the receipt commits to the scope
+  // via evaluatedScopeBinding in computeReceiptHash, and schema versions
+  // are upgraded to 1.1.0.
+  evaluatedScopeBinding?: EvaluatedScopeBinding;
 }
 
 export function buildAssuranceVerificationPackage(
@@ -52,6 +62,14 @@ export function buildAssuranceVerificationPackage(
 
   const buildIdentity = context.buildIdentity ?? resolveBuildIdentity(evaluation, projectedEvidence);
 
+  // G3-R1: When scope binding is provided, use G3 schema versions (1.1.0).
+  // Legacy packages (no scope binding) use 1.0.0 and remain verifiable under 1.0.0.
+  const hasScopeBinding = !!context.evaluatedScopeBinding;
+  const receiptSchemaVersion = hasScopeBinding ? U6_RECEIPT_SCHEMA_VERSION_G3 : U6_RECEIPT_SCHEMA_VERSION;
+  const reportSchemaVersion = hasScopeBinding ? U6_REPORT_SCHEMA_VERSION_G3 : U6_REPORT_SCHEMA_VERSION;
+  const verificationSchemaVersion = context.verificationSchemaVersion ??
+    (hasScopeBinding ? U6_VERIFICATION_SCHEMA_VERSION_G3 : U6_VERIFICATION_SCHEMA_VERSION);
+
   // 1. Evidence Bundle
   const bundle = buildEvidenceBundle(evaluation, projectedEvidence);
 
@@ -59,15 +77,19 @@ export function buildAssuranceVerificationPackage(
   const synthetic = context.syntheticClassification ?? resolveSyntheticClassification(evaluation, v1_1);
   const report = buildUnifiedAssuranceReport(evaluation, bundle, buildIdentity, projectedEvidence, synthetic, context.authoritySourceLabel);
 
-  // 3. Decision Receipt
-  const receipt = buildDecisionReceipt(evaluation, report, bundle);
+  // G3-R1: Override report version if scope binding present
+  if (hasScopeBinding) {
+    report.reportVersion = reportSchemaVersion;
+  }
+
+  // 3. Decision Receipt — with scope binding if provided
+  const receipt = buildDecisionReceipt(evaluation, report, bundle, context.evaluatedScopeBinding, receiptSchemaVersion);
 
   // 4. Package Digest — commits to the actual package verification schema version
-  const verificationSchemaVersion = context.verificationSchemaVersion ?? U6_VERIFICATION_SCHEMA_VERSION;
   const semanticPackageDigest = computePackageDigest(evaluation.id, verificationSchemaVersion, report, bundle, receipt);
 
   return {
-    packageSchemaVersion: U6_VERIFICATION_SCHEMA_VERSION,
+    packageSchemaVersion: verificationSchemaVersion,
     packageId: 'PENDING_ISSUANCE',
     assuranceEvaluationId: evaluation.id,
     organizationId: evaluation.organizationId,
@@ -202,6 +224,29 @@ export function verifyAssurancePackage(pkg: U6Package): PackageVerificationResul
   checks.receiptMerkleRootValid =
     pkg.receipt.evidenceMerkleRoot === pkg.bundle.merkleRoot &&
     pkg.receipt.evidenceMerkleRoot === pkg.merkleRoot;
+
+  // G3-R1: Evaluated Scope binding validation.
+  // For schema 1.1.0+ packages: scope binding MUST be present and consistent.
+  // For legacy 1.0.0 packages: scope binding is absent (undefined) — still valid.
+  const isG3Schema = pkg.receiptSchemaVersion === '1.1.0' || pkg.verificationSchemaVersion === '1.1.0';
+  if (isG3Schema) {
+    checks.scopeBindingPresentValid =
+      pkg.receipt.evaluatedScopeBinding !== undefined &&
+      pkg.receipt.evaluatedScopeBinding !== null;
+    if (checks.scopeBindingPresentValid) {
+      const sb = pkg.receipt.evaluatedScopeBinding!;
+      checks.scopeBindingConsistentValid =
+        sb.evaluatedScopeId !== '' &&
+        sb.scopeDigest !== '' &&
+        sb.scopeSchemaVersion !== '';
+    } else {
+      checks.scopeBindingConsistentValid = false;
+    }
+  } else {
+    // Legacy schema: no scope binding expected
+    checks.scopeBindingPresentValid = true;
+    checks.scopeBindingConsistentValid = true;
+  }
 
   const allValid = Object.values(checks).every(v => v === true);
   return {

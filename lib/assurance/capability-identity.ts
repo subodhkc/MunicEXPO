@@ -54,6 +54,7 @@ export function scopeContains(container: string, contained: string): boolean {
   const d = contained.toLowerCase().trim();
   if (c === d) return true;
   if (c === '') return true; // empty scope = universal
+  if (d === '') return false; // non-empty container cannot contain empty scope
   // Hierarchical containment: system > project > tenant > local
   const hierarchy = ['global', 'organization', 'system', 'network', 'project', 'tenant', 'local'];
   const ci = hierarchy.indexOf(c);
@@ -61,12 +62,18 @@ export function scopeContains(container: string, contained: string): boolean {
   if (ci !== -1 && di !== -1) {
     return ci <= di;
   }
-  // Region containment: "region-*" patterns
+  // Region containment: "region-*" patterns — exact match only
   if (c.startsWith('region-') && d.startsWith('region-')) {
-    return c === d; // regions are exact — no cross-region containment
+    return c === d;
   }
-  // Fallback: string containment
-  return d.includes(c) || c === d;
+  // Explicit wildcard semantics: "*" matches anything
+  if (c === '*') return true;
+  // G4: NO arbitrary string containment fallback.
+  // Previously: `return d.includes(c) || c === d;`
+  // This was unsafe — it inferred authorization containment merely because
+  // one arbitrary scope string was a substring of another.
+  // Canonical U5 decisions must fail safely: unknown scope → NOT established.
+  return false;
 }
 
 /**

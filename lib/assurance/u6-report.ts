@@ -37,6 +37,7 @@ import {
   ProducerCoverageItem,
   FrameworkAlignmentItem,
   LimitationItem,
+  EvaluatedScopeBinding,
   PackageVerificationResult,
   PublicVerificationResult,
 } from './u6-types';
@@ -206,12 +207,14 @@ export function buildDecisionReceipt(
   evaluation: AssuranceEvaluation,
   report: UnifiedAssuranceReport,
   bundle: EvidenceBundle,
+  evaluatedScopeBinding?: EvaluatedScopeBinding, // G3-R1: optional scope binding
+  receiptVersionOverride?: string, // G3-R1: schema version override
 ): AssuranceDecisionReceipt {
   const v1_1 = evaluation as AssuranceEvaluationV1_1;
   const claimStateSummary = computeClaimStateSummary(evaluation.claimResults);
 
   const receipt: AssuranceDecisionReceipt = {
-    receiptVersion: U6_RECEIPT_SCHEMA_VERSION,
+    receiptVersion: receiptVersionOverride ?? U6_RECEIPT_SCHEMA_VERSION,
     receiptId: `${evaluation.id}:receipt`,
     assuranceEvaluationId: evaluation.id,
     organizationId: evaluation.organizationId,
@@ -240,6 +243,9 @@ export function buildDecisionReceipt(
     merkleStatus: bundle.merkleStatus,
     semanticReportDigest: report.reportDigest,
     limitations: report.limitations.map(l => l.code),
+    // G3-R1: Scope binding — included in receiptHash when present.
+    // Absent (undefined) for legacy 1.0.0 receipts.
+    evaluatedScopeBinding,
     receiptHash: '',
   };
 
@@ -390,6 +396,10 @@ export function computeReceiptHash(receipt: AssuranceDecisionReceipt): string {
     merkleStatus: receipt.merkleStatus,
     semanticReportDigest: receipt.semanticReportDigest,
     limitations: receipt.limitations,
+    // G3-R1: Scope binding committed into receiptHash.
+    // For legacy 1.0.0 receipts, evaluatedScopeBinding is undefined →
+    // canonicalSerialize omits it → hash unchanged → legacy verification still works.
+    evaluatedScopeBinding: receipt.evaluatedScopeBinding,
   };
   return hashTextContent(canonicalSerialize(payload));
 }

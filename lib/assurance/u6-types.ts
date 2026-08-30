@@ -12,6 +12,25 @@ export const U6_BUNDLE_SCHEMA_VERSION = '1.0.0' as const;
 export const U6_RECEIPT_SCHEMA_VERSION = '1.0.0' as const;
 export const U6_VERIFICATION_SCHEMA_VERSION = '1.0.0' as const;
 
+// G3-R1: New schema versions that include Evaluated Scope binding in the receipt.
+// Legacy 1.0.0 packages continue to verify under 1.0.0 semantics (no scope binding).
+// New packages use 1.1.0 which commits scope binding into receiptHash.
+export const U6_REPORT_SCHEMA_VERSION_G3 = '1.1.0' as const;
+export const U6_BUNDLE_SCHEMA_VERSION_G3 = '1.0.0' as const; // bundle semantics unchanged
+export const U6_RECEIPT_SCHEMA_VERSION_G3 = '1.1.0' as const;
+export const U6_VERIFICATION_SCHEMA_VERSION_G3 = '1.1.0' as const;
+
+/**
+ * G3-R1: Evaluated Scope binding committed into the canonical Decision Receipt.
+ * This structure is included in computeReceiptHash() for schema 1.1.0+ packages.
+ * Changing scopeDigest, evaluatedScopeId, or scopeSchemaVersion invalidates receiptHash.
+ */
+export interface EvaluatedScopeBinding {
+  evaluatedScopeId: string;
+  scopeSchemaVersion: string;
+  scopeDigest: string;
+}
+
 export type ReportGenerationStatus = 'COMPLETE' | 'PENDING' | 'FAILED';
 export type EvidenceCoverageStatus = 'COMPLETE' | 'PARTIAL' | 'UNKNOWN' | 'NOT_EVALUATED';
 export type MerkleStatus = 'AVAILABLE' | 'NOT_AVAILABLE_EMPTY_SET';
@@ -154,7 +173,7 @@ export interface EvaluatedScopeSnapshot {
 export const EVALUATED_SCOPE_NOT_CAPTURED = 'EVALUATED_SCOPE_NOT_CAPTURED';
 
 export interface U6Package {
-  packageSchemaVersion: typeof U6_REPORT_SCHEMA_VERSION;
+  packageSchemaVersion: string; // G3-R1: widened to support 1.0.0 and 1.1.0
   packageId: string;
   assuranceEvaluationId: string;
   organizationId: string;
@@ -392,6 +411,9 @@ export interface AssuranceDecisionReceipt {
   merkleStatus: MerkleStatus;
   semanticReportDigest: string;
   limitations: string[];
+  // G3-R1: Scope binding — committed into receiptHash for schema 1.1.0+.
+  // Absent in legacy 1.0.0 receipts (undefined → not included in hash).
+  evaluatedScopeBinding?: EvaluatedScopeBinding;
   receiptHash: string;
 }
 

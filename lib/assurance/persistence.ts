@@ -28,9 +28,17 @@ import {
   PlaneAvailability,
   ASSURANCE_METHODOLOGY_VERSION_1_1,
 } from './types';
+import { EvaluatedScopeSnapshot } from './u6-types';
+import { persistEvaluatedScope } from './scope-persistence';
 
 /**
  * Persist an Assurance Evaluation to the database.
+ *
+ * G3-R1: The Evaluated Scope snapshot MUST be provided for new evaluations.
+ * The scope and evaluation are persisted atomically in ONE transaction.
+ * If scope persistence fails, the evaluation persistence rolls back.
+ * If evaluation persistence fails, the scope persistence rolls back.
+ * NEW evaluations without scope are NOT allowed (fail closed).
  *
  * A13: Idempotency/conflict semantics:
  *   - same run + same methodology + same inputHash → IDEMPOTENT (return existing)
@@ -42,7 +50,8 @@ import {
  * Historical methodology 1.0 rows remain valid with null profile fields.
  */
 export async function persistAssuranceEvaluation(
-  evaluation: AssuranceEvaluation
+  evaluation: AssuranceEvaluation,
+  scopeSnapshot: EvaluatedScopeSnapshot, // G3-R1: REQUIRED for new evaluations
 ): Promise<PersistenceResult> {
   // A14: Check for existing evaluation WITH tenant ownership
   const existing = await prisma.assurance_evaluations.findFirst({
@@ -68,7 +77,11 @@ export async function persistAssuranceEvaluation(
     };
   }
 
-  // Create the evaluation with all related records in a transaction
+  // G3-R1: Create evaluation + scope atomically in ONE transaction.
+  // Scope capture already happened BEFORE U5 (in the API route).
+  // If scope persistence fails → evaluation rolls back.
+  // If evaluation persistence fails → scope rolls back.
+  // NEW_EVALUATION_WITHOUT_SCOPE_ALLOWED = NO.
   const result = await prisma.$transaction(async (tx: any) => {
     const evalRecord = await tx.assurance_evaluations.create({
       data: {
@@ -88,6 +101,14 @@ export async function persistAssuranceEvaluation(
         outputHash: evaluation.outputHash,
       },
     });
+
+    // G3-R1: Persist scope in the SAME transaction (atomic).
+    // Uses the transaction client, not a separate prisma call.
+    await persistEvaluatedScope(
+      scopeSnapshot,
+      evaluation.id,
+      tx, // transaction client
+    );
 
     // Section 4: Persist 1.1 profile/envelope binding
     if (isV1_1(evaluation)) {

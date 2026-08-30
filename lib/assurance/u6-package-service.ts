@@ -17,6 +17,8 @@ import {
 import { AssuranceEvaluation, AssuranceEvaluationV1_1 } from './types';
 import { projectEvidenceForRun } from '@/lib/decision-pipeline/evidence-projection';
 import { resolvePublicProfileLabel } from './u6-public-profile-label';
+import { getEvaluatedScopeByEvaluationId, getScopeIdByEvaluationId, getScopeDigestByEvaluationId } from './scope-persistence';
+import { EvaluatedScopeBinding, EVALUATED_SCOPE_SCHEMA_VERSION } from './u6-types';
 
 export interface PackageIssueResult {
   status: 'CREATED' | 'IDEMPOTENT' | 'CONFLICT';
@@ -135,6 +137,24 @@ export async function buildPackageFromEvaluation(
   const v1_1 = evaluation as AssuranceEvaluationV1_1;
   const { projectedEvidence, runRecord } = await loadExactRunEvidence(evaluation);
 
+  // G3-R1: Load Evaluated Scope for canonical U6 binding.
+  // Legacy evaluations without scope → no binding → legacy 1.0.0 schema.
+  // New evaluations with scope → binding in receipt → 1.1.0 schema.
+  const scopeSnapshot = await getEvaluatedScopeByEvaluationId(
+    evaluation.id,
+    evaluation.organizationId,
+  );
+  const evaluatedScopeId = scopeSnapshot ? await getScopeIdByEvaluationId(evaluation.id) : null;
+
+  let evaluatedScopeBinding: EvaluatedScopeBinding | undefined;
+  if (scopeSnapshot && evaluatedScopeId) {
+    evaluatedScopeBinding = {
+      evaluatedScopeId,
+      scopeSchemaVersion: scopeSnapshot.scopeSchemaVersion,
+      scopeDigest: scopeSnapshot.scopeDigest,
+    };
+  }
+
   const packageCandidate = buildAssuranceVerificationPackage({
     evaluation,
     projectedEvidence,
@@ -143,6 +163,8 @@ export async function buildPackageFromEvaluation(
     operatingEnvelopeApprovedAt: v1_1.operatingEnvelopeApprovedAt ? v1_1.operatingEnvelopeApprovedAt.toISOString() : undefined,
     approvalReference: v1_1.operatingEnvelopeApprovalReference ?? undefined,
     syntheticClassification: resolveSyntheticClassification(v1_1),
+    // G3-R1: Pass scope binding to canonical U6 construction
+    evaluatedScopeBinding,
   });
 
   return packageCandidate;
@@ -158,6 +180,11 @@ export async function issueAssurancePackage(
   evaluation: AssuranceEvaluation,
 ): Promise<PackageIssueResult> {
   const packageCandidate = await buildPackageFromEvaluation(evaluation);
+
+  // G3-R1: Scope binding is now in the package candidate (from buildPackageFromEvaluation).
+  // Extract for DB metadata persistence.
+  const evaluatedScopeId = packageCandidate.receipt.evaluatedScopeBinding?.evaluatedScopeId ?? null;
+  const scopeDigest = packageCandidate.receipt.evaluatedScopeBinding?.scopeDigest ?? null;
 
   const existing = await (prisma as any).assurance_packages.findUnique({
     where: {
@@ -211,6 +238,9 @@ export async function issueAssurancePackage(
       approvalReference: packageCandidate.approvalReference,
       syntheticClassification: packageCandidate.syntheticClassification,
       publicationState: 'PRIVATE',
+      // G3: Scope binding for U6 package
+      evaluatedScopeId,
+      scopeDigest,
     },
   });
 
