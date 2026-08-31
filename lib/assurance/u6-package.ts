@@ -289,129 +289,250 @@ export function buildPublicVerificationResult(
   };
 }
 
+// ─── Gate 4A Phase A: Qualified Build Identity Source Policy ───────────────
+//
+// Only specific producer + target combinations are qualified to establish
+// Build Identity dimensions from Evidence. A SHA-shaped target.version from
+// an unqualified producer does NOT establish gitCommit.
+//
+// QUALIFIED_GIT_COMMIT_PRODUCERS:
+//   saas-static (with target.type === 'REPOSITORY') → STATIC_REPOSITORY_COMMIT
+//
+// NOT QUALIFIED for gitCommit from target.version:
+//   saas-runtime   (target.type = ENDPOINT)
+//   saas-wizard    (target.type = ASSESSMENT)
+//   saas-regulatory(target.type = ASSESSMENT)
+//   saas-inventory (target.type = AI_SYSTEM)
+//   ci-cd-scanner  (NOT exact-run bound — schema change required)
+//   sarif-import   (NOT exact-run bound — schema change required)
+//
+// SHA_SHAPED_VALUE != QUALIFIED_GIT_COMMIT
+// NON_SOURCE_PRODUCER != STATIC_REPOSITORY_COMMIT
+//
+// CI commit identity may still flow through the Static scanner path when
+// staticExecutionMode='ci-triggered' — that is Static Evidence provenance,
+// not a separate CI Build Identity path.
+//
+// OUT-OF-CONTRACT PROVENANCE:
+//   The canonical ProvenanceRef union (ContentHash, HMAC, HashChainRecord,
+//   MerkleSnapshot, MerkleInclusionProof, RunReceipt) does NOT define
+//   gitCommit, containerDigest, or packageDigest fields. No real producer
+//   emits such fields. Build Identity must NOT derive dimensions from
+//   out-of-contract provenance accessed via type escapes.
+//   TYPE_ESCAPE != PROVENANCE_CONTRACT
+//
+//   containerDigest and packageDigest can only come from buildBinding.
+//   A typed container/package build-provenance contract is a
+//   PRODUCT_PREREQUISITE for Evidence-sourced artifact identity.
+
+const QUALIFIED_GIT_COMMIT_PRODUCERS = new Set(['saas-static']);
+
+export function isBuildIdentityConflict(identity: BuildIdentity | undefined | null): boolean {
+  if (!identity || identity.source !== 'NOT_PROVIDED') return false;
+  const explanation = identity.explanation ?? '';
+  return explanation === 'BUILD_IDENTITY_CONFLICT' || explanation.startsWith('BUILD_IDENTITY_CONFLICT');
+}
+
 export function resolveBuildIdentity(
   evaluation: AssuranceEvaluation,
   projectedEvidence: DecisionEvidenceProjection[],
 ): BuildIdentity {
-  // Defect 5/6/7: Source-truth Build Identity resolution from EXACT Evidence selected for the evaluated run.
+  // Gate 4A Phase A (final correction): Source-truth Build Identity resolution
+  // from identity-qualified Evidence from the projection supplied for this
+  // evaluation, with qualified source policy.
+  //
+  // resolveBuildIdentity consumes only identity-qualified Evidence from the
+  // projection supplied for this evaluation. Git commit identity from Evidence
+  // is currently accepted only from the exact Static scan relationship
+  // represented by saas-static + REPOSITORY.
+  //
+  // Inventory time-bounded snapshot != repository commit proof.
+  // Runtime evidence != repository commit proof.
+  // Wizard evidence != repository commit proof.
+  // Regulatory evidence != repository commit proof.
+  //
   // Allowed sources by strength:
-  //   1. persisted evaluation buildBinding if exact and available (BUILD_PROFILE_BINDING)
-  //   2. exact-run CI Evidence with an exact commit/build reference (ORCHESTRATOR_CI_COMMIT)
-  //   3. exact-run Static REPOSITORY target.version if valid Git SHA (STATIC_REPOSITORY_COMMIT)
-  //   4. exact canonical Evidence provenance (EVIDENCE_PROVENANCE)
+  //   1. persisted evaluation buildBinding (BUILD_PROFILE_BINDING) — ONLY when
+  //      buildBinding contributes at least one identity dimension
+  //      (gitCommit, containerDigest, packageDigest, applicationVersion).
+  //      BUILD_PROFILE_BINDING_SOURCE REQUIRES BUILD_BINDING_IDENTITY_CONTRIBUTION.
+  //   2. Static REPOSITORY target.version if valid Git SHA and producer is
+  //      saas-static with target.type === 'REPOSITORY'
+  //      (STATIC_REPOSITORY_COMMIT)
   //
-  // Defect 7: Non-conflicting identifiers across dimensions are preserved.
-  //   gitCommit + containerDigest + packageDigest can coexist.
-  //   Only conflicting values for the SAME dimension → BUILD_IDENTITY_CONFLICT.
+  // ORCHESTRATOR_CI_COMMIT is NOT currently produced — ci-cd-scanner is not
+  // exact-run bound (schema change required). CI commit identity may flow
+  // through the Static scanner path via staticScanId.
   //
-  // Defect 8: CI exact-run binding is NOT currently available in projectEvidenceForRun().
-  //   ci-cd-scanner and sarif-import are not bound to orchestrator runs.
-  //   Therefore ORCHESTRATOR_CI_COMMIT is not currently produced from Evidence.
-  //   This is a truthful limitation, not a failure.
+  // EVIDENCE_PROVENANCE is NOT currently produced — the canonical ProvenanceRef
+  // union does not define gitCommit/containerDigest/packageDigest fields.
+  //
+  // STRONGER_SOURCE_PRECEDENCE != PERMISSION_TO_HIDE_CONFLICT
+  // A stronger source may determine canonical selection only after
+  // contradiction handling is explicit.
 
   const v1_1 = evaluation as AssuranceEvaluationV1_1;
 
-  // Source 1: buildBinding (Defect 5)
-  if (v1_1.buildBinding) {
-    const bb = v1_1.buildBinding;
-    const identity: BuildIdentity = {
-      source: 'BUILD_PROFILE_BINDING',
-    };
-    if (bb.gitCommit) identity.gitCommit = bb.gitCommit;
-    if (bb.containerDigest) identity.containerDigest = bb.containerDigest;
-    if (bb.packageDigest) identity.packageDigest = bb.packageDigest;
-    if (bb.applicationVersion) identity.applicationVersion = bb.applicationVersion;
-    // Only return if at least one identifier is present
-    if (identity.gitCommit || identity.containerDigest || identity.packageDigest || identity.applicationVersion) {
-      return identity;
-    }
-  }
-
-  // Collect identifiers from Evidence, tracking source per dimension
+  // ── Collect gitCommit from qualified Evidence sources only ──
   const gitCommits = new Map<string, string>(); // value → source label
-  const containerDigests = new Map<string, string>();
-  const packageDigests = new Map<string, string>();
 
   for (const ev of projectedEvidence) {
     const producerId = ev.producerId as string;
-
-    // Source 3: target.version as Git commit SHA (Defect 6: label by producer)
+    const targetType = ev.target?.type;
     const targetVersion = ev.target?.version;
-    if (targetVersion && isValidGitSha(targetVersion)) {
-      // Defect 6: Static evidence gets STATIC_REPOSITORY_COMMIT, not ORCHESTRATOR_CI_COMMIT
-      // Defect 8: CI producer would get ORCHESTRATOR_CI_COMMIT, but ci-cd-scanner is not currently bound
-      const sourceLabel = producerId === 'ci-cd-scanner' ? 'ORCHESTRATOR_CI_COMMIT' : 'STATIC_REPOSITORY_COMMIT';
-      gitCommits.set(targetVersion, sourceLabel);
+
+    // Only saas-static with REPOSITORY target is qualified to establish
+    // gitCommit from target.version. Other producers' target.version —
+    // even if SHA-shaped — does NOT establish repository commit identity.
+    // Gate 4A Phase A: Evidence-derived STATIC_REPOSITORY_COMMIT requires
+    // a FULL 40-char Git SHA. Abbreviated prefixes are NOT exact commit
+    // identity. ABBREVIATED_GIT_PREFIX != EXACT_SOURCE_COMMIT_IDENTITY.
+    if (
+      targetVersion && isFullGitSha(targetVersion) &&
+      QUALIFIED_GIT_COMMIT_PRODUCERS.has(producerId) &&
+      targetType === 'REPOSITORY'
+    ) {
+      gitCommits.set(targetVersion, 'STATIC_REPOSITORY_COMMIT');
     }
 
-    // Source 4: provenance refs with explicit build/package/container identity
-    for (const ref of ev.provenanceRefs ?? []) {
-      const refAny = ref as any;
-      if (refAny.gitCommit && isValidGitSha(refAny.gitCommit)) {
-        gitCommits.set(refAny.gitCommit, 'EVIDENCE_PROVENANCE');
+    // NOTE: Out-of-contract provenance extraction removed.
+    // The canonical ProvenanceRef union does not define gitCommit,
+    // containerDigest, or packageDigest. No real producer emits them.
+    // containerDigest and packageDigest can only come from buildBinding.
+  }
+
+  // ── Source 1: buildBinding — compare against qualified Evidence ──
+  //
+  // Gate 4A Phase A final correction:
+  //   BUILD_PROFILE_BINDING_SOURCE REQUIRES BUILD_BINDING_IDENTITY_CONTRIBUTION.
+  //   A persisted buildBinding object may exist while contributing ZERO actual
+  //   Build Identity dimensions (gitCommit, containerDigest, packageDigest,
+  //   applicationVersion). Profile IDs, rule-pack versions, timestamps and
+  //   other buildBinding metadata do NOT count as Build Identity contribution.
+  //
+  //   If buildBinding contributes zero identity dimensions, it must NOT own
+  //   the source label. The Evidence-only resolution path determines source.
+  //
+  //   ZERO_IDENTITY_DIMENSIONS_FROM_BUILD_BINDING + STATIC_EVIDENCE_GIT_COMMIT
+  //   = STATIC_REPOSITORY_COMMIT, not BUILD_PROFILE_BINDING.
+  if (v1_1.buildBinding) {
+    const bb = v1_1.buildBinding;
+
+    // Deterministically calculate whether buildBinding contributes at least
+    // one Build Identity dimension.
+    const buildBindingContributesIdentity =
+      !!bb.gitCommit ||
+      !!bb.containerDigest ||
+      !!bb.packageDigest ||
+      !!bb.applicationVersion;
+
+    // If buildBinding contributes zero identity dimensions, skip the
+    // buildBinding branch entirely and fall through to Evidence-only
+    // resolution. This prevents false BUILD_PROFILE_BINDING provenance.
+    if (buildBindingContributesIdentity) {
+
+      // Per-dimension cross-source conflict check against qualified Evidence.
+      // Only gitCommit has a qualified Evidence source (Static REPOSITORY).
+      // containerDigest/packageDigest have no qualified Evidence source,
+      // so they cannot conflict with buildBinding.
+      const conflicts: string[] = [];
+
+      if (bb.gitCommit && gitCommits.size > 0 && !gitCommits.has(bb.gitCommit)) {
+        conflicts.push('gitCommit');
       }
-      if (refAny.containerDigest) {
-        containerDigests.set(refAny.containerDigest, 'EVIDENCE_PROVENANCE');
+
+      if (conflicts.length > 0) {
+        return {
+          source: 'NOT_PROVIDED',
+          explanation: `BUILD_IDENTITY_CONFLICT: buildBinding contradicts Evidence on ${conflicts.join(', ')}`,
+        };
       }
-      if (refAny.packageDigest) {
-        packageDigests.set(refAny.packageDigest, 'EVIDENCE_PROVENANCE');
+
+      // Intra-Evidence conflict (multiple qualified Static commits)
+      if (gitCommits.size > 1) {
+        return { source: 'NOT_PROVIDED', explanation: 'BUILD_IDENTITY_CONFLICT' };
+      }
+
+      // No conflict — buildBinding values are canonical (stronger source).
+      // gitCommit absent from buildBinding but present in qualified Evidence
+      // is filled from Evidence (mixed-source provenance, documented below).
+      const identity: BuildIdentity = { source: 'BUILD_PROFILE_BINDING' };
+      const evidenceDimensions: string[] = [];
+
+      if (bb.gitCommit) {
+        identity.gitCommit = bb.gitCommit;
+      } else if (gitCommits.size === 1) {
+        const [commit] = Array.from(gitCommits.entries())[0];
+        identity.gitCommit = commit;
+        evidenceDimensions.push('gitCommit');
+      }
+
+      if (bb.containerDigest) {
+        identity.containerDigest = bb.containerDigest;
+      }
+
+      if (bb.packageDigest) {
+        identity.packageDigest = bb.packageDigest;
+      }
+
+      if (bb.applicationVersion) {
+        identity.applicationVersion = bb.applicationVersion;
+      }
+
+      // Mixed-source provenance: buildBinding is the strongest source and
+      // contributed at least one dimension. Evidence filled gaps for dimensions
+      // absent from buildBinding. The `source` field means "strongest source
+      // contributing to the composite Build Identity" — BUILD_PROFILE_BINDING
+      // is truthful when buildBinding contributed any dimension. The explanation
+      // documents which dimensions came from Evidence.
+      // COMPOSITE_IDENTITY != FALSE_SINGLE_SOURCE_PROVENANCE
+      if (evidenceDimensions.length > 0) {
+        identity.explanation = `MIXED_SOURCE: buildBinding + Evidence (${evidenceDimensions.join(', ')} from STATIC_REPOSITORY_COMMIT)`;
+      }
+
+      if (identity.gitCommit || identity.containerDigest || identity.packageDigest || identity.applicationVersion) {
+        return identity;
       }
     }
   }
 
-  // Defect 7: Conflict detection per dimension. Non-conflicting dimensions coexist.
-  const hasGitConflict = gitCommits.size > 1;
-  const hasContainerConflict = containerDigests.size > 1;
-  const hasPackageConflict = packageDigests.size > 1;
+  // ── No buildBinding — resolve gitCommit from qualified Evidence alone ──
 
-  if (hasGitConflict || hasContainerConflict || hasPackageConflict) {
+  if (gitCommits.size > 1) {
     return { source: 'NOT_PROVIDED', explanation: 'BUILD_IDENTITY_CONFLICT' };
   }
 
-  // Defect 7: Build identity preserving all non-conflicting identifiers
-  const identity: BuildIdentity = {};
-  const sources: string[] = [];
-
   if (gitCommits.size === 1) {
     const [commit, source] = Array.from(gitCommits.entries())[0];
-    identity.gitCommit = commit;
-    sources.push(source);
+    return {
+      gitCommit: commit,
+      source: source as BuildIdentity['source'],
+    };
   }
 
-  if (containerDigests.size === 1) {
-    const [digest, source] = Array.from(containerDigests.entries())[0];
-    identity.containerDigest = digest;
-    sources.push(source);
-  }
-
-  if (packageDigests.size === 1) {
-    const [digest, source] = Array.from(packageDigests.entries())[0];
-    identity.packageDigest = digest;
-    sources.push(source);
-  }
-
-  if (sources.length > 0) {
-    // Defect 7: Source is the strongest source that contributed.
-    // Priority: BUILD_PROFILE_BINDING > ORCHESTRATOR_CI_COMMIT > STATIC_REPOSITORY_COMMIT > EVIDENCE_PROVENANCE
-    if (sources.includes('ORCHESTRATOR_CI_COMMIT')) {
-      identity.source = 'ORCHESTRATOR_CI_COMMIT';
-    } else if (sources.includes('STATIC_REPOSITORY_COMMIT')) {
-      identity.source = 'STATIC_REPOSITORY_COMMIT';
-    } else {
-      identity.source = 'EVIDENCE_PROVENANCE';
-    }
-    return identity;
-  }
-
-  // No exact build evidence
+  // No qualified build evidence
   return { source: 'NOT_PROVIDED', explanation: 'BUILD_IDENTITY_NOT_PROVIDED' };
 }
 
 /**
- * Part 12: Validate that a string is a plausible Git commit SHA (40-char hex or 7+ char hex prefix).
+ * Part 12: Validate that a string is a plausible Git commit SHA.
+ *
+ * isValidGitSha accepts both full 40-char SHA-1 and 7+ char hex prefixes.
+ * This is retained for general plausibility checks (e.g. buildBinding values
+ * which are persisted profile bindings, not Evidence-derived identity).
+ *
+ * isFullGitSha requires a full 40-char hexadecimal SHA-1.
+ * Gate 4A Phase A: Evidence-derived STATIC_REPOSITORY_COMMIT requires
+ * EXACT_SOURCE_COMMIT_IDENTITY. An abbreviated prefix is NOT exact commit
+ * identity. ABBREVIATED_GIT_PREFIX != EXACT_SOURCE_COMMIT_IDENTITY.
+ * STATIC_REPOSITORY_COMMIT REQUIRES FULL_COMMIT_IDENTITY.
  */
 function isValidGitSha(sha: string): boolean {
   return /^[0-9a-f]{40}$/.test(sha) || /^[0-9a-f]{7,}$/.test(sha);
+}
+
+function isFullGitSha(sha: string): boolean {
+  return /^[0-9a-f]{40}$/.test(sha);
 }
 
 export function computePackageDigest(

@@ -633,12 +633,17 @@ function buildLimitations(
     if (plane.status === 'NOT_SUPPORTED_BY_CURRENT_PRODUCER') add({ code: 'PLANE_NOT_SUPPORTED', explanation: `${plane.plane} not supported by current producer`, scope: plane.plane });
   }
 
-  // Part 13 / Defect 12: Build Identity limitation — fix dead branch
+  // Part 13 / Defect 12 / Gate 4A: Build Identity limitation classification.
   // CONFLICT and NOT_PROVIDED both use source=NOT_PROVIDED but different explanations.
-  // Check explanation FIRST to distinguish them.
+  // The cross-source conflict path emits "BUILD_IDENTITY_CONFLICT: buildBinding
+  // contradicts Evidence on ..." — exact string equality would miss this and
+  // silently downgrade a real conflict to ordinary NOT_PROVIDED.
+  // Use a prefix-based predicate to classify deterministically.
+  // BUILD_IDENTITY_CONFLICT != BUILD_IDENTITY_NOT_PROVIDED
   if (buildIdentity) {
     if (buildIdentity.source === 'NOT_PROVIDED') {
-      if (buildIdentity.explanation === 'BUILD_IDENTITY_CONFLICT') {
+      const explanation = buildIdentity.explanation ?? '';
+      if (explanation === 'BUILD_IDENTITY_CONFLICT' || explanation.startsWith('BUILD_IDENTITY_CONFLICT')) {
         add({ code: 'BUILD_IDENTITY_CONFLICT', explanation: 'Conflicting build identities were found in the evaluated Evidence. Positive Assurance mark is ineligible.', scope: 'build_identity' });
       } else {
         add({ code: 'BUILD_IDENTITY_NOT_PROVIDED', explanation: 'Build Identity was not established from the evaluated Evidence. Positive Assurance mark is ineligible.', scope: 'build_identity' });
