@@ -298,6 +298,14 @@ export function buildPublicVerificationResult(
 // QUALIFIED_GIT_COMMIT_PRODUCERS:
 //   saas-static (with target.type === 'REPOSITORY') → STATIC_REPOSITORY_COMMIT
 //
+// Gate 4A Phase B: ci-cd-scanner is NOT yet qualified for gitCommit.
+//   CI_COMMIT_IDENTITY_QUALIFICATION = OPEN / UNPROVEN
+//   CI may participate as explicitly bound Evidence, but cannot establish
+//   Build Identity until repository identity compatibility is proven
+//   (ci_scan_results.repositoryId → ai_system_assets mapping with
+//    assetType=SOURCE_REPOSITORY). This is a PRODUCT_PREREQUISITE.
+//   ORCHESTRATOR_CI_COMMIT remains dormant.
+//
 // NOT QUALIFIED for gitCommit from target.version:
 //   saas-runtime   (target.type = ENDPOINT)
 //   saas-wizard    (target.type = ASSESSMENT)

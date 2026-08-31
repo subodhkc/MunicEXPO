@@ -8,6 +8,7 @@
 
 import { nanoid } from 'nanoid';
 import { prisma } from '@/lib/prisma';
+import { normalizeSelectedEnginesResult } from '@/lib/audit-orchestrator/selected-engines-normalizer';
 import { buildAssuranceVerificationPackage, computePackageDigest, verifyAssurancePackage } from './u6-package';
 import {
   U6Package,
@@ -112,9 +113,14 @@ export async function loadExactRunEvidence(evaluation: AssuranceEvaluation): Pro
     throw new Error('ORCHESTRATOR_RUN_NOT_FOUND');
   }
 
-  const selectedEngines = Array.isArray(run.selectedEngines)
-    ? run.selectedEngines as string[]
-    : (run.selectedEngines ? [String(run.selectedEngines)] : []);
+  // Gate 4A Phase B: Inspect selectedEngines parse state.
+  // INVALID must NOT become ordinary empty participation.
+  // MALFORMED_SELECTED_ENGINES_AS_CLEAN_EMPTY_PATHS = 0 in the REAL package consumer.
+  const parseResult = normalizeSelectedEnginesResult(run.selectedEngines);
+  if (parseResult.state === 'INVALID') {
+    throw new Error('INVALID_SELECTED_ENGINES: run has malformed selectedEngines data; cannot build package');
+  }
+  const selectedEngines = parseResult.engines;
 
   const projectedEvidence = await projectEvidenceForRun({
     organizationId: run.organizationId,
@@ -136,6 +142,15 @@ export async function buildPackageFromEvaluation(
 ): Promise<U6Package> {
   const v1_1 = evaluation as AssuranceEvaluationV1_1;
   const { projectedEvidence, runRecord } = await loadExactRunEvidence(evaluation);
+
+  // Gate 4A Phase B: Package reconstruction uses canonical snapshot verification.
+  // The canonical protection is in projectEvidenceForRun():
+  //   attachment frozen digest → recompute from current producer-native row
+  //   → mismatch/deletion fails closed with BOUND_EXTERNAL_EVIDENCE_SNAPSHOT_MISMATCH
+  //   or BOUND_EXTERNAL_EVIDENCE_MISSING or BOUND_EXTERNAL_EVIDENCE_SNAPSHOT_INVALID.
+  // The package service receives only verified projection output.
+  // No second parity engine is needed here.
+  // PACKAGE_RECONSTRUCTION_USES_CANONICAL_SNAPSHOT_VERIFICATION = YES.
 
   // G3-R1: Load Evaluated Scope for canonical U6 binding.
   // Legacy evaluations without scope → no binding → legacy 1.0.0 schema.
