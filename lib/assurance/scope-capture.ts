@@ -21,6 +21,20 @@ import { buildEvaluatedScopeSnapshot } from './scope-digest';
 import { EVALUATED_SCOPE_SCHEMA_VERSION } from './u6-types';
 
 /**
+ * Gate 4A Fix D: Validate that a string is a valid immutable container digest.
+ *
+ * Supports the canonical OCI digest representation:
+ *   sha256:<64 hexadecimal characters>
+ *
+ * MUTABLE_IMAGE_TAG != CONTAINER_DIGEST.
+ * A Docker tag like "latest" or "my-image:v3" is NOT an immutable digest.
+ * A malformed sha256 is NOT a valid digest.
+ */
+function isValidContainerDigestFormat(value: string): boolean {
+  return /^sha256:[0-9a-f]{64}$/.test(value);
+}
+
+/**
  * Capture the Evaluated Scope for an AI System at evaluation time.
  *
  * Reads the current Connected Assets (including retired ones for historical
@@ -66,7 +80,16 @@ export async function captureEvaluatedScope(
     const inclusionState: 'EVALUATED' | 'NOT_EVALUATED' | 'UNAVAILABLE' =
       isRetired ? 'NOT_EVALUATED' : 'EVALUATED';
 
-    return {
+    // Gate 4A: Freeze canonical identity value from the Connected Asset.
+    // Only freeze build/deployment identity dimensions when the asset was
+    // VERIFIED at evaluation time. NOT_VERIFIED → identity not source-proven.
+    // MANUAL_ASSET_REGISTRATION != VERIFIED_BUILD_IDENTITY.
+    const isVerified = asset.identityState === 'VERIFIED';
+    const canonicalId = (asset as any).canonicalId as string | null | undefined;
+
+    // Map canonicalId to the appropriate build identity field based on asset type.
+    // Only populate when VERIFIED — otherwise the dimension remains UNPROVEN.
+    const snapshot: EvaluatedScopeAssetSnapshot = {
       connectedAssetId: asset.id,
       assetType: asset.assetType,
       displayName: asset.displayName,
@@ -77,6 +100,44 @@ export async function captureEvaluatedScope(
       evaluationInclusionState: inclusionState,
       notEvaluatedReason: isRetired ? 'ASSET_RETIRED' : undefined,
     };
+
+    // Freeze canonicalIdentity for schema 1.2+ (the actual value, not just hash).
+    if (canonicalId) {
+      snapshot.canonicalIdentity = canonicalId;
+    }
+
+    // Map canonicalId to typed build/deployment identity fields when VERIFIED.
+    // VERIFIED + canonicalId = source-proven identity.
+    // NOT_VERIFIED + canonicalId = caller-declaimeded (not source-proven).
+    if (isVerified && canonicalId) {
+      if (asset.assetType === 'CONTAINER_IMAGE') {
+        // Fix D: Only freeze containerDigest when canonicalId is a valid
+        // immutable digest representation (sha256:<64hex>).
+        // MUTABLE_IMAGE_TAG != CONTAINER_DIGEST.
+        // canonicalIdentity is still frozen (for traceability) even when the
+        // digest format is invalid — but containerDigest is NOT set.
+        if (isValidContainerDigestFormat(canonicalId)) {
+          snapshot.containerDigest = canonicalId;
+        }
+      } else if (asset.assetType === 'DEPLOYMENT') {
+        // Fix E: deploymentIdentity requires a real provider value.
+        // 'unknown' is NOT a proven deployment provider.
+        // DEPLOYMENT_URL != DEPLOYED_ARTIFACT_IDENTITY.
+        const provider = asset.provider;
+        if (provider && provider.trim() !== '' && provider !== 'unknown') {
+          snapshot.deploymentIdentity = {
+            deploymentProvider: provider,
+            deploymentId: canonicalId,
+            environment: asset.environment ?? undefined,
+          };
+        }
+      }
+      // packageDigest: no current asset type maps directly to package digest.
+      // When a future producer provides package digest identity, it can be
+      // frozen here. Currently truthfully NOT_PROVIDED.
+    }
+
+    return snapshot;
   });
 
   // Build the complete scope snapshot with computed digest

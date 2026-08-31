@@ -25,9 +25,11 @@
  *     identityStateAtEvaluation — identity state at evaluation time
  *     environment           — per-asset environment if part of scope
  *     provider              — asset provider (github, gitlab, etc.) — schema 1.1+
+ *     canonicalIdentity     — actual canonical identity value — schema 1.2+
  *     gitCommit             — exact source identity
  *     containerDigest       — exact container identity
  *     packageDigest         — exact build identity
+ *     deploymentIdentity    — exact deployment identity — schema 1.2+
  *     interfaceSpecDigest   — exact interface spec identity
  *     interfaceSpecVersion  — interface spec version
  *     endpoint              — exact endpoint identity
@@ -96,6 +98,13 @@ function projectAssetScopeSemantic(
   // Schema 1.0: provider not frozen — excluded for backward compatibility.
   if (schemaVersion && schemaVersion >= '1.1') {
     base.provider = asset.provider ?? '';
+  }
+  // Schema 1.2+: canonicalIdentity and deploymentIdentity are scope-semantic.
+  // Included in digest for tamper detection of build/deployment identity.
+  // Schema 1.1/1.0: not frozen — excluded for backward compatibility.
+  if (schemaVersion && schemaVersion >= '1.2') {
+    base.canonicalIdentity = asset.canonicalIdentity ?? '';
+    base.deploymentIdentity = asset.deploymentIdentity ?? '';
   }
   return base;
 }

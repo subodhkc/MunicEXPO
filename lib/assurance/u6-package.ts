@@ -30,6 +30,7 @@ import {
   U6_REPORT_SCHEMA_VERSION,
   U6_REPORT_SCHEMA_VERSION_G3,
   BuildIdentity,
+  DeploymentIdentity,
   U6Package,
   PackageVerificationResult,
   PublicVerificationResult,
@@ -643,7 +644,54 @@ export function resolveBuildIdentity(
     // containerDigest and packageDigest can only come from buildBinding.
   }
 
-  // ── Source 1: buildBinding — compare against qualified Evidence ──
+  // ── Gate 4A: Resolve build/deployment identity from frozen Evaluated Scope ──
+  //
+  // Build artifact and deployment identity come from VERIFIED Connected Assets
+  // frozen into the immutable Evaluated Scope. Only VERIFIED + EVALUATED assets
+  // with a frozen canonicalIdentity can establish build/deployment identity.
+  //
+  // Fix A: The scope must belong to the EXACT evaluation (org, AI System, run).
+  //   WRONG_ORG_SCOPE / WRONG_AI_SYSTEM_SCOPE / WRONG_RUN_SCOPE
+  //   => no scope build/deployment identity.
+  //   This is the same guard used for CI commit qualification. The caller
+  //   loading the right scope is NOT the canonical Build Identity guard.
+  //
+  // Fix B: CONFLICT != ABSENCE. resolveBuildIdentityFromScope returns a typed
+  //   result (NONE | RESOLVED | CONFLICT). CONFLICT propagates as
+  //   BUILD_IDENTITY_CONFLICT, not silently cleared to NOT_PROVIDED.
+  //
+  // Fix C: Scope identity participates in the SAME per-dimension resolution as
+  //   buildBinding and Evidence. buildBinding no longer returns before scope
+  //   identity is computed. Per-dimension conflicts across all sources are
+  //   detected in one pass.
+  //
+  // Fix D: containerDigest requires a valid immutable digest representation
+  //   (sha256:<64hex>). MUTABLE_IMAGE_TAG != CONTAINER_DIGEST.
+  //
+  // Fix E: deploymentIdentity requires a real provider value. 'unknown' is
+  //   NOT a proven deployment provider.
+  //
+  // MANUAL_ASSET_REGISTRATION != VERIFIED_BUILD_IDENTITY.
+  // DISPLAY_NAME != BUILD_IDENTITY.
+  // DEPLOYMENT_URL != DEPLOYED_ARTIFACT_IDENTITY.
+  //
+  // Missing dimensions remain NOT_PROVIDED — not every AI application has a
+  // container, package digest, or conventional deployment object.
+  // APPLICABLE_AND_PROVEN | APPLICABLE_BUT_NOT_PROVIDED | NOT_APPLICABLE.
+
+  const scopeResolution = resolveBuildIdentityFromScope(evaluatedScope, evaluation);
+
+  // Fix B: Scope conflict propagates immediately — CONFLICT != ABSENCE.
+  if (scopeResolution.status === 'CONFLICT') {
+    return {
+      source: 'NOT_PROVIDED',
+      explanation: `BUILD_IDENTITY_CONFLICT: scope ${scopeResolution.dimensions.join(', ')}`,
+    };
+  }
+
+  const scopeIdentity = scopeResolution.status === 'RESOLVED' ? scopeResolution.identity : null;
+
+  // ── Source 1: buildBinding — composes with Evidence AND scope ──
   //
   // Gate 4A Phase A final correction:
   //   BUILD_PROFILE_BINDING_SOURCE REQUIRES BUILD_BINDING_IDENTITY_CONTRIBUTION.
@@ -653,40 +701,46 @@ export function resolveBuildIdentity(
   //   other buildBinding metadata do NOT count as Build Identity contribution.
   //
   //   If buildBinding contributes zero identity dimensions, it must NOT own
-  //   the source label. The Evidence-only resolution path determines source.
+  //   the source label. The Evidence-only/scope-only resolution path
+  //   determines source.
   //
   //   ZERO_IDENTITY_DIMENSIONS_FROM_BUILD_BINDING + STATIC_EVIDENCE_GIT_COMMIT
   //   = STATIC_REPOSITORY_COMMIT, not BUILD_PROFILE_BINDING.
+  //
+  // Fix C: buildBinding now composes with scope identity in the SAME pass.
+  //   Per-dimension conflicts between buildBinding and scope are detected.
+  //   buildBinding.containerDigest A + scope.containerDigest B => CONFLICT.
+  //   buildBinding.applicationVersion + scope.deploymentIdentity => both kept.
   if (v1_1.buildBinding) {
     const bb = v1_1.buildBinding;
 
-    // Deterministically calculate whether buildBinding contributes at least
-    // one Build Identity dimension.
     const buildBindingContributesIdentity =
       !!bb.gitCommit ||
       !!bb.containerDigest ||
       !!bb.packageDigest ||
       !!bb.applicationVersion;
 
-    // If buildBinding contributes zero identity dimensions, skip the
-    // buildBinding branch entirely and fall through to Evidence-only
-    // resolution. This prevents false BUILD_PROFILE_BINDING provenance.
     if (buildBindingContributesIdentity) {
 
-      // Per-dimension cross-source conflict check against qualified Evidence.
-      // Only gitCommit has a qualified Evidence source (Static REPOSITORY).
-      // containerDigest/packageDigest have no qualified Evidence source,
-      // so they cannot conflict with buildBinding.
+      // Per-dimension cross-source conflict check against Evidence AND scope.
       const conflicts: string[] = [];
 
       if (bb.gitCommit && gitCommits.size > 0 && !gitCommits.has(bb.gitCommit)) {
         conflicts.push('gitCommit');
       }
 
+      // Fix C: buildBinding vs scope per-dimension conflict.
+      if (bb.containerDigest && scopeIdentity?.containerDigest && bb.containerDigest !== scopeIdentity.containerDigest) {
+        conflicts.push('containerDigest');
+      }
+      if (bb.packageDigest && scopeIdentity?.packageDigest && bb.packageDigest !== scopeIdentity.packageDigest) {
+        conflicts.push('packageDigest');
+      }
+
       if (conflicts.length > 0) {
         return {
           source: 'NOT_PROVIDED',
-          explanation: `BUILD_IDENTITY_CONFLICT: buildBinding contradicts Evidence on ${conflicts.join(', ')}`,
+          explanation: `BUILD_IDENTITY_CONFLICT: buildBinding contradicts Evidence/scope on ${conflicts.join(', ')}`,
         };
       }
 
@@ -695,11 +749,10 @@ export function resolveBuildIdentity(
         return { source: 'NOT_PROVIDED', explanation: 'BUILD_IDENTITY_CONFLICT' };
       }
 
-      // No conflict — buildBinding values are canonical (stronger source).
-      // gitCommit absent from buildBinding but present in qualified Evidence
-      // is filled from Evidence (mixed-source provenance, documented below).
+      // No conflict — compose buildBinding + Evidence + scope dimensions.
       const identity: BuildIdentity = { source: 'BUILD_PROFILE_BINDING' };
       const evidenceDimensions: string[] = [];
+      const scopeDimensions: string[] = [];
       let evidenceSourceLabel = 'STATIC_REPOSITORY_COMMIT';
 
       if (bb.gitCommit) {
@@ -713,28 +766,43 @@ export function resolveBuildIdentity(
 
       if (bb.containerDigest) {
         identity.containerDigest = bb.containerDigest;
+      } else if (scopeIdentity?.containerDigest) {
+        identity.containerDigest = scopeIdentity.containerDigest;
+        scopeDimensions.push('containerDigest');
       }
 
       if (bb.packageDigest) {
         identity.packageDigest = bb.packageDigest;
+      } else if (scopeIdentity?.packageDigest) {
+        identity.packageDigest = scopeIdentity.packageDigest;
+        scopeDimensions.push('packageDigest');
       }
 
       if (bb.applicationVersion) {
         identity.applicationVersion = bb.applicationVersion;
       }
 
-      // Mixed-source provenance: buildBinding is the strongest source and
-      // contributed at least one dimension. Evidence filled gaps for dimensions
-      // absent from buildBinding. The `source` field means "strongest source
-      // contributing to the composite Build Identity" — BUILD_PROFILE_BINDING
-      // is truthful when buildBinding contributed any dimension. The explanation
-      // documents which dimensions came from Evidence.
-      // COMPOSITE_IDENTITY != FALSE_SINGLE_SOURCE_PROVENANCE
-      if (evidenceDimensions.length > 0) {
-        identity.explanation = `MIXED_SOURCE: buildBinding + Evidence (${evidenceDimensions.join(', ')} from ${evidenceSourceLabel})`;
+      // Fix C: deployment identity has no buildBinding dimension — scope
+      // deployment identity is carried alongside buildBinding dimensions.
+      if (scopeIdentity?.deploymentIdentity) {
+        identity.deploymentIdentity = scopeIdentity.deploymentIdentity;
+        scopeDimensions.push('deploymentIdentity');
       }
 
-      if (identity.gitCommit || identity.containerDigest || identity.packageDigest || identity.applicationVersion) {
+      // Truthful mixed-source provenance (Fix 7).
+      // COMPOSITE_IDENTITY != FALSE_SINGLE_SOURCE_PROVENANCE.
+      const mixedParts: string[] = [];
+      if (evidenceDimensions.length > 0) {
+        mixedParts.push(`Evidence (${evidenceDimensions.join(', ')} from ${evidenceSourceLabel})`);
+      }
+      if (scopeDimensions.length > 0) {
+        mixedParts.push(`Evaluated Scope (${scopeDimensions.join(', ')})`);
+      }
+      if (mixedParts.length > 0) {
+        identity.explanation = `MIXED_SOURCE: buildBinding + ${mixedParts.join(' + ')}`;
+      }
+
+      if (identity.gitCommit || identity.containerDigest || identity.packageDigest || identity.applicationVersion || identity.deploymentIdentity) {
         return identity;
       }
     }
@@ -748,14 +816,168 @@ export function resolveBuildIdentity(
 
   if (gitCommits.size === 1) {
     const [commit, source] = Array.from(gitCommits.entries())[0];
-    return {
+    const identity: BuildIdentity = {
       gitCommit: commit,
       source: source as BuildIdentity['source'],
+    };
+
+    // Merge build/deployment identity from scope
+    const scopeDimensions: string[] = [];
+    if (scopeIdentity?.containerDigest) {
+      identity.containerDigest = scopeIdentity.containerDigest;
+      scopeDimensions.push('containerDigest');
+    }
+    if (scopeIdentity?.packageDigest) {
+      identity.packageDigest = scopeIdentity.packageDigest;
+      scopeDimensions.push('packageDigest');
+    }
+    if (scopeIdentity?.deploymentIdentity) {
+      identity.deploymentIdentity = scopeIdentity.deploymentIdentity;
+      scopeDimensions.push('deploymentIdentity');
+    }
+
+    // Truthful mixed-source provenance (Fix 7).
+    if (scopeDimensions.length > 0) {
+      identity.explanation = `MIXED_SOURCE: ${source} (gitCommit) + Evaluated Scope (${scopeDimensions.join(', ')})`;
+    }
+
+    return identity;
+  }
+
+  // No qualified gitCommit from Evidence — but build/deployment identity
+  // from scope may still be available (e.g., deployment-only identity).
+  if (scopeIdentity && (scopeIdentity.containerDigest || scopeIdentity.packageDigest || scopeIdentity.deploymentIdentity)) {
+    return {
+      ...scopeIdentity,
+      source: 'EVALUATED_SCOPE_ASSET',
     };
   }
 
   // No qualified build evidence
   return { source: 'NOT_PROVIDED', explanation: 'BUILD_IDENTITY_NOT_PROVIDED' };
+}
+
+/**
+ * Gate 4A: Resolve build/deployment identity from the frozen Evaluated Scope.
+ *
+ * Fix A: Requires the scope to belong to the EXACT evaluation (org, AI System,
+ *   orchestrator run). WRONG_ORG_SCOPE / WRONG_AI_SYSTEM_SCOPE / WRONG_RUN_SCOPE
+ *   => status: 'NONE' (no scope identity contributes).
+ *
+ * Fix B: Returns a typed result — NONE | RESOLVED | CONFLICT.
+ *   CONFLICT is NOT silently converted to ABSENCE. The caller propagates
+ *   BUILD_IDENTITY_CONFLICT with the conflicting dimensions listed.
+ *
+ * Fix D: containerDigest requires a valid immutable digest representation
+ *   (sha256:<64hex>). MUTABLE_IMAGE_TAG != CONTAINER_DIGEST.
+ *   Validation is applied here at resolution time so that tampered or
+ *   malformed frozen values do not establish false identity.
+ *
+ * Fix E: deploymentIdentity requires a real provider value.
+ *   'unknown' is NOT a proven deployment provider.
+ *
+ * Only VERIFIED assets with frozen canonicalIdentity can establish
+ * build/deployment identity. NOT_VERIFIED → UNPROVEN.
+ * Historical 1.1 scopes without canonicalIdentity → UNPROVEN.
+ *
+ * Does NOT query current Connected Assets. Uses only the frozen snapshot.
+ * CURRENT_CONNECTED_ASSET != HISTORICAL_EVALUATED_SCOPE.
+ */
+type ScopeBuildIdentityResolution =
+  | { status: 'NONE' }
+  | { status: 'RESOLVED'; identity: Pick<BuildIdentity, 'containerDigest' | 'packageDigest' | 'deploymentIdentity'> }
+  | { status: 'CONFLICT'; dimensions: string[] };
+
+function resolveBuildIdentityFromScope(
+  scope: EvaluatedScopeSnapshot | undefined,
+  evaluation: AssuranceEvaluation,
+): ScopeBuildIdentityResolution {
+  if (!scope?.assetSnapshots) {
+    return { status: 'NONE' };
+  }
+
+  // Fix A: The scope must belong to the EXACT evaluation.
+  // This is the same guard used for CI commit qualification.
+  // The caller loading the right scope is NOT the canonical Build Identity guard.
+  if (!evaluatedScopeMatchesEvaluation(scope, evaluation)) {
+    return { status: 'NONE' };
+  }
+
+  // Collect VERIFIED + EVALUATED build/deployment identity dimensions.
+  // Fix D: containerDigest requires valid sha256:<64hex> format.
+  // Fix E: deploymentIdentity requires a real provider (not 'unknown'/empty).
+  const containerDigests = new Set<string>();
+  const packageDigests = new Set<string>();
+  const deploymentIdentities = new Set<string>();
+
+  let containerDigest: string | undefined;
+  let packageDigest: string | undefined;
+  let deploymentIdentity: DeploymentIdentity | undefined;
+
+  for (const asset of scope.assetSnapshots) {
+    if (asset.evaluationInclusionState !== 'EVALUATED') continue;
+    if (asset.identityStateAtEvaluation !== 'VERIFIED') continue;
+
+    // Fix D: Validate container digest format. MUTABLE_IMAGE_TAG != CONTAINER_DIGEST.
+    if (asset.containerDigest && isValidContainerDigest(asset.containerDigest)) {
+      containerDigests.add(asset.containerDigest);
+      if (!containerDigest) containerDigest = asset.containerDigest;
+    }
+
+    if (asset.packageDigest) {
+      packageDigests.add(asset.packageDigest);
+      if (!packageDigest) packageDigest = asset.packageDigest;
+    }
+
+    // Fix E: deploymentIdentity requires a real provider value.
+    // 'unknown' is NOT a proven deployment provider.
+    if (asset.deploymentIdentity &&
+        asset.deploymentIdentity.deploymentProvider &&
+        asset.deploymentIdentity.deploymentProvider.trim() !== '' &&
+        asset.deploymentIdentity.deploymentProvider !== 'unknown') {
+      deploymentIdentities.add(JSON.stringify(asset.deploymentIdentity));
+      if (!deploymentIdentity) deploymentIdentity = asset.deploymentIdentity;
+    }
+  }
+
+  // Fix B: Detect conflicts — multiple different VERIFIED values for the same
+  // dimension is a CONFLICT, not an absence. CONFLICT != ABSENCE.
+  const conflictDimensions: string[] = [];
+  if (containerDigests.size > 1) conflictDimensions.push('containerDigest');
+  if (packageDigests.size > 1) conflictDimensions.push('packageDigest');
+  if (deploymentIdentities.size > 1) conflictDimensions.push('deploymentIdentity');
+
+  if (conflictDimensions.length > 0) {
+    return { status: 'CONFLICT', dimensions: conflictDimensions };
+  }
+
+  if (!containerDigest && !packageDigest && !deploymentIdentity) {
+    return { status: 'NONE' };
+  }
+
+  return {
+    status: 'RESOLVED',
+    identity: { containerDigest, packageDigest, deploymentIdentity },
+  };
+}
+
+/**
+ * Gate 4A Fix D: Validate that a string is a valid immutable container digest.
+ *
+ * Supports the canonical OCI digest representation:
+ *   sha256:<64 hexadecimal characters>
+ *
+ * MUTABLE_IMAGE_TAG != CONTAINER_DIGEST.
+ * A Docker tag like "latest" or "my-image:v3" is NOT an immutable digest.
+ * A malformed sha256 is NOT a valid digest.
+ *
+ * This is the smallest deterministic validation appropriate to current product
+ * truth. It does NOT create a registry library. When a future producer
+ * provides digests with a different algorithm (e.g., sha512), this validator
+ * can be extended.
+ */
+function isValidContainerDigest(value: string): boolean {
+  return /^sha256:[0-9a-f]{64}$/.test(value);
 }
 
 /**

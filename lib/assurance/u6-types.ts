@@ -47,8 +47,33 @@ export interface BuildIdentity {
   gitCommit?: string;
   containerDigest?: string;
   packageDigest?: string;
-  source?: 'BUILD_PROFILE_BINDING' | 'EVIDENCE_PROVENANCE' | 'ORCHESTRATOR_CI_COMMIT' | 'STATIC_REPOSITORY_COMMIT' | 'NOT_PROVIDED';
+  /**
+   * Gate 4A: Deployment identity when a DEPLOYMENT Connected Asset has been
+   * verified and its canonical deployment identity frozen into Evaluated Scope.
+   * Not every AI application has a conventional deployment object — this
+   * dimension is NOT_PROVIDED when inapplicable or unproven.
+   */
+  deploymentIdentity?: DeploymentIdentity;
+  source?: 'BUILD_PROFILE_BINDING' | 'EVIDENCE_PROVENANCE' | 'ORCHESTRATOR_CI_COMMIT' | 'STATIC_REPOSITORY_COMMIT' | 'EVALUATED_SCOPE_ASSET' | 'NOT_PROVIDED';
   explanation?: string;
+}
+
+/**
+ * Gate 4A: Deployment identity contract.
+ *
+ * Represents the canonical immutable deployment identity frozen from a
+ * VERIFIED DEPLOYMENT Connected Asset's canonicalId at evaluation time.
+ *
+ * DEPLOYMENT_URL != DEPLOYED_ARTIFACT_IDENTITY.
+ * MANUAL_DEPLOYMENT_REGISTRATION != VERIFIED_DEPLOYMENT_IDENTITY.
+ */
+export interface DeploymentIdentity {
+  /** Deployment provider (e.g., 'vercel', 'modal', 'aws-ecs', 'custom') */
+  deploymentProvider: string;
+  /** Canonical deployment ID/ref from the provider (immutable, not a URL) */
+  deploymentId: string;
+  /** Environment of this deployment (production, staging, etc.) */
+  environment?: string;
 }
 
 // ─── PX1.2 — Evaluated Scope Snapshot (Sections 9-14, corrected in PX1.2A-R) ─
@@ -89,9 +114,14 @@ export interface BuildIdentity {
 // CI repository compatibility qualification. Schema 1.0 scopes (historical)
 // do not have `provider` frozen — they remain readable but CI compatibility
 // cannot be proven for them (IDENTITY_NOT_PROVIDED, not inferred).
+// Gate 4A build/deployment: Schema 1.2 freezes build/deployment identity
+// (containerDigest, packageDigest, deploymentIdentity) from VERIFIED assets'
+// canonicalId. Schema 1.1 scopes without these fields → build/deployment
+// identity UNPROVEN (not reconstructed from current assets).
 export const EVALUATED_SCOPE_SCHEMA_VERSION_1_0 = '1.0';
 export const EVALUATED_SCOPE_SCHEMA_VERSION_1_1 = '1.1';
-export const EVALUATED_SCOPE_SCHEMA_VERSION = EVALUATED_SCOPE_SCHEMA_VERSION_1_1;
+export const EVALUATED_SCOPE_SCHEMA_VERSION_1_2 = '1.2';
+export const EVALUATED_SCOPE_SCHEMA_VERSION = EVALUATED_SCOPE_SCHEMA_VERSION_1_2;
 
 export interface EvaluatedScopeAssetSnapshot {
   /**
@@ -120,10 +150,25 @@ export interface EvaluatedScopeAssetSnapshot {
    * Historical 1.0 scopes have undefined provider → CI compatibility UNPROVEN.
    */
   provider?: string;
+  /**
+   * Gate 4A: Canonical identity value frozen from the Connected Asset's
+   * canonicalId at evaluation time. This is the actual immutable identity
+   * (e.g., sha256:<digest>, deployment ID), not just its hash key.
+   * Frozen since schema 1.2. Historical 1.1 scopes have undefined
+   * canonicalIdentity → build/deployment identity UNPROVEN.
+   * CANONICAL_ID_HASH != CANONICAL_ID_VALUE.
+   */
+  canonicalIdentity?: string;
   /** Build identity captured for this asset at evaluation time */
   gitCommit?: string;
   containerDigest?: string;
   packageDigest?: string;
+  /**
+   * Gate 4A: Deployment identity frozen from a VERIFIED DEPLOYMENT asset's
+   * canonicalId at evaluation time. Frozen since schema 1.2.
+   * Historical 1.1 scopes have undefined deploymentIdentity → UNPROVEN.
+   */
+  deploymentIdentity?: DeploymentIdentity;
   /** Interface specification digest/version (for INTERFACE_SPECIFICATION assets) */
   interfaceSpecDigest?: string;
   interfaceSpecVersion?: string;
