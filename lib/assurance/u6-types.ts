@@ -85,7 +85,13 @@ export interface BuildIdentity {
 //   EVALUATED_SCOPE_NOT_CAPTURED — do not issue a false new digest for old
 //   evaluations.
 
-export const EVALUATED_SCOPE_SCHEMA_VERSION = '1.0';
+// Gate 4A: Schema 1.1 freezes `provider` on EvaluatedScopeAssetSnapshot for
+// CI repository compatibility qualification. Schema 1.0 scopes (historical)
+// do not have `provider` frozen — they remain readable but CI compatibility
+// cannot be proven for them (IDENTITY_NOT_PROVIDED, not inferred).
+export const EVALUATED_SCOPE_SCHEMA_VERSION_1_0 = '1.0';
+export const EVALUATED_SCOPE_SCHEMA_VERSION_1_1 = '1.1';
+export const EVALUATED_SCOPE_SCHEMA_VERSION = EVALUATED_SCOPE_SCHEMA_VERSION_1_1;
 
 export interface EvaluatedScopeAssetSnapshot {
   /**
@@ -107,6 +113,13 @@ export interface EvaluatedScopeAssetSnapshot {
   identityStateAtEvaluation?: string;
   /** Environment at evaluation time */
   environment?: string;
+  /**
+   * Provider of this asset at evaluation time (e.g., 'github', 'gitlab').
+   * Frozen since schema 1.1. Required for CI repository compatibility
+   * qualification — determines which canonical normalization applies.
+   * Historical 1.0 scopes have undefined provider → CI compatibility UNPROVEN.
+   */
+  provider?: string;
   /** Build identity captured for this asset at evaluation time */
   gitCommit?: string;
   containerDigest?: string;

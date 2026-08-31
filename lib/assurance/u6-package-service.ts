@@ -180,6 +180,8 @@ export async function buildPackageFromEvaluation(
     syntheticClassification: resolveSyntheticClassification(v1_1),
     // G3-R1: Pass scope binding to canonical U6 construction
     evaluatedScopeBinding,
+    // Gate 4A: Pass full scope snapshot for CI repository compatibility qualification
+    evaluatedScopeSnapshot: scopeSnapshot ?? undefined,
   });
 
   return packageCandidate;

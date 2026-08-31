@@ -24,6 +24,7 @@
  *     canonicalLocator      — stable/canonical external locator identity
  *     identityStateAtEvaluation — identity state at evaluation time
  *     environment           — per-asset environment if part of scope
+ *     provider              — asset provider (github, gitlab, etc.) — schema 1.1+
  *     gitCommit             — exact source identity
  *     containerDigest       — exact container identity
  *     packageDigest         — exact build identity
@@ -71,8 +72,11 @@ const SET_LIKE_SCOPE_FIELDS = new Set<string>(['assetSnapshots']);
  * Only scope-semantic fields are included. Display-only fields (displayName)
  * and evaluation-identity fields (producerRunIds) are excluded.
  */
-function projectAssetScopeSemantic(asset: EvaluatedScopeAssetSnapshot): Record<string, unknown> {
-  return {
+function projectAssetScopeSemantic(
+  asset: EvaluatedScopeAssetSnapshot,
+  schemaVersion?: string,
+): Record<string, unknown> {
+  const base: Record<string, unknown> = {
     connectedAssetId: asset.connectedAssetId ?? '',
     assetType: asset.assetType ?? '',
     canonicalLocator: asset.canonicalLocator ?? '',
@@ -87,6 +91,13 @@ function projectAssetScopeSemantic(asset: EvaluatedScopeAssetSnapshot): Record<s
     evaluationInclusionState: asset.evaluationInclusionState ?? '',
     notEvaluatedReason: asset.notEvaluatedReason ?? '',
   };
+  // Schema 1.1+: provider is scope-semantic (identifies which provider's
+  // repository was evaluated). Included in digest for tamper detection.
+  // Schema 1.0: provider not frozen — excluded for backward compatibility.
+  if (schemaVersion && schemaVersion >= '1.1') {
+    base.provider = asset.provider ?? '';
+  }
+  return base;
 }
 
 /**
@@ -108,7 +119,8 @@ export function computeScopeDigest(
     aiSystemId: snapshot.aiSystemId,
     environment: snapshot.environment ?? '',
     // Project only scope-semantic fields from each asset snapshot
-    assetSnapshots: (snapshot.assetSnapshots ?? []).map(projectAssetScopeSemantic),
+    // Pass schemaVersion for version-aware projection (provider included in 1.1+)
+    assetSnapshots: (snapshot.assetSnapshots ?? []).map(a => projectAssetScopeSemantic(a, snapshot.scopeSchemaVersion)),
     unresolvedIdentity: (snapshot.unresolvedIdentity ?? []).slice().sort(),
     scopeLimitations: (snapshot.scopeLimitations ?? []).slice().sort(),
   };

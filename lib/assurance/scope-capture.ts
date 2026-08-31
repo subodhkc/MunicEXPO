@@ -73,6 +73,7 @@ export async function captureEvaluatedScope(
       canonicalLocator: asset.externalId ?? undefined,
       identityStateAtEvaluation: asset.identityState,
       environment: asset.environment ?? undefined,
+      provider: asset.provider ?? undefined,
       evaluationInclusionState: inclusionState,
       notEvaluatedReason: isRetired ? 'ASSET_RETIRED' : undefined,
     };

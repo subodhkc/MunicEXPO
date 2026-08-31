@@ -34,8 +34,12 @@ import {
   PackageVerificationResult,
   PublicVerificationResult,
   EvaluatedScopeBinding,
+  EvaluatedScopeSnapshot,
+  EvaluatedScopeAssetSnapshot,
 } from './u6-types';
 import { resolvePublicProfileLabel } from './u6-public-profile-label';
+import { PRODUCER_IDS } from '@/lib/engine-registry/producer-registry';
+import { parseGitHubUrl } from '@/lib/ai-security/url-utils';
 
 export type { U6Package } from './u6-types';
 
@@ -52,6 +56,11 @@ export interface PackageBuildContext {
   // via evaluatedScopeBinding in computeReceiptHash, and schema versions
   // are upgraded to 1.1.0.
   evaluatedScopeBinding?: EvaluatedScopeBinding;
+  // Gate 4A: Full Evaluated Scope snapshot — when provided, enables CI commit
+  // qualification via repository compatibility (ORCHESTRATOR_CI_COMMIT).
+  // The snapshot's assetSnapshots contain frozen provider + canonicalLocator
+  // + identityStateAtEvaluation used by the compatibility predicate.
+  evaluatedScopeSnapshot?: EvaluatedScopeSnapshot;
 }
 
 export function buildAssuranceVerificationPackage(
@@ -60,7 +69,7 @@ export function buildAssuranceVerificationPackage(
   const { evaluation, projectedEvidence } = context;
   const v1_1 = evaluation as AssuranceEvaluationV1_1;
 
-  const buildIdentity = context.buildIdentity ?? resolveBuildIdentity(evaluation, projectedEvidence);
+  const buildIdentity = context.buildIdentity ?? resolveBuildIdentity(evaluation, projectedEvidence, context.evaluatedScopeSnapshot);
 
   // G3-R1: When scope binding is provided, use G3 schema versions (1.1.0).
   // Legacy packages (no scope binding) use 1.0.0 and remain verifiable under 1.0.0.
@@ -298,20 +307,27 @@ export function buildPublicVerificationResult(
 // QUALIFIED_GIT_COMMIT_PRODUCERS:
 //   saas-static (with target.type === 'REPOSITORY') → STATIC_REPOSITORY_COMMIT
 //
-// Gate 4A Phase B: ci-cd-scanner is NOT yet qualified for gitCommit.
-//   CI_COMMIT_IDENTITY_QUALIFICATION = OPEN / UNPROVEN
-//   CI may participate as explicitly bound Evidence, but cannot establish
-//   Build Identity until repository identity compatibility is proven
-//   (ci_scan_results.repositoryId → ai_system_assets mapping with
-//    assetType=SOURCE_REPOSITORY). This is a PRODUCT_PREREQUISITE.
-//   ORCHESTRATOR_CI_COMMIT remains dormant.
+// Gate 4A: ci-cd-scanner is qualified for gitCommit (ORCHESTRATOR_CI_COMMIT)
+//   when ALL of the following are proven:
+//     - CI evidence is explicitly bound to the evaluation (guaranteed by projection)
+//     - Evaluated Scope belongs to the same evaluation context (org, AI system, run)
+//     - Evaluated Scope snapshot is provided (schema 1.1+ with frozen provider)
+//     - A SOURCE_REPOSITORY asset exists in the immutable Evaluated Scope
+//     - asset.evaluationInclusionState === 'EVALUATED'
+//     - asset.identityStateAtEvaluation === 'VERIFIED'
+//     - CI repository identity exactly matches frozen repository identity
+//       (via canonical normalization — parseGitHubUrl for GitHub provider)
+//     - CI commit (target.version) is a full 40-character Git SHA
+//     - CI origin is source-proven (triggerEvent='github_app_pr' — provider-derived)
+//   If any dimension is missing, conflicted, or ambiguous → NOT qualified.
+//   ORCHESTRATOR_CI_COMMIT is activated only when all predicates return true.
+//   CALLER_DECLARED_CI != BUILD_IDENTITY_SOURCE_PROVEN.
 //
 // NOT QUALIFIED for gitCommit from target.version:
 //   saas-runtime   (target.type = ENDPOINT)
 //   saas-wizard    (target.type = ASSESSMENT)
 //   saas-regulatory(target.type = ASSESSMENT)
 //   saas-inventory (target.type = AI_SYSTEM)
-//   ci-cd-scanner  (NOT exact-run bound — schema change required)
 //   sarif-import   (NOT exact-run bound — schema change required)
 //
 // SHA_SHAPED_VALUE != QUALIFIED_GIT_COMMIT
@@ -341,18 +357,193 @@ export function isBuildIdentityConflict(identity: BuildIdentity | undefined | nu
   return explanation === 'BUILD_IDENTITY_CONFLICT' || explanation.startsWith('BUILD_IDENTITY_CONFLICT');
 }
 
+// ─── Gate 4A: CI Repository Compatibility Predicate ─────────────────────────
+//
+// Determines whether a CI result's repository identity is proven compatible
+// with a VERIFIED SOURCE_REPOSITORY asset in the immutable Evaluated Scope.
+//
+// This is NOT a second Build Identity engine. It is a compatibility predicate
+// that feeds into the existing resolveBuildIdentity source-policy resolver.
+// The existing canonical package/Build Identity path remains owner.
+//
+// Required truths (ALL must hold):
+//   - Evaluated Scope snapshot is provided (schema 1.1+ with frozen provider)
+//   - A SOURCE_REPOSITORY asset exists in the immutable Evaluated Scope
+//   - asset.evaluationInclusionState === 'EVALUATED'
+//   - asset.identityStateAtEvaluation === 'VERIFIED'
+//   - CI repository identity exactly matches frozen repository identity
+//     (via canonical normalization — parseGitHubUrl for GitHub provider)
+//
+// If any dimension is missing, conflicted, or ambiguous → NOT compatible.
+// CURRENT_CONNECTED_ASSET != HISTORICAL_EVALUATED_SCOPE.
+// SAME_REPOSITORY_NAME != SAME_REPOSITORY_IDENTITY.
+// SAME_REPOSITORY_URL_STRING != PROVEN_CANONICAL_IDENTITY (unless normalization proves it).
+
+/**
+ * Check if a CI repository identity is compatible with a VERIFIED SOURCE_REPOSITORY
+ * asset in the frozen Evaluated Scope.
+ *
+ * @param scope - The immutable Evaluated Scope snapshot (frozen at evaluation time)
+ * @param ciRepositoryId - The CI result's repository identity (target.id = repositoryId)
+ * @returns true only if ALL compatibility dimensions are proven
+ */
+export function ciRepositoryCompatibleWithEvaluatedScope(
+  scope: EvaluatedScopeSnapshot,
+  ciRepositoryId: string,
+): boolean {
+  // Find a compatible SOURCE_REPOSITORY asset in the frozen scope
+  const compatibleAsset = scope.assetSnapshots.find(asset =>
+    isCIRepositoryCompatibleWithAsset(asset, ciRepositoryId)
+  );
+  return compatibleAsset !== undefined;
+}
+
+/**
+ * Check if a single Evaluated Scope asset is a compatible SOURCE_REPOSITORY
+ * for the given CI repository identity.
+ *
+ * All dimensions must hold. Any missing/conflicted/ambiguous dimension → false.
+ */
+function isCIRepositoryCompatibleWithAsset(
+  asset: EvaluatedScopeAssetSnapshot,
+  ciRepositoryId: string,
+): boolean {
+  // Must be SOURCE_REPOSITORY
+  if (asset.assetType !== 'SOURCE_REPOSITORY') return false;
+
+  // Must have been EVALUATED (not retired/excluded)
+  if (asset.evaluationInclusionState !== 'EVALUATED') return false;
+
+  // Identity must have been VERIFIED at evaluation time
+  // NOT_VERIFIED → NOT qualified. CONFLICTED → NOT qualified.
+  if (asset.identityStateAtEvaluation !== 'VERIFIED') return false;
+
+  // Repository identity must match via canonical normalization
+  return repositoryIdentityMatches(asset, ciRepositoryId);
+}
+
+/**
+ * Determine if a frozen asset's repository identity matches the CI repository
+ * identity using canonical normalization.
+ *
+ * Uses the existing parseGitHubUrl() helper for GitHub repositories.
+ * For non-GitHub providers, no canonical normalization helper exists —
+ * returns false (do NOT infer equality without canonical proof).
+ *
+ * SAME_REPOSITORY_URL_STRING != PROVEN_CANONICAL_IDENTITY unless canonical
+ * normalization proves it.
+ */
+function repositoryIdentityMatches(
+  asset: EvaluatedScopeAssetSnapshot,
+  ciRepositoryId: string,
+): boolean {
+  const provider = asset.provider;
+  const canonicalLocator = asset.canonicalLocator;
+
+  // Provider and canonicalLocator must both be frozen
+  // Historical 1.0 scopes without provider → UNPROVEN
+  if (!provider || !canonicalLocator) return false;
+
+  if (provider === 'github') {
+    // Use existing parseGitHubUrl() to normalize the asset's canonical locator
+    // (repo URL → owner/repo). This IS canonical normalization proving equivalence.
+    const parsed = parseGitHubUrl(canonicalLocator);
+    if (!parsed) return false;
+    const assetOwnerRepo = `${parsed.owner}/${parsed.repo}`;
+
+    // CI repositoryId from GitHub App is repoFullName (owner/repo).
+    // CI repositoryId from manual API may not be owner/repo — validate format.
+    // Normalize both to lowercase for canonical comparison (GitHub is case-insensitive).
+    const ciNormalized = ciRepositoryId.toLowerCase().trim();
+    if (!/^[^/]+\/[^/]+$/.test(ciNormalized)) return false;
+
+    return assetOwnerRepo === ciNormalized;
+  }
+
+  // For non-GitHub providers, no canonical normalization helper exists.
+  // Do NOT infer equality. SAME_REPOSITORY_NAME != SAME_REPOSITORY_IDENTITY.
+  return false;
+}
+
+// ─── Gate 4A Correction A: Exact Evaluation/Scope Identity Guard ────────────
+//
+// Before CI Evidence may establish ORCHESTRATOR_CI_COMMIT, the supplied
+// persisted Evaluated Scope must match the Assurance evaluation on all
+// existing applicable immutable identity dimensions.
+//
+// This is NOT a second evaluation-compatibility framework. It is a minimal
+// guard that the scope belongs to the same evaluation context.
+//
+// If an identity required by the current contract conflicts → CI_COMMIT_NOT_QUALIFIED.
+// Missing identity dimensions are not inferred — they fail closed.
+
+/**
+ * Check if the Evaluated Scope belongs to the same evaluation context.
+ * All available dimensions must match. Missing dimensions fail closed.
+ */
+function evaluatedScopeMatchesEvaluation(
+  scope: EvaluatedScopeSnapshot,
+  evaluation: AssuranceEvaluation,
+): boolean {
+  // organizationId: both scope and evaluation carry this; required.
+  if (scope.organizationId !== evaluation.organizationId) return false;
+
+  // aiSystemId: both scope and evaluation carry this; required.
+  if (scope.aiSystemId !== evaluation.aiSystemId) return false;
+
+  // orchestratorRunId: scope may carry it; evaluation carries it.
+  // If scope has it, it must match. If scope lacks it, fail closed
+  // (cannot prove the scope belongs to this evaluation).
+  if (!scope.orchestratorRunId) return false;
+  if (scope.orchestratorRunId !== evaluation.orchestratorRunId) return false;
+
+  return true;
+}
+
+// ─── Gate 4A Correction B: Source-Proven CI Origin ──────────────────────────
+//
+// ci_scan_results.repositoryId has mixed origin:
+//   - GitHub App path → provider-derived repository identity (triggerEvent='github_app_pr')
+//   - Manual API path → caller-provided repository identity (triggerEvent='manual')
+//
+// Only provider-derived CI identity may establish ORCHESTRATOR_CI_COMMIT.
+// Manual/caller-declared rows remain valid CI Evidence but:
+//   MANUAL_OR_DECLARED_CI != BUILD_IDENTITY_SOURCE_PROVEN
+//
+// The triggerEvent field is set deterministically by each writer:
+//   - GitHub App writer: hardcoded 'github_app_pr'
+//   - Manual API writer: hardcoded 'manual' (Correction B: no longer accepts caller-supplied value)
+//
+// Historical/ambiguous rows with other triggerEvent values → NOT qualified.
+
+/** triggerEvent value set by the GitHub App CI writer (provider-derived). */
+const CI_TRIGGER_GITHUB_APP_PR = 'github_app_pr';
+
+/**
+ * Check if a CI evidence projection carries a source-proven origin.
+ * Only GitHub App provider-derived CI may establish Build Identity.
+ */
+function isCIEvidenceSourceProven(ev: DecisionEvidenceProjection): boolean {
+  const triggerEvent = (ev as any).__ciTriggerEvent;
+  return triggerEvent === CI_TRIGGER_GITHUB_APP_PR;
+}
+
 export function resolveBuildIdentity(
   evaluation: AssuranceEvaluation,
   projectedEvidence: DecisionEvidenceProjection[],
+  evaluatedScope?: EvaluatedScopeSnapshot,
 ): BuildIdentity {
-  // Gate 4A Phase A (final correction): Source-truth Build Identity resolution
-  // from identity-qualified Evidence from the projection supplied for this
-  // evaluation, with qualified source policy.
+  // Gate 4A: Source-truth Build Identity resolution from identity-qualified
+  // Evidence from the projection supplied for this evaluation, with qualified
+  // source policy.
   //
   // resolveBuildIdentity consumes only identity-qualified Evidence from the
   // projection supplied for this evaluation. Git commit identity from Evidence
-  // is currently accepted only from the exact Static scan relationship
-  // represented by saas-static + REPOSITORY.
+  // is accepted from:
+  //   - saas-static + REPOSITORY target → STATIC_REPOSITORY_COMMIT
+  //   - ci-cd-scanner + REPOSITORY target → ORCHESTRATOR_CI_COMMIT
+  //     (only when ciRepositoryCompatibleWithEvaluatedScope proves repository
+  //      compatibility with the frozen Evaluated Scope)
   //
   // Inventory time-bounded snapshot != repository commit proof.
   // Runtime evidence != repository commit proof.
@@ -367,10 +558,14 @@ export function resolveBuildIdentity(
   //   2. Static REPOSITORY target.version if valid Git SHA and producer is
   //      saas-static with target.type === 'REPOSITORY'
   //      (STATIC_REPOSITORY_COMMIT)
-  //
-  // ORCHESTRATOR_CI_COMMIT is NOT currently produced — ci-cd-scanner is not
-  // exact-run bound (schema change required). CI commit identity may flow
-  // through the Static scanner path via staticScanId.
+  //   3. CI REPOSITORY target.version if valid Git SHA and producer is
+  //      ci-cd-scanner with target.type === 'REPOSITORY' AND
+  //      ciRepositoryCompatibleWithEvaluatedScope proves:
+  //        - evaluatedScope is provided (schema 1.1+ with frozen provider)
+  //        - SOURCE_REPOSITORY asset in scope with evaluationInclusionState=EVALUATED
+  //        - asset.identityStateAtEvaluation === 'VERIFIED'
+  //        - CI repository identity matches frozen repository identity
+  //      (ORCHESTRATOR_CI_COMMIT)
   //
   // EVIDENCE_PROVENANCE is NOT currently produced — the canonical ProvenanceRef
   // union does not define gitCommit/containerDigest/packageDigest fields.
@@ -378,6 +573,10 @@ export function resolveBuildIdentity(
   // STRONGER_SOURCE_PRECEDENCE != PERMISSION_TO_HIDE_CONFLICT
   // A stronger source may determine canonical selection only after
   // contradiction handling is explicit.
+  //
+  // Static + CI same exact SHA → compatible (no false conflict).
+  // Static + CI different SHA → BUILD_IDENTITY_CONFLICT (fail closed).
+  // buildBinding + CI different SHA → BUILD_IDENTITY_CONFLICT (fail closed).
 
   const v1_1 = evaluation as AssuranceEvaluationV1_1;
 
@@ -401,6 +600,41 @@ export function resolveBuildIdentity(
       targetType === 'REPOSITORY'
     ) {
       gitCommits.set(targetVersion, 'STATIC_REPOSITORY_COMMIT');
+    }
+
+    // Gate 4A: CI commit qualification via repository compatibility.
+    // ci-cd-scanner may establish ORCHESTRATOR_CI_COMMIT when ALL of:
+    //   - CI evidence is explicitly bound to this evaluation (Phase B projection)
+    //   - Evaluated Scope belongs to the same evaluation context (Correction A)
+    //   - CI repository identity is proven compatible with a VERIFIED
+    //     SOURCE_REPOSITORY asset in the frozen Evaluated Scope
+    //   - CI origin is source-proven (provider-derived, not caller-declared) (Correction B)
+    //
+    // SHA_SHAPED_VALUE != EXACT_COMMIT_IDENTITY: requires full 40-char SHA.
+    // SAME_REPOSITORY_NAME != SAME_REPOSITORY_IDENTITY: requires canonical
+    // normalization proof (parseGitHubUrl for GitHub).
+    // CURRENT_CONNECTED_ASSET != HISTORICAL_EVALUATED_SCOPE: uses frozen
+    // snapshot, not current topology.
+    // CALLER_DECLARED_CI != BUILD_IDENTITY_SOURCE_PROVEN.
+    // WRONG_EVALUATION_SCOPE != CI_COMMIT_QUALIFIED.
+    if (
+      targetVersion && isFullGitSha(targetVersion) &&
+      producerId === PRODUCER_IDS.CI_CD_SCANNER &&
+      targetType === 'REPOSITORY' &&
+      evaluatedScope &&
+      evaluatedScopeMatchesEvaluation(evaluatedScope, evaluation) &&
+      isCIEvidenceSourceProven(ev)
+    ) {
+      const ciRepoId = ev.target?.id;
+      if (ciRepoId && ciRepositoryCompatibleWithEvaluatedScope(evaluatedScope, ciRepoId)) {
+        // Same SHA from Static and CI is compatible — do not duplicate the
+        // dimension. Static is the stronger, more direct source; if Static
+        // already qualified this SHA, CI does not overwrite the label.
+        // STATIC_CI_SAME_COMMIT_COMPATIBLE = YES.
+        if (!gitCommits.has(targetVersion)) {
+          gitCommits.set(targetVersion, 'ORCHESTRATOR_CI_COMMIT');
+        }
+      }
     }
 
     // NOTE: Out-of-contract provenance extraction removed.
@@ -466,13 +700,15 @@ export function resolveBuildIdentity(
       // is filled from Evidence (mixed-source provenance, documented below).
       const identity: BuildIdentity = { source: 'BUILD_PROFILE_BINDING' };
       const evidenceDimensions: string[] = [];
+      let evidenceSourceLabel = 'STATIC_REPOSITORY_COMMIT';
 
       if (bb.gitCommit) {
         identity.gitCommit = bb.gitCommit;
       } else if (gitCommits.size === 1) {
-        const [commit] = Array.from(gitCommits.entries())[0];
+        const [commit, label] = Array.from(gitCommits.entries())[0];
         identity.gitCommit = commit;
         evidenceDimensions.push('gitCommit');
+        evidenceSourceLabel = label;
       }
 
       if (bb.containerDigest) {
@@ -495,7 +731,7 @@ export function resolveBuildIdentity(
       // documents which dimensions came from Evidence.
       // COMPOSITE_IDENTITY != FALSE_SINGLE_SOURCE_PROVENANCE
       if (evidenceDimensions.length > 0) {
-        identity.explanation = `MIXED_SOURCE: buildBinding + Evidence (${evidenceDimensions.join(', ')} from STATIC_REPOSITORY_COMMIT)`;
+        identity.explanation = `MIXED_SOURCE: buildBinding + Evidence (${evidenceDimensions.join(', ')} from ${evidenceSourceLabel})`;
       }
 
       if (identity.gitCommit || identity.containerDigest || identity.packageDigest || identity.applicationVersion) {
