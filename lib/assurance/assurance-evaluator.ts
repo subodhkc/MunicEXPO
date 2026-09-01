@@ -35,6 +35,7 @@ import { ASSURANCE_METHODOLOGY_VERSION_1_1 } from './types';
 import { CONTROL_CLAIM_CATALOG, getMandatoryClaims } from './claim-catalog';
 import { evaluateClaim } from './claim-evaluator';
 import { ProjectedEvidence, computeEvidenceSetDigest } from './evidence-set-builder';
+import type { DecisionEvidenceProjection } from '@/lib/decision-pipeline/evidence-projection';
 import { canonicalSerialize } from '@/lib/evidence/deterministic-serialization';
 import { hashTextContent } from '@/lib/evidence/crypto-hash';
 import { resolveCanonicalProducerId } from '@/lib/engine-registry/producer-id-compatibility';
@@ -85,6 +86,8 @@ export function evaluateAssurance(params: {
   operatingEnvelopeId?: string;
   operatingEnvelopeVersion?: string;
   operatingEnvelopeDigest?: string;
+  /** Phase 12: DecisionEvidenceProjection[] for Capability Core participation truth */
+  projectedEvidence?: DecisionEvidenceProjection[];
 }): AssuranceEvaluation | AssuranceEvaluationV1_1 {
   const {
     organizationId,
@@ -103,6 +106,7 @@ export function evaluateAssurance(params: {
     operatingEnvelopeId,
     operatingEnvelopeVersion,
     operatingEnvelopeDigest,
+    projectedEvidence,
   } = params;
 
   // Section 13: Methodology 1.1 requires an explicit successfully resolved profile.
@@ -253,7 +257,7 @@ export function evaluateAssurance(params: {
     fivePlaneOverallVerdict,
     fivePlaneComparisons,
     capabilityFacts,
-    planeAvailability: capabilityFacts ? buildPlaneAvailability(capabilityFacts, availableProducerIds) : undefined,
+    planeAvailability: capabilityFacts ? buildPlaneAvailability(capabilityFacts, availableProducerIds, projectedEvidence) : undefined,
   };
 
   return evaluation;

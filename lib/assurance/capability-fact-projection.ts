@@ -307,10 +307,20 @@ const PLANE_PRODUCERS: Record<AssurancePlane, string[]> = {
  *
  * PRESENT != COMPLETE. A finding-derived CODE_CAPABLE fact is PRESENT but coverage is PARTIAL.
  * Missing planes are reported as NOT_PROVIDED rather than invented.
+ *
+ * Phase 12: CODE_CAPABLE availability now uses Capability Core participation truth
+ * from evidence, not just producer participation. This distinguishes:
+ *   - saas-static available + no Capability run → NOT_EVALUATED
+ *   - saas-static available + Capability run reported zero → EVALUATED_NO_QUALIFYING_FACTS
+ *   - saas-static available + qualifying facts → PRESENT
+ *
+ * LOCK: PRODUCER_PARTICIPATED != EVERY_PRODUCER_DIMENSION_EVALUATED
+ * LOCK: CAPABILITY_CORE_NOT_REPORTED != EVALUATED_NO_QUALIFYING_FACTS
  */
 export function buildPlaneAvailability(
   facts: CapabilityFactProjectionResult,
   availableProducerIds: string[] = [],
+  evidence?: DecisionEvidenceProjection[],
 ): PlaneAvailability[] {
   const canonicalAvailable = new Set(availableProducerIds.map(resolveCanonicalProducerId).filter(Boolean) as string[]);
   const factMap: Record<AssurancePlane, CapabilityFact[]> = {
@@ -341,7 +351,29 @@ export function buildPlaneAvailability(
     if (!present && canonicalAvailable.size > 0) {
       const planeProducers = new Set(PLANE_PRODUCERS[plane]);
       if (Array.from(canonicalAvailable).some(p => planeProducers.has(p))) {
-        status = 'EVALUATED_NO_QUALIFYING_FACTS';
+        // Phase 12: For CODE_CAPABLE, use Capability Core participation truth
+        // to distinguish NOT_EVALUATED from EVALUATED_NO_QUALIFYING_FACTS
+        // LOCK: PRODUCER_PARTICIPATED != EVERY_PRODUCER_DIMENSION_EVALUATED
+        // LOCK: CAPABILITY_CORE_NOT_REPORTED != EVALUATED_NO_QUALIFYING_FACTS
+        if (plane === 'CODE_CAPABLE' && evidence) {
+          const staticEvidence = evidence.filter(ev => {
+            const producer = resolveCanonicalProducerId(ev.producerId) ?? ev.producerId;
+            return producer === 'saas-static';
+          });
+          const hasCapabilityRunReported = staticEvidence.some(ev =>
+            ev.capabilityRunParticipation?.reported === true
+          );
+          if (hasCapabilityRunReported) {
+            // Capability Core was reported — evaluated but produced no qualifying facts
+            status = 'EVALUATED_NO_QUALIFYING_FACTS';
+          } else {
+            // saas-static participated but Capability Core was NOT reported
+            // LOCK: CAPABILITY_CORE_NOT_REPORTED != EVALUATED_NO_QUALIFYING_FACTS
+            status = 'NOT_EVALUATED';
+          }
+        } else {
+          status = 'EVALUATED_NO_QUALIFYING_FACTS';
+        }
       }
     }
 
@@ -356,7 +388,9 @@ export function buildPlaneAvailability(
         ? `Plane supported by ${planeFacts.length} capability fact(s); coverage ${coverage.toLowerCase()}.`
         : status === 'EVALUATED_NO_QUALIFYING_FACTS'
           ? `No qualifying capability fact was produced by the currently supported ${plane.toLowerCase().replace(/_/g, ' ')} mappings; this does not prove absence of other capabilities.`
-          : 'No qualifying capability evidence was provided for this plane.',
+          : status === 'NOT_EVALUATED'
+            ? `Capability Core was not reported for this scan; the ${plane.toLowerCase().replace(/_/g, ' ')} dimension was not evaluated.`
+            : 'No qualifying capability evidence was provided for this plane.',
     };
   });
 }

@@ -87,9 +87,23 @@ export function buildAssuranceVerificationPackage(
   const synthetic = context.syntheticClassification ?? resolveSyntheticClassification(evaluation, v1_1);
   const report = buildUnifiedAssuranceReport(evaluation, bundle, buildIdentity, projectedEvidence, synthetic, context.authoritySourceLabel);
 
-  // G3-R1: Override report version if scope binding present
+  // G3-R1: Override report version if scope binding present.
+  // CRITICAL: The report digest was computed inside buildUnifiedAssuranceReport
+  // using the legacy 1.0.0 versions. When G3 scope binding upgrades the schema
+  // versions to 1.1.0, the digest MUST be recomputed so that
+  //   EVALUATION_USED_TO_BUILD_PACKAGE == EVALUATION_RECONSTRUCTED_FOR_VERIFICATION
+  // Otherwise the persisted semanticReportDigest binds to 1.0.0 content while
+  // the persisted reportJson carries 1.1.0 content, and reload verification
+  // fails with reportDigestValid=false.
+  //
+  // The report's decisionReceipt.receiptVersion must also be upgraded here,
+  // because computeReportDigest includes decisionReceipt.receiptVersion in its
+  // payload, and reportReceiptSummaryValid checks that the report's embedded
+  // receipt version matches the actual receipt's version.
   if (hasScopeBinding) {
     report.reportVersion = reportSchemaVersion;
+    report.decisionReceipt.receiptVersion = receiptSchemaVersion;
+    report.reportDigest = computeReportDigest(report);
   }
 
   // 3. Decision Receipt — with scope binding if provided
