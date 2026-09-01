@@ -28,6 +28,7 @@ const LEGACY_TO_CANONICAL: Record<string, ProducerId> = {
   'static': PRODUCER_IDS.SAAS_STATIC,
   'static-analysis': PRODUCER_IDS.SAAS_STATIC,
   'static_scan': PRODUCER_IDS.SAAS_STATIC,
+  'static_scanner': PRODUCER_IDS.SAAS_STATIC, // legacy sourceType used by StaticScannerAdapter
   'ai-security': PRODUCER_IDS.SAAS_STATIC,
   'ai_security': PRODUCER_IDS.SAAS_STATIC,
 
