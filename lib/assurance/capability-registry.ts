@@ -25,6 +25,7 @@
  */
 
 import { EvidenceCapabilityDeclaration, EvidenceCapabilityPlane, EvidenceMappingStrength, CapabilityCardinality, AIReachabilityStatus } from '@/lib/evidence/capability-declaration-contract';
+import { canonicalActionResourceIdString } from '@/capabilities/core/canonical-action-resource-identity';
 
 // ─── Registry Entry ──────────────────────────────────────────────────────────
 
@@ -213,7 +214,10 @@ export function registryEntryToDeclaration(
       : 'CODE_PRESENT';
 
   return {
-    capabilityId: `${entry.action}:${entry.resource}`,
+    // AA-0: capabilityId is the CANONICAL ACTION/RESOURCE IDENTITY.
+    // Route through the canonical helper, not ad-hoc template string.
+    // LOCK: CANONICAL_ACTION != EXACT_OPERATIONAL_CAPABILITY
+    capabilityId: canonicalActionResourceIdString(entry.action, entry.resource),
     sourcePlane,
     capabilityFamily: entry.family,
     subject: context.subject ?? 'principal:unknown',

@@ -111,12 +111,22 @@ function projectPolicyFacts(operatingEnvelope: OperatingEnvelope | undefined, ai
 
   for (const op of constraints.allowedOperations) {
     for (const scope of constraints.resourceScopes.length > 0 ? constraints.resourceScopes : ['*']) {
+      const resource = extractResourceFromOperation(op);
       facts.push({
         ...base,
+        // AA-0 REVERT: The policy-fact capabilityId remains `${op}:${scope}`
+        // (operation:scope). This is a DIFFERENT identity domain from the
+        // canonical action/resource identity (action:resource). AA-0 centralizes
+        // canonical action/resource identity construction; it must NOT silently
+        // reinterpret a different legacy/policy-fact identity domain.
+        // The comparator and action-surface do NOT use capabilityId for matching
+        // (they use coreCapabilityKeyToString for exact operational identity),
+        // so this format does not affect matching behavior.
+        // LOCK: LEGACY_CAPABILITY_ID_SEMANTICS — preserve, do not reinterpret.
         capabilityId: `${op}:${scope}`,
         capabilityFamily: (extractCanonicalCapabilityFamily(op) as any),
         action: op,
-        resource: extractResourceFromOperation(op),
+        resource,
         scope,
         dataClass: constraints.dataClasses[0] ?? 'INTERNAL',
         environment: constraints.allowedEnvironments[0] ?? 'sandbox',
@@ -222,6 +232,11 @@ function extractCapabilityDeclarations(ev: DecisionEvidenceProjection, sourcePla
 function buildCapabilityFact(ev: DecisionEvidenceProjection, decl: EvidenceCapabilityDeclaration, aiSystemId: string): CapabilityFact | undefined {
   if (!decl.evidenceMethod) return undefined;
   return {
+    // AA-0: Prefer the canonical action/resource identity from the declaration.
+    // The fallback `${evidenceId}:capability` is a LEGACY fallback for
+    // declarations without a capabilityId — it is NOT a canonical action/resource
+    // identity and should not be treated as one.
+    // LOCK: LEGACY_CAPABILITY_ID_SEMANTICS — preserve, do not reinterpret.
     capabilityId: decl.capabilityId ?? `${ev.evidenceId}:capability`,
     capabilityFamily: (normalizeCapabilityFamily(decl.capabilityFamily) as any),
     subject: decl.subject ?? `system:${aiSystemId}`,

@@ -23,6 +23,7 @@
 import { IR, Sink, AITool, ModelCall, Entrypoint, AuthSignal } from '@/lib/ai-security/types';
 import { EvidenceCapabilityDeclaration, AIReachabilityStatus, AnalysisImpediment } from '@/lib/evidence/capability-declaration-contract';
 import { lookupCapability, registryEntryToDeclaration, CapabilityRegistryEntry } from './capability-registry';
+import { canonicalActionResourceIdString } from '@/capabilities/core/canonical-action-resource-identity';
 
 // ─── Principal extraction (Part 8) ───────────────────────────────────────────
 
@@ -197,7 +198,8 @@ export function bridgeIRToCapabilities(ir: IR): BridgeResult {
         // REACHABILITY_UNKNOWN → exact match but NOT canonical CODE_CAPABLE
         // It remains scanner/context evidence, not AI capability proof
         const decl: EvidenceCapabilityDeclaration = {
-          capabilityId: `${registryEntry.action}:${registryEntry.resource}`,
+          // AA-0: canonical action/resource identity via canonical helper
+          capabilityId: canonicalActionResourceIdString(registryEntry.action, registryEntry.resource),
           sourcePlane: 'CODE_CAPABLE',
           capabilityFamily: registryEntry.family,
           subject: principal,
@@ -223,7 +225,8 @@ export function bridgeIRToCapabilities(ir: IR): BridgeResult {
       const inferred = inferFromSinkKind(sink);
       if (inferred) {
         const decl: EvidenceCapabilityDeclaration = {
-          capabilityId: `${inferred.action}:${inferred.resource}`,
+          // AA-0: canonical action/resource identity via canonical helper
+          capabilityId: canonicalActionResourceIdString(inferred.action, inferred.resource),
           sourcePlane: 'CODE_CAPABLE',
           capabilityFamily: inferred.family,
           subject: principal,
@@ -272,7 +275,9 @@ export function bridgeIRToCapabilities(ir: IR): BridgeResult {
     } else {
       // AI tool without registry match → suggestion
       const decl: EvidenceCapabilityDeclaration = {
-        capabilityId: `agent.tool.execute:${tool.name}`,
+        // AA-0: canonical action/resource identity via canonical helper
+        // action = "agent.tool.execute", resource = tool.name
+        capabilityId: canonicalActionResourceIdString('agent.tool.execute', tool.name),
         sourcePlane: 'CODE_CAPABLE',
         capabilityFamily: 'mcp',
         subject: principal,
