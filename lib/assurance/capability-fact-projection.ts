@@ -33,6 +33,7 @@ import type { EvidenceCapabilityDeclaration, EvidenceMappingStrength } from '@/l
 import type { DecisionEvidenceProjection } from '@/lib/decision-pipeline/evidence-projection';
 import { resolveCanonicalProducerId } from '@/lib/engine-registry/producer-id-compatibility';
 import { PRODUCER_IDS } from '@/lib/engine-registry/producer-registry';
+import { canonicalActionResourceIdString } from '@/capabilities/core/canonical-action-resource-identity';
 
 export interface CapabilityFactProjectionInput {
   organizationId: string;
@@ -111,12 +112,19 @@ function projectPolicyFacts(operatingEnvelope: OperatingEnvelope | undefined, ai
 
   for (const op of constraints.allowedOperations) {
     for (const scope of constraints.resourceScopes.length > 0 ? constraints.resourceScopes : ['*']) {
+      const resource = extractResourceFromOperation(op);
       facts.push({
         ...base,
-        capabilityId: `${op}:${scope}`,
+        // AA-0: capabilityId is the CANONICAL ACTION/RESOURCE IDENTITY
+        // (action:resource), NOT operation:scope. The previous `${op}:${scope}`
+        // was an ad-hoc construction that conflated operation with action and
+        // scope with resource. Route through the canonical helper.
+        // LOCK: CANONICAL_ACTION != EXACT_OPERATIONAL_CAPABILITY
+        // LOCK: CANONICAL_RESOURCE != CONCRETE_APPLICATION_RESOURCE
+        capabilityId: canonicalActionResourceIdString(op, resource),
         capabilityFamily: (extractCanonicalCapabilityFamily(op) as any),
         action: op,
-        resource: extractResourceFromOperation(op),
+        resource,
         scope,
         dataClass: constraints.dataClasses[0] ?? 'INTERNAL',
         environment: constraints.allowedEnvironments[0] ?? 'sandbox',
@@ -222,6 +230,11 @@ function extractCapabilityDeclarations(ev: DecisionEvidenceProjection, sourcePla
 function buildCapabilityFact(ev: DecisionEvidenceProjection, decl: EvidenceCapabilityDeclaration, aiSystemId: string): CapabilityFact | undefined {
   if (!decl.evidenceMethod) return undefined;
   return {
+    // AA-0: Prefer the canonical action/resource identity from the declaration.
+    // The fallback `${evidenceId}:capability` is a LEGACY fallback for
+    // declarations without a capabilityId — it is NOT a canonical action/resource
+    // identity and should not be treated as one.
+    // LOCK: LEGACY_CAPABILITY_ID_SEMANTICS — preserve, do not reinterpret.
     capabilityId: decl.capabilityId ?? `${ev.evidenceId}:capability`,
     capabilityFamily: (normalizeCapabilityFamily(decl.capabilityFamily) as any),
     subject: decl.subject ?? `system:${aiSystemId}`,
