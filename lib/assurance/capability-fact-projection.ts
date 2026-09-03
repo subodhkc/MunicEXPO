@@ -33,7 +33,6 @@ import type { EvidenceCapabilityDeclaration, EvidenceMappingStrength } from '@/l
 import type { DecisionEvidenceProjection } from '@/lib/decision-pipeline/evidence-projection';
 import { resolveCanonicalProducerId } from '@/lib/engine-registry/producer-id-compatibility';
 import { PRODUCER_IDS } from '@/lib/engine-registry/producer-registry';
-import { canonicalActionResourceIdString } from '@/capabilities/core/canonical-action-resource-identity';
 
 export interface CapabilityFactProjectionInput {
   organizationId: string;
@@ -115,13 +114,16 @@ function projectPolicyFacts(operatingEnvelope: OperatingEnvelope | undefined, ai
       const resource = extractResourceFromOperation(op);
       facts.push({
         ...base,
-        // AA-0: capabilityId is the CANONICAL ACTION/RESOURCE IDENTITY
-        // (action:resource), NOT operation:scope. The previous `${op}:${scope}`
-        // was an ad-hoc construction that conflated operation with action and
-        // scope with resource. Route through the canonical helper.
-        // LOCK: CANONICAL_ACTION != EXACT_OPERATIONAL_CAPABILITY
-        // LOCK: CANONICAL_RESOURCE != CONCRETE_APPLICATION_RESOURCE
-        capabilityId: canonicalActionResourceIdString(op, resource),
+        // AA-0 REVERT: The policy-fact capabilityId remains `${op}:${scope}`
+        // (operation:scope). This is a DIFFERENT identity domain from the
+        // canonical action/resource identity (action:resource). AA-0 centralizes
+        // canonical action/resource identity construction; it must NOT silently
+        // reinterpret a different legacy/policy-fact identity domain.
+        // The comparator and action-surface do NOT use capabilityId for matching
+        // (they use coreCapabilityKeyToString for exact operational identity),
+        // so this format does not affect matching behavior.
+        // LOCK: LEGACY_CAPABILITY_ID_SEMANTICS — preserve, do not reinterpret.
+        capabilityId: `${op}:${scope}`,
         capabilityFamily: (extractCanonicalCapabilityFamily(op) as any),
         action: op,
         resource,
