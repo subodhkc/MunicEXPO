@@ -45,7 +45,7 @@
  * Task: Investigate why checkout traffic is failing
  *
  * Core reveal:
- *   "Every control can be valid and the consequential choice can still be unproven."
+ *   "Permission can be valid while delegation of the consequential choice remains unproven."
  *   "Permission is not delegation."
  *
  * @version sample-1.0.0
@@ -650,7 +650,7 @@ export const SAMPLE_SCENARIO = {
   subtitle:
     'See how identities, permissions, AI actions, APIs, infrastructure, data, and consequences connect—before you connect your own system.',
   bannerLabel: 'Sample environment — illustrative data',
-  coreReveal: 'Every control can be valid and the consequential choice can still be unproven.',
+  coreReveal: 'Permission can be valid while delegation of the consequential choice remains unproven.',
   secondaryReveal: 'Permission is not delegation.',
   scenarioName: 'Production Incident Agent',
   scenarioTask: 'Investigate why checkout traffic is failing',
