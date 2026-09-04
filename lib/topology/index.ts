@@ -14,6 +14,7 @@ export type {
   MapLens,
   SemanticZoom,
   PlaneStatusDisplay,
+  SampleNodeContext,
 } from './types';
 
 export {
