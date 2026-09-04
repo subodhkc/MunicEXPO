@@ -315,7 +315,14 @@ const PLANE_PRODUCERS: Record<AssurancePlane, string[]> = {
   // self-reported intent, NOT policy authorization.
   REQUESTED: [PRODUCER_IDS.SAAS_INVENTORY],
   POLICY_AUTHORIZED: [], // operating envelope / policy record
-  EFFECTIVELY_GRANTED: [], // IAM/grant evidence not yet integrated
+  // EG-1 FINAL TRUTH: OUTCOME = PARTIAL_AWS_AUTHORITY_SOURCE
+  // SAAS_IAM_GRANT observes AWS IAM but cannot emit canonical EFFECTIVELY_GRANTED
+  // due to unmodeled authorization layers (resource policies, VPC endpoint policies,
+  // session policies). The producer remains registered but is NOT a canonical
+  // plane producer for EFFECTIVELY_GRANTED. AWS observation is preserved as
+  // PARTIAL/context evidence only.
+  // LOCK: UNMODELED_AUTHORIZATION_LAYER != ALLOW
+  EFFECTIVELY_GRANTED: [],
   CODE_CAPABLE: [PRODUCER_IDS.SAAS_STATIC], // bounded R2/R10 finding-derived bridge only
   OBSERVED: [PRODUCER_IDS.SAAS_RUNTIME], // authoritative action witness evidence
 };

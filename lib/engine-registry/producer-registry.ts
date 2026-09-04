@@ -42,6 +42,8 @@ export const PRODUCER_IDS = {
   AIRRD: 'airrd',
   /** Compliance Twin — Delta/regression evidence producer */
   COMPLIANCE_TWIN: 'compliance-twin',
+  /** SaaS IAM Grant — Effective grant observation from provider IAM (AWS first) */
+  SAAS_IAM_GRANT: 'saas-iam-grant',
 
   // ─── Future Producers (REGISTERED but NOT CONNECTED) ───────────────────
   /** AI AppSec MCP — Open-source static analysis (MCP package) */
@@ -70,6 +72,7 @@ export type ProducerType =
   | 'OSINT'
   | 'READINESS'
   | 'DELTA'
+  | 'IAM_GRANT'
   | 'NATIVE';
 
 // ─── Producer Metadata ─────────────────────────────────────────────────────
@@ -272,6 +275,22 @@ export const PRODUCER_REGISTRY: Record<ProducerId, ProducerMetadata> = {
     persistenceTables: ['monitored_systems', 'system_alerts', 'twin_evidence_bundles'],
     consumers: ['twin dashboard'],
     activationBlockers: ['U1: migrate customerId → organizationId', 'U2 evidence envelope contract needed'],
+  },
+  [PRODUCER_IDS.SAAS_IAM_GRANT]: {
+    producerId: PRODUCER_IDS.SAAS_IAM_GRANT,
+    producerType: 'IAM_GRANT',
+    displayName: 'SaaS IAM Grant Observer',
+    implementationModule: 'lib/iam-grant/',
+    status: 'ACTIVE',
+    connectedToPipeline: true,
+    evidenceCoreActivated: true,
+    legacyIds: [],
+    // Source-native raw state (cloud_credentials) remains source-native.
+    // Canonical EFFECTIVELY_GRANTED participation flows through the
+    // canonical evidence table — no shadow Evidence table.
+    persistenceTables: ['evidence'],
+    consumers: ['decision-pipeline', 'evidence-core', 'capability-fact-projection'],
+    activationBlockers: [],
   },
 
   // ─── Future Producers (REGISTERED but NOT CONNECTED) ───────────────────
