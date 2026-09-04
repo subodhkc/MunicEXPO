@@ -102,12 +102,16 @@ interface CapabilityJoinEntry {
   basis: 'CURRENT_SOURCE' | 'EVALUATED_BASIS';
 }
 
-// Mapping strengths that qualify as canonical/exact (per Action Surface semantics)
+// Mapping strengths that qualify as canonical/exact (per Action Surface semantics).
+// LOCK: TOPOLOGY_CANONICALITY == ACTION_SURFACE_CANONICALITY
+// Must match lib/assurance/action-surface.ts isCanonical rule exactly:
+//   decl.mappingStrength === 'EXACT_CAPABILITY_MAPPING' ||
+//   decl.mappingStrength === 'EXACT_RULE_MAPPING'
+// LOCK: PROFILE_MAPPING != CANONICAL_ACTION_SURFACE_MAPPING
+// LOCK: MANUAL_APPROVED_MAPPING != CANONICAL_ACTION_SURFACE_MAPPING
 const CANONICAL_MAPPING_STRENGTHS = new Set([
-  'EXACT_RULE_MAPPING',
   'EXACT_CAPABILITY_MAPPING',
-  'PROFILE_MAPPING',
-  'MANUAL_APPROVED_MAPPING',
+  'EXACT_RULE_MAPPING',
 ]);
 
 function normalizeResource(r: string | undefined | null): string {
