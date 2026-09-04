@@ -178,7 +178,7 @@ export interface SemanticDiffResult {
   /** True if no semantic changes detected */
   noChanges: boolean;
   /** High-level classification */
-  summary: 'AUTHORITY_EXPANDED' | 'AUTHORITY_NARROWED' | 'MIXED' | 'NO_CHANGE';
+  summary: 'AUTHORITY_EXPANDED' | 'AUTHORITY_NARROWED' | 'MIXED' | 'NO_CHANGE' | 'OTHER_POLICY_CHANGE';
 }
 
 /**
@@ -383,14 +383,28 @@ export function computeSemanticDiff(
     }
   }
 
+  // Track whether a material policy change exists that is neither expansion nor narrowing.
+  const hasOtherPolicyChange = entries.some(e => e.changeType === 'OTHER_POLICY_CHANGE');
+
   const noChanges = entries.length === 0;
+  // Summary priority:
+  //   no entries → NO_CHANGE
+  //   expanded && narrowed → MIXED
+  //   expanded only (even if OTHER_POLICY_CHANGE also exists) → AUTHORITY_EXPANDED
+  //   narrowed only (even if OTHER_POLICY_CHANGE also exists) → AUTHORITY_NARROWED
+  //   neither expanded nor narrowed, but OTHER_POLICY_CHANGE exists → OTHER_POLICY_CHANGE
+  //   otherwise (should not happen) → NO_CHANGE
   const summary: SemanticDiffResult['summary'] = noChanges
     ? 'NO_CHANGE'
     : hasExpanded && hasNarrowed
       ? 'MIXED'
       : hasExpanded
         ? 'AUTHORITY_EXPANDED'
-        : 'AUTHORITY_NARROWED';
+        : hasNarrowed
+          ? 'AUTHORITY_NARROWED'
+          : hasOtherPolicyChange
+            ? 'OTHER_POLICY_CHANGE'
+            : 'NO_CHANGE';
 
   return { entries, noChanges, summary };
 }
