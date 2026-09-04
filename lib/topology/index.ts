@@ -27,6 +27,8 @@ export {
   ZOOM_LABELS,
   AVAILABILITY_LABELS,
   SUBTYPE_LABELS,
+  PLANE_STATUS_LABELS,
+  EFFECT_LABELS,
 } from './types';
 
 export { stableNodeId, stableEdgeId, s } from './stable-ids';

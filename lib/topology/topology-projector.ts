@@ -5,7 +5,7 @@
  *
  * Adapters:
  *   - SYSTEM_IDENTITY_ADAPTER       — AI System identity from prisma.ai_systems
- *   - CONNECTED_ASSET_ADAPTER       — Connected assets from listConnectedAssets (projected as nodes)
+ *   - CONNECTED_ASSET_ADAPTER       — Connected assets from listConnectedAssets (projected as nodes, displayName primary)
  *   - APPLICATION_ACCESS_ADAPTER    — AC-1 application authorization facts (same scan as Action Authority)
  *   - ACTION_AUTHORITY_ADAPTER      — buildSystemActionAuthorityReadModel (current source, policy, evaluated basis)
  *   - CURRENT_POLICY_ADAPTER        — current approved Operating Envelope (from Action Authority read model)
@@ -31,8 +31,15 @@
  * LOCK: TENANT_CONTEXT != TENANT_ENFORCEMENT
  * LOCK: DISPLAY_LABEL != NODE_IDENTITY
  * LOCK: SAME_ACTION_LABEL != SAME_EXECUTION_PATH
- * LOCK: GRAPH_TRUTH_CHANGE => PROJECTION_HASH_CHANGE
+ * LOCK: PROJECTION_RELATION_OR_SOURCE_IDENTITY_CHANGE => PROJECTION_HASH_CHANGE
+ * LOCK: PROJECTION_HASH != UNIVERSAL_NATIVE_STATE_DIGEST
  * LOCK: LOCAL_KEYWORD_HEURISTIC != GATE4C_QUALIFIED_SEMANTIC_REFERENCE
+ * LOCK: SIMILAR_ACTION_STRING != CANONICAL_CAPABILITY_JOIN
+ * LOCK: NO_EXACT_CAPABILITY_JOIN => NO_CAPABILITY_EFFECT_PROMOTION
+ * LOCK: CURRENT_SOURCE_BASIS != EVALUATED_BASIS
+ * LOCK: LATEST_EVALUATION != CURRENT_TOPOLOGY
+ * LOCK: ASSET_TYPE != ASSET_INSTANCE_IDENTITY
+ * LOCK: AGENT_RELATION != DELEGATION_PROOF
  *
  * @version topology-1.0.0
  */
@@ -63,8 +70,60 @@ import {
   SUPPORTED_SEMANTIC_ZOOM_LEVELS,
   SUBTYPE_LABELS,
   AVAILABILITY_LABELS,
+  EFFECT_LABELS,
 } from './types';
 import { stableNodeId, stableEdgeId, s } from './stable-ids';
+
+// ─── Exact capability join key (Part 1) ──────────────────────────────────────
+// The strongest defensible exact join between an AC-1 occurrence and a
+// canonical capability action is: sourceLocation + action string match.
+// Both sides carry sourceLocation (source-established) and action/protectedAction.
+// If either differs, NO JOIN is made and no plane status is attached.
+//
+// LOCK: SIMILAR_ACTION_STRING != CANONICAL_CAPABILITY_JOIN
+// LOCK: NO_EXACT_CAPABILITY_JOIN => NO_CAPABILITY_EFFECT_PROMOTION
+
+interface CapabilityJoinEntry {
+  planeStatus: PlaneStatusDisplay;
+  effect: string;
+  capabilityId: string;
+  basis: 'CURRENT_SOURCE' | 'EVALUATED_BASIS';
+}
+
+function buildCapabilityJoinMap(
+  actionAuthority: Awaited<ReturnType<typeof buildSystemActionAuthorityReadModel>>,
+): Map<string, CapabilityJoinEntry> {
+  const joinMap = new Map<string, CapabilityJoinEntry>();
+  if (!actionAuthority?.currentSourceBasis?.candidateActions) return joinMap;
+
+  for (const ca of actionAuthority.currentSourceBasis.candidateActions) {
+    // Key: sourceLocation + action — both source-established
+    // This is the exact join. Action string alone is NOT sufficient.
+    const key = `${ca.sourceLocation}::${ca.action}`;
+    joinMap.set(key, {
+      planeStatus: {
+        requested: ca.planeStatus.requested,
+        policyAuthorized: ca.planeStatus.policyAuthorized,
+        effectivelyGranted: ca.planeStatus.effectivelyGranted,
+        codeCapable: ca.planeStatus.codeCapable,
+        observed: ca.planeStatus.observed,
+      },
+      effect: ca.effect || 'UNKNOWN',
+      capabilityId: ca.capabilityId,
+      basis: 'CURRENT_SOURCE',
+    });
+  }
+  return joinMap;
+}
+
+function tryExactCapabilityJoin(
+  fact: { protectedAction?: string; sourceLocation: string },
+  joinMap: Map<string, CapabilityJoinEntry>,
+): CapabilityJoinEntry | undefined {
+  if (!fact.protectedAction) return undefined;
+  const key = `${fact.sourceLocation}::${fact.protectedAction}`;
+  return joinMap.get(key);
+}
 
 /**
  * Build the topology projection for an AI System.
@@ -226,20 +285,10 @@ export async function buildTopologyProjection(
       limitations.push(lim);
     }
 
-    // Build a lookup of candidate actions from Action Authority for five-plane overlay
-    const candidateActionMap = new Map<string, PlaneStatusDisplay>();
-    if (actionAuthority?.currentSourceBasis?.candidateActions) {
-      for (const ca of actionAuthority.currentSourceBasis.candidateActions) {
-        // Key by action string — may not exact-join to AC-1 occurrence
-        candidateActionMap.set(ca.action, {
-          requested: ca.planeStatus.requested,
-          policyAuthorized: ca.planeStatus.policyAuthorized,
-          effectivelyGranted: ca.planeStatus.effectivelyGranted,
-          codeCapable: ca.planeStatus.codeCapable,
-          observed: ca.planeStatus.observed,
-        });
-      }
-    }
+    // Build exact capability join map (Part 1: retire string-only join)
+    // LOCK: SIMILAR_ACTION_STRING != CANONICAL_CAPABILITY_JOIN
+    // Key: sourceLocation + action — both source-established on both sides
+    const capabilityJoinMap = buildCapabilityJoinMap(actionAuthority);
 
     // Track which action-occurrence IDs we've created (repair 16: don't collapse)
     const actionOccurrenceNodes = new Map<string, TopologyNode>();
@@ -340,8 +389,13 @@ export async function buildTopologyProjection(
       const actionNodeId = stableNodeId('action', actionTuple);
       let actionNode = actionOccurrenceNodes.get(actionNodeId);
       if (!actionNode) {
-        // Five-plane overlay from Action Authority (exact string match — may not join)
-        const planeStatus = fact.protectedAction ? candidateActionMap.get(fact.protectedAction) : undefined;
+        // Part 1: Exact capability join — NO string-only match
+        // LOCK: NO_EXACT_CAPABILITY_JOIN => NO_CAPABILITY_EFFECT_PROMOTION
+        const exactJoin = tryExactCapabilityJoin(fact, capabilityJoinMap);
+        const actionLimitations = [...fact.limitations];
+        if (!exactJoin) {
+          actionLimitations.push('Authority comparison is not linked to this exact action path');
+        }
         actionNode = {
           id: actionNodeId,
           label: fact.protectedAction || 'Action',
@@ -349,8 +403,14 @@ export async function buildTopologyProjection(
           aiReachable: fact.aiReachable,
           availability: 'AVAILABLE',
           sourceLocation: fact.sourceLocation,
-          limitations: fact.limitations,
-          planeStatus,
+          limitations: actionLimitations,
+          scanId,
+          // planeStatus ONLY attached when exact join exists
+          planeStatus: exactJoin?.planeStatus,
+          planeStatusBasis: exactJoin?.basis,
+          // effect ONLY attached when exact join exists
+          effect: exactJoin?.effect,
+          effectLabel: exactJoin ? (EFFECT_LABELS[exactJoin.effect] || exactJoin.effect) : undefined,
         };
         actionOccurrenceNodes.set(actionNodeId, actionNode);
         nodes.push(actionNode);
@@ -377,18 +437,24 @@ export async function buildTopologyProjection(
         });
       }
 
-      // access → entrypoint (routes_to) — repair 13
+      // access → entrypoint (routes_to) — Part 6: authorization ordering visible
       if (entrypointNodeId) {
         const accessToEpEdge = stableEdgeId(accessNodeId, entrypointNodeId, 'routes_to');
         if (!edges.some((e) => e.id === accessToEpEdge)) {
+          // Part 6: edge label reflects authorization ordering
+          const orderLabel = SUBTYPE_LABELS[fact.authorizationOrdering] || fact.authorizationOrdering;
+          const orderStyle: 'solid' | 'dashed' | 'dotted' =
+            fact.authorizationOrdering === 'BEFORE_SINK' ? 'solid' :
+            fact.authorizationOrdering === 'AFTER_SINK' ? 'dashed' :
+            fact.authorizationOrdering === 'AUTH_NOT_FOUND' ? 'dotted' : 'dotted';
           edges.push({
             id: accessToEpEdge,
             source: accessNodeId,
             target: entrypointNodeId,
-            label: 'routes to',
+            label: orderLabel,
             kind: 'routes_to',
             joinBasis: 'SOURCE_LOCATION_CORRELATION',
-            style: 'solid',
+            style: orderStyle,
           });
           relations.push({
             relationType: 'ACCESS_ROUTES_TO_ENTRYPOINT',
@@ -504,39 +570,69 @@ export async function buildTopologyProjection(
         }
       }
 
-      // ─── Consequence (repair 7: no lexical inference) ───────────────────
-      // Consequences are emitted ONLY when source-established by a qualified owner.
-      // The current MVP does not have a qualified consequence owner for AC-1 facts.
-      // Show "Consequence not established" as UNKNOWN presentation state.
-      // Do NOT fabricate a categorical effect.
+      // ─── Consequence (Part 7: source-backed effect on exact join) ───────
+      // LOCK: NO_EXACT_CAPABILITY_JOIN => NO_CAPABILITY_EFFECT_PROMOTION
+      // LOCK: LEXICAL_EFFECT_INFERENCE = NO
       const consequenceTuple = [scanId, s(fact.entrypointId), s(fact.sinkId), 'consequence'];
       const consequenceNodeId = stableNodeId('consequence', consequenceTuple);
       if (!nodes.some((n) => n.id === consequenceNodeId)) {
-        nodes.push({
-          id: consequenceNodeId,
-          label: 'Consequence not established',
-          kind: 'consequence',
-          aiReachable: fact.aiReachable,
-          availability: 'UNKNOWN',
-          limitations: ['Consequence semantics require a qualified source owner — not inferred from action name'],
-        });
-        // action → consequence (produces) — repair 8: no unqualified SEMANTIC_REFERENCE
-        const actionToConsequenceEdge = stableEdgeId(actionNodeId, consequenceNodeId, 'produces');
-        edges.push({
-          id: actionToConsequenceEdge,
-          source: actionNodeId,
-          target: consequenceNodeId,
-          label: 'effect not established',
-          kind: 'produces',
-          joinBasis: 'UNRESOLVED',
-          style: 'dotted',
-        });
-        relations.push({
-          relationType: 'ACTION_CONSEQUENCE_UNRESOLVED',
-          fromRef: actionNodeId,
-          toRef: consequenceNodeId,
-          joinBasis: 'UNRESOLVED',
-        });
+        const exactJoin = tryExactCapabilityJoin(fact, capabilityJoinMap);
+        if (exactJoin && exactJoin.effect && exactJoin.effect !== 'UNKNOWN') {
+          // Source-backed effect from canonical Capability semantics
+          const effectLabel = EFFECT_LABELS[exactJoin.effect] || exactJoin.effect;
+          nodes.push({
+            id: consequenceNodeId,
+            label: effectLabel,
+            kind: 'consequence',
+            aiReachable: fact.aiReachable,
+            availability: 'AVAILABLE',
+            limitations: [],
+            effect: exactJoin.effect,
+            effectLabel,
+          });
+          const actionToConsequenceEdge = stableEdgeId(actionNodeId, consequenceNodeId, 'produces');
+          edges.push({
+            id: actionToConsequenceEdge,
+            source: actionNodeId,
+            target: consequenceNodeId,
+            label: 'produces',
+            kind: 'produces',
+            joinBasis: 'EXACT_OPERATIONAL_IDENTITY',
+            style: 'solid',
+          });
+          relations.push({
+            relationType: 'ACTION_PRODUCES_EFFECT',
+            fromRef: actionNodeId,
+            toRef: consequenceNodeId,
+            joinBasis: 'EXACT_OPERATIONAL_IDENTITY',
+          });
+        } else {
+          // No exact join → UNKNOWN consequence, no fabricated effect
+          nodes.push({
+            id: consequenceNodeId,
+            label: 'Consequence not established',
+            kind: 'consequence',
+            aiReachable: fact.aiReachable,
+            availability: 'UNKNOWN',
+            limitations: ['Consequence semantics require a qualified source owner — not inferred from action name'],
+          });
+          const actionToConsequenceEdge = stableEdgeId(actionNodeId, consequenceNodeId, 'produces');
+          edges.push({
+            id: actionToConsequenceEdge,
+            source: actionNodeId,
+            target: consequenceNodeId,
+            label: 'effect not established',
+            kind: 'produces',
+            joinBasis: 'UNRESOLVED',
+            style: 'dotted',
+          });
+          relations.push({
+            relationType: 'ACTION_CONSEQUENCE_UNRESOLVED',
+            fromRef: actionNodeId,
+            toRef: consequenceNodeId,
+            joinBasis: 'UNRESOLVED',
+          });
+        }
       }
     }
   }
@@ -551,15 +647,21 @@ export async function buildTopologyProjection(
 
   for (const asset of assets) {
     const assetNodeId = stableNodeId('connected_asset', [asset.id]);
+    // Part 5: displayName is primary label, asset type is subtype
+    // LOCK: ASSET_TYPE != ASSET_INSTANCE_IDENTITY
+    const assetTypeLabel = asset.assetType.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
     nodes.push({
       id: assetNodeId,
-      label: asset.assetType.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase()),
+      label: asset.displayName || assetTypeLabel,
       kind: 'connected_asset',
       subType: asset.assetType,
-      subTypeLabel: asset.assetType.replace(/_/g, ' '),
+      subTypeLabel: assetTypeLabel,
       aiReachable: 'UNKNOWN',
       availability: asset.connectionState === 'CONNECTED' ? 'AVAILABLE' : asset.connectionState === 'REGISTERED' ? 'PARTIAL' : 'UNKNOWN',
       limitations: [],
+      assetProvider: asset.provider || undefined,
+      assetEnvironment: asset.environment || undefined,
+      assetConnectionState: asset.connectionState || undefined,
     });
     // AI System → Connected Asset (connected_to) — inventory relationship, not execution
     const assetEdgeId = stableEdgeId(aiSystemNodeId, assetNodeId, 'connected_to');
@@ -714,6 +816,18 @@ export async function buildTopologyProjection(
   nodes.sort((a, b) => a.id.localeCompare(b.id));
   edges.sort((a, b) => a.id.localeCompare(b.id));
 
+  // ─── Part 2: Evaluated basis (historical, NOT current) ──────────────────
+  let evaluatedBasis: TopologyProjectionResult['evaluatedBasis'];
+  if (actionAuthority?.evaluatedBasis && actionAuthority.evaluatedBasis.state === 'AVAILABLE') {
+    const eb = actionAuthority.evaluatedBasis;
+    evaluatedBasis = {
+      state: eb.state,
+      evaluationId: eb.evaluationId,
+      evaluationSnapshotAt: eb.evaluationSnapshotAt,
+      disposition: eb.disposition,
+    };
+  }
+
   return {
     projectionSchemaVersion: TOPOLOGY_PROJECTION_SCHEMA_VERSION,
     sourceVersion: TOPOLOGY_PROJECTION_VERSION,
@@ -732,6 +846,7 @@ export async function buildTopologyProjection(
     scanProvenance,
     providerIam,
     currentPolicy,
+    evaluatedBasis,
     lenses: SUPPORTED_MAP_LENSES,
     zoomLevels: SUPPORTED_SEMANTIC_ZOOM_LEVELS,
   };

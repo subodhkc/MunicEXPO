@@ -121,6 +121,42 @@ export const SUBTYPE_LABELS: Record<string, string> = {
   NOT_CONFIGURED: 'Policy not yet defined',
 };
 
+// ─── Plane Status Presentation Mapping (Part 3) ──────────────────────────────
+// Maps raw native plane status values to customer-friendly labels.
+// Raw values may appear under Technical details only.
+// LOCK: CUSTOMER_LABEL != NATIVE_STATE_LOSS
+
+export const PLANE_STATUS_LABELS: Record<string, string> = {
+  PRESENT: 'Source established',
+  NOT_PROVIDED: 'Evidence not provided',
+  NOT_EVALUATED: 'Not evaluated',
+  EVALUATED_NO_QUALIFYING_FACTS: 'Evaluated — no qualifying evidence',
+  NOT_SUPPORTED_BY_CURRENT_PRODUCER: 'Not supported by this evidence source',
+  PARTIAL: 'Limited evidence',
+  UNKNOWN: 'Not yet established',
+  ABSENT: 'Evidence not available',
+};
+
+// ─── Capability Effect Labels (Part 7) ───────────────────────────────────────
+// Source-backed effect vocabulary from canonical Capability semantics.
+
+export const EFFECT_LABELS: Record<string, string> = {
+  READ: 'Read',
+  WRITE: 'Write / Update',
+  CREATE: 'Persistence creation',
+  UPDATE: 'Write / Update',
+  DELETE: 'Delete',
+  EXECUTE: 'Execute',
+  EGRESS: 'External data transfer',
+  NOTIFY: 'Notify',
+  TRANSFER: 'External data transfer',
+  FINANCIAL_MUTATION: 'Financial mutation',
+  AUTHORITY_EXPANSION: 'Authority change',
+  PERSISTENCE_CREATION: 'Persistence creation',
+  CONFIGURATION_CHANGE: 'Configuration change',
+  UNKNOWN: 'Consequence not established',
+};
+
 // ─── Node ────────────────────────────────────────────────────────────────────
 
 export interface TopologyNode {
@@ -134,8 +170,20 @@ export interface TopologyNode {
   availability: NodeAvailability;
   sourceLocation?: string;
   limitations: string[];
-  /** Five-plane status for action nodes (when available from Action Authority) */
+  /** Five-plane status for action nodes (ONLY when exact capability join exists) */
   planeStatus?: PlaneStatusDisplay;
+  /** Whether five-plane status is from current source or historical evaluation */
+  planeStatusBasis?: 'CURRENT_SOURCE' | 'EVALUATED_BASIS';
+  /** Source-backed capability effect (ONLY when exact capability join exists) */
+  effect?: string;
+  /** Customer-friendly effect label */
+  effectLabel?: string;
+  /** Asset metadata for connected_asset nodes */
+  assetProvider?: string;
+  assetEnvironment?: string;
+  assetConnectionState?: string;
+  /** Scan/run provenance for detail zoom */
+  scanId?: string;
 }
 
 export interface PlaneStatusDisplay {
@@ -207,6 +255,13 @@ export interface TopologyProjectionResult {
     version: string | null;
     approvedBy: string | null;
     approvedAt: string | null;
+  };
+  /** Latest completed evaluation basis (historical, NOT current) */
+  evaluatedBasis?: {
+    state: string;
+    evaluationId: string | null;
+    evaluationSnapshotAt: string | null;
+    disposition: string | null;
   };
   lenses: MapLens[];
   zoomLevels: SemanticZoom[];
