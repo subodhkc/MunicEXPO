@@ -1,13 +1,8 @@
 /**
  * AI Action & Access Map — Topology Projection barrel
- *
- * Internal architecture name: Topology Projection
- * Customer-facing name: AI Action & Access Map
  */
 
-export {
-  buildTopologyProjection,
-} from './topology-projector';
+export { buildTopologyProjection } from './topology-projector';
 
 export type {
   TopologyProjectionResult,
@@ -18,18 +13,20 @@ export type {
   NodeAvailability,
   MapLens,
   SemanticZoom,
+  PlaneStatusDisplay,
 } from './types';
 
 export {
   TOPOLOGY_PROJECTION_SCHEMA_VERSION,
   TOPOLOGY_PROJECTION_VERSION,
-  PLANE_ALIAS,
+  CUSTOMER_PLANE_ALIASES,
+  TECHNICAL_PLANE_ALIASES,
   SUPPORTED_MAP_LENSES,
   SUPPORTED_SEMANTIC_ZOOM_LEVELS,
+  LENS_LABELS,
+  ZOOM_LABELS,
+  AVAILABILITY_LABELS,
+  SUBTYPE_LABELS,
 } from './types';
 
-export {
-  stableNodeId,
-  stableEdgeId,
-  sanitizeSemanticKey,
-} from './stable-ids';
+export { stableNodeId, stableEdgeId, s } from './stable-ids';

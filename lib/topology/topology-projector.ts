@@ -3,22 +3,14 @@
  *
  * Deterministic read projection over persisted accepted-scan truth.
  *
- * Adapters (recorded in baseline):
+ * Adapters:
  *   - SYSTEM_IDENTITY_ADAPTER       — AI System identity from prisma.ai_systems
- *   - CONNECTED_ASSET_ADAPTER       — Connected assets from listConnectedAssets
- *   - APPLICATION_ACCESS_ADAPTER    — AC-1 application authorization facts
- *   - ACTION_AUTHORITY_ADAPTER      — Action & Authority read model (capability declarations)
- *   - EVIDENCE_ADAPTER              — Evidence resolver
- *   - ARCHITECTURE_INSIGHT_ADAPTER  — Architecture insights (Gate 4C)
- *
- * The projector:
- *   - reads persisted AC-1 facts (never reruns static analysis)
- *   - reads connected assets
- *   - reads provider IAM observation (partial — separate branch)
- *   - reads evidence summary (separate overlay)
- *   - produces deterministic nodes/edges with stable IDs
- *   - preserves unknown/partial/unavailable/source-gap semantics
- *   - computes projection hash via wave0 computeProjectionHash
+ *   - CONNECTED_ASSET_ADAPTER       — Connected assets from listConnectedAssets (projected as nodes)
+ *   - APPLICATION_ACCESS_ADAPTER    — AC-1 application authorization facts (same scan as Action Authority)
+ *   - ACTION_AUTHORITY_ADAPTER      — buildSystemActionAuthorityReadModel (current source, policy, evaluated basis)
+ *   - CURRENT_POLICY_ADAPTER        — current approved Operating Envelope (from Action Authority read model)
+ *   - EVIDENCE_ADAPTER              — resolveSystemEvidence (canonical system evidence owner)
+ *   - ARCHITECTURE_INSIGHT_ADAPTER  — DEFERRED (not implemented in this MVP)
  *
  * LOCK: MAP_REQUEST != STATIC_REANALYSIS
  * LOCK: RENDERER != ANALYZER
@@ -27,6 +19,20 @@
  * LOCK: CODE_RBAC != EFFECTIVELY_GRANTED
  * LOCK: PARTIAL_AWS_OBSERVATION != EFFECTIVELY_GRANTED
  * LOCK: FIELD_ABSENT != FIELD_PRESENT_EMPTY
+ * LOCK: LATEST_COMPLETED_SCAN != CURRENT_ACCEPTED_STATIC_SOURCE
+ * LOCK: AC1_SOURCE_SCAN == CURRENT_ACTION_AUTHORITY_SOURCE_SCAN
+ * LOCK: CURRENT_COMPOSITE_MAP != HISTORICAL_SCAN_SNAPSHOT
+ * LOCK: TOPOLOGY_PROJECTOR != ACTION_AUTHORITY_ENGINE
+ * LOCK: ACTION_METHOD_NAME != CONSEQUENCE_SEMANTICS
+ * LOCK: UNKNOWN_CONSEQUENCE != READ_DATA
+ * LOCK: AI_REACHABLE != EXECUTED
+ * LOCK: AI_REACHABILITY_UNKNOWN != EXECUTES
+ * LOCK: PARTIAL_CREDENTIAL_EVIDENCE != AUTHORIZATION
+ * LOCK: TENANT_CONTEXT != TENANT_ENFORCEMENT
+ * LOCK: DISPLAY_LABEL != NODE_IDENTITY
+ * LOCK: SAME_ACTION_LABEL != SAME_EXECUTION_PATH
+ * LOCK: GRAPH_TRUTH_CHANGE => PROJECTION_HASH_CHANGE
+ * LOCK: LOCAL_KEYWORD_HEURISTIC != GATE4C_QUALIFIED_SEMANTIC_REFERENCE
  *
  * @version topology-1.0.0
  */
@@ -36,6 +42,8 @@ import { verifyAISystemOrgBinding } from '@/lib/org-context';
 import { listConnectedAssets } from '@/lib/ai-inventory/connected-assets';
 import { readApplicationAuthorizationForSystem } from '@/lib/ai-security/application-authorization-read';
 import { getCurrentEffectiveGrant } from '@/lib/iam-grant/effective-grant-observation';
+import { buildSystemActionAuthorityReadModel } from '@/lib/ai-inventory/system-action-authority';
+import { resolveSystemEvidence } from '@/lib/ai-inventory/system-evidence-resolver';
 import {
   computeProjectionHash,
   type TopologyProjectionPayload,
@@ -48,25 +56,25 @@ import {
   type TopologyNode,
   type TopologyEdge,
   type NodeAvailability,
+  type PlaneStatusDisplay,
   TOPOLOGY_PROJECTION_SCHEMA_VERSION,
   TOPOLOGY_PROJECTION_VERSION,
-  PLANE_ALIAS,
   SUPPORTED_MAP_LENSES,
   SUPPORTED_SEMANTIC_ZOOM_LEVELS,
+  SUBTYPE_LABELS,
+  AVAILABILITY_LABELS,
 } from './types';
-import { stableNodeId, stableEdgeId, sanitizeSemanticKey } from './stable-ids';
+import { stableNodeId, stableEdgeId, s } from './stable-ids';
 
 /**
  * Build the topology projection for an AI System.
  *
  * Tenant invariant: verifyAISystemOrgBinding before any read.
- * Cross-tenant reads are denied (fail closed).
  */
 export async function buildTopologyProjection(
   aiSystemId: string,
   organizationId: string,
 ): Promise<TopologyProjectionResult | null> {
-  // Tenant gate
   const bound = await verifyAISystemOrgBinding(aiSystemId, organizationId);
   if (!bound) return null;
 
@@ -83,44 +91,117 @@ export async function buildTopologyProjection(
   const limitations: string[] = [];
   const relations: RelationRef[] = [];
   const sourceRefs: SourceRef[] = [];
+  const evidenceRefs: EvidenceRef[] = [];
 
   // ─── AI Execution Node ──────────────────────────────────────────────────
-  const aiSystemNode: TopologyNode = {
-    id: stableNodeId('ai_execution', sanitizeSemanticKey(aiSystemId)),
+  const aiSystemNodeId = stableNodeId('ai_execution', [aiSystemId]);
+  nodes.push({
+    id: aiSystemNodeId,
     label: aiSystem.name || 'AI System',
     kind: 'ai_execution',
     subType: aiSystem.systemType || undefined,
     aiReachable: true,
     availability: 'AVAILABLE',
     limitations: [],
-  };
-  nodes.push(aiSystemNode);
+  });
   sourceRefs.push({
     sourceAuthority: 'HAIEC_NATIVE_PERSISTED',
     sourceId: `ai_systems:${aiSystemId}`,
     derivationMethod: 'prisma_direct_read',
   });
 
-  // ─── CONNECTED_ASSET_ADAPTER ────────────────────────────────────────────
-  let assets: Awaited<ReturnType<typeof listConnectedAssets>> = [];
+  // ─── ACTION_AUTHORITY_ADAPTER ───────────────────────────────────────────
+  // Reuse the canonical Action Authority read model for:
+  //   - current accepted source identity
+  //   - current source candidate actions (with five-plane status)
+  //   - current policy basis
+  //   - evaluated basis (persisted, never recomputed)
+  let actionAuthority: Awaited<ReturnType<typeof buildSystemActionAuthorityReadModel>> = null;
   try {
-    assets = await listConnectedAssets(aiSystemId, organizationId, { includeRetired: false });
+    actionAuthority = await buildSystemActionAuthorityReadModel(aiSystemId, organizationId);
   } catch {
-    limitations.push('Connected assets could not be loaded');
+    limitations.push('Action authority read model could not be loaded');
+  }
+
+  // ─── CURRENT_POLICY_ADAPTER ─────────────────────────────────────────────
+  let currentPolicy: TopologyProjectionResult['currentPolicy'];
+  if (actionAuthority?.currentPolicyBasis) {
+    const cp = actionAuthority.currentPolicyBasis;
+    currentPolicy = {
+      state: cp.state,
+      envelopeId: cp.envelopeId,
+      version: cp.version,
+      approvedBy: cp.approvedBy,
+      approvedAt: cp.approvedAt,
+    };
+    if (cp.state === 'APPROVED') {
+      const policyNodeId = stableNodeId('policy', [s(cp.envelopeId)]);
+      nodes.push({
+        id: policyNodeId,
+        label: SUBTYPE_LABELS['APPROVED'] || 'Approved policy',
+        kind: 'policy',
+        subType: 'APPROVED',
+        subTypeLabel: 'Approved policy',
+        aiReachable: 'UNKNOWN',
+        availability: 'AVAILABLE',
+        limitations: [],
+      });
+      edges.push({
+        id: stableEdgeId(policyNodeId, aiSystemNodeId, 'governed_by'),
+        source: policyNodeId,
+        target: aiSystemNodeId,
+        label: 'governs',
+        kind: 'governed_by',
+        joinBasis: 'POLICY_BINDING',
+        style: 'solid',
+      });
+      relations.push({
+        relationType: 'POLICY_GOVERNS_SYSTEM',
+        fromRef: policyNodeId,
+        toRef: aiSystemNodeId,
+        joinBasis: 'POLICY_BINDING',
+      });
+      sourceRefs.push({
+        sourceAuthority: 'HAIEC_NATIVE_PERSISTED',
+        sourceId: `operating_envelope:${s(cp.envelopeId)}`,
+        derivationMethod: 'action_authority_current_policy_basis',
+      });
+    } else {
+      // Policy not configured — show as source gap, not fake green
+      const policyNodeId = stableNodeId('policy', ['not_configured']);
+      nodes.push({
+        id: policyNodeId,
+        label: SUBTYPE_LABELS['NOT_CONFIGURED'] || 'Policy not yet defined',
+        kind: 'policy',
+        subType: 'NOT_CONFIGURED',
+        subTypeLabel: 'Policy not yet defined',
+        aiReachable: 'UNKNOWN',
+        availability: 'SOURCE_GAP',
+        limitations: ['No approved operating envelope configured for this AI System'],
+      });
+      limitations.push('No approved operating envelope configured — policy plane is not established');
+    }
   }
 
   // ─── APPLICATION_ACCESS_ADAPTER (AC-1 persisted facts) ──────────────────
+  // Uses the SAME source selection as Action Authority (orchestrator run → staticScanId)
   const ac1Read = await readApplicationAuthorizationForSystem(aiSystemId, organizationId);
 
   let mapAvailability: NodeAvailability = 'AVAILABLE';
   let scanProvenance: TopologyProjectionResult['scanProvenance'];
 
-  if (ac1Read.status === 'NO_ACCEPTED_SCAN') {
+  if (ac1Read.status === 'NO_CURRENT_ACCEPTED_SOURCE') {
     mapAvailability = 'SOURCE_GAP';
-    limitations.push('No completed scan exists for this AI System — run a security scan to populate the map');
+    limitations.push('No current accepted static source exists for this AI System — run a scan via the orchestrator to populate the map');
   } else if (ac1Read.status === 'SOURCE_GAP') {
     mapAvailability = 'SOURCE_GAP';
-    limitations.push('The latest scan predates application authorization analysis — run a new scan to populate the map');
+    if (ac1Read.reason === 'FIELD_NULL') {
+      limitations.push('The current accepted scan predates application authorization analysis — run a new scan to populate the map');
+    } else if (ac1Read.reason === 'INVALID_SNAPSHOT') {
+      limitations.push(`Application authorization snapshot is invalid: ${ac1Read.invalidReason}`);
+    } else if (ac1Read.reason === 'UNSUPPORTED_SCHEMA_VERSION') {
+      limitations.push(`Application authorization snapshot uses unsupported schema version "${ac1Read.encounteredVersion}"`);
+    }
     scanProvenance = {
       scanId: ac1Read.scanId,
       commitSha: null,
@@ -141,70 +222,73 @@ export async function buildTopologyProjection(
     });
 
     const { snapshot } = ac1Read;
-
-    // Add extraction limitations
     for (const lim of snapshot.extractionLimitations) {
       limitations.push(lim);
     }
 
-    // Project AC-1 facts into topology nodes/edges
-    // Group facts by entrypoint to build identity → access → action → consequence chains
-    const entrypointMap = new Map<string, TopologyNode>();
+    // Build a lookup of candidate actions from Action Authority for five-plane overlay
+    const candidateActionMap = new Map<string, PlaneStatusDisplay>();
+    if (actionAuthority?.currentSourceBasis?.candidateActions) {
+      for (const ca of actionAuthority.currentSourceBasis.candidateActions) {
+        // Key by action string — may not exact-join to AC-1 occurrence
+        candidateActionMap.set(ca.action, {
+          requested: ca.planeStatus.requested,
+          policyAuthorized: ca.planeStatus.policyAuthorized,
+          effectivelyGranted: ca.planeStatus.effectivelyGranted,
+          codeCapable: ca.planeStatus.codeCapable,
+          observed: ca.planeStatus.observed,
+        });
+      }
+    }
+
+    // Track which action-occurrence IDs we've created (repair 16: don't collapse)
+    const actionOccurrenceNodes = new Map<string, TopologyNode>();
+    // Track entrypoint nodes
+    const entrypointNodes = new Map<string, TopologyNode>();
+    // Track identity nodes
+    const identityNodes = new Map<string, TopologyNode>();
+    // Track access nodes
+    const accessNodes = new Map<string, TopologyNode>();
+    // Track tenant context nodes per entrypoint
+    const tenantContextNodes = new Map<string, TopologyNode>();
 
     for (const fact of snapshot.facts) {
-      // ─── Identity Node ──────────────────────────────────────────────────
-      const identityKey = fact.subjectKind === 'role' || fact.subjectKind === 'permission'
-        ? `${fact.subjectKind}:${fact.roleOrPermissionToken ?? 'unknown'}`
-        : fact.subjectKind;
-      const identityNodeId = stableNodeId('identity', sanitizeSemanticKey(identityKey));
-      if (!nodes.some((n) => n.id === identityNodeId)) {
+      const scanId = ac1Read.scanId;
+
+      // ─── Identity Node (repair 15: semantic tuple, not display string) ──
+      const identityTuple = [scanId, s(fact.entrypointId), fact.subjectKind, s(fact.roleOrPermissionToken)];
+      const identityNodeId = stableNodeId('identity', identityTuple);
+      if (!identityNodes.has(identityNodeId)) {
         const identityLabel = fact.subjectKind === 'role'
           ? `${fact.roleOrPermissionToken ?? 'Role'} role`
           : fact.subjectKind === 'permission'
           ? `${fact.roleOrPermissionToken ?? 'Permission'} permission`
-          : fact.subjectKind === 'authenticated_user'
-          ? 'Authenticated User'
-          : fact.subjectKind === 'tenant'
-          ? 'Tenant'
-          : fact.subjectKind === 'service_identity'
-          ? 'Service Identity'
-          : fact.subjectKind === 'agent_identity'
-          ? 'Agent Identity'
-          : 'Unknown Identity';
-        nodes.push({
+          : SUBTYPE_LABELS[fact.subjectKind] || fact.subjectKind;
+        const identityNode: TopologyNode = {
           id: identityNodeId,
           label: identityLabel,
           kind: 'identity',
           subType: fact.subjectKind,
+          subTypeLabel: SUBTYPE_LABELS[fact.subjectKind] || fact.subjectKind,
           aiReachable: 'UNKNOWN',
           availability: 'AVAILABLE',
           limitations: [],
-        });
+        };
+        identityNodes.set(identityNodeId, identityNode);
+        nodes.push(identityNode);
       }
 
       // ─── Application Access Node ────────────────────────────────────────
-      const accessKey = `${fact.guardType}:${fact.roleOrPermissionToken ?? fact.subjectKind}`;
-      const accessNodeId = stableNodeId('application_access', sanitizeSemanticKey(accessKey));
-      if (!nodes.some((n) => n.id === accessNodeId)) {
-        const accessLabel = fact.guardType === 'authentication'
-          ? 'Authentication'
-          : fact.guardType === 'role_check'
-          ? `Role Guard: ${fact.roleOrPermissionToken ?? 'unknown'}`
-          : fact.guardType === 'permission_check'
-          ? `Permission Guard: ${fact.roleOrPermissionToken ?? 'unknown'}`
-          : fact.guardType === 'tenant_filter'
-          ? 'Tenant Boundary'
-          : fact.guardType === 'object_ownership'
-          ? 'Object Authorization'
-          : fact.guardType === 'middleware'
-          ? 'Middleware'
-          : fact.guardType === 'decorator'
-          ? 'Decorator'
-          : 'Unknown Guard';
+      const accessTuple = [scanId, s(fact.entrypointId), fact.guardType, s(fact.roleOrPermissionToken)];
+      const accessNodeId = stableNodeId('application_access', accessTuple);
+      if (!accessNodes.has(accessNodeId)) {
+        const accessLabel = SUBTYPE_LABELS[fact.guardType] || fact.guardType;
         const accessAvailability: NodeAvailability = fact.authorizationOrdering === 'AFTER_SINK'
           ? 'PARTIAL'
           : fact.authorizationOrdering === 'AUTH_NOT_FOUND'
           ? 'UNAVAILABLE'
+          : fact.authorizationOrdering === 'AUTH_ORDER_UNKNOWN'
+          ? 'UNKNOWN'
           : 'AVAILABLE';
         const accessLimitations: string[] = [];
         if (fact.authorizationOrdering === 'AFTER_SINK') {
@@ -213,214 +297,402 @@ export async function buildTopologyProjection(
         if (fact.authenticationOrdering === 'AUTH_NOT_FOUND') {
           accessLimitations.push('No authentication guard found');
         }
-        nodes.push({
+        const accessNode: TopologyNode = {
           id: accessNodeId,
           label: accessLabel,
           kind: 'application_access',
           subType: fact.guardType,
+          subTypeLabel: SUBTYPE_LABELS[fact.guardType] || fact.guardType,
           aiReachable: 'UNKNOWN',
           availability: accessAvailability,
           sourceLocation: fact.guardLocation ? `${fact.guardLocation.file}:${fact.guardLocation.line}` : undefined,
           limitations: accessLimitations,
-        });
+        };
+        accessNodes.set(accessNodeId, accessNode);
+        nodes.push(accessNode);
       }
 
-      // ─── Action Node ────────────────────────────────────────────────────
-      const actionKey = fact.protectedAction ?? fact.sinkId ?? 'unknown';
-      const actionNodeId = stableNodeId('action', sanitizeSemanticKey(actionKey));
-      if (!nodes.some((n) => n.id === actionNodeId)) {
-        nodes.push({
+      // ─── Entrypoint Node (repair 13: project entrypoint/route layer) ────
+      let entrypointNodeId: string | undefined;
+      if (fact.entrypointId) {
+        const epTuple = [scanId, fact.entrypointId];
+        entrypointNodeId = stableNodeId('entrypoint', epTuple);
+        if (!entrypointNodes.has(entrypointNodeId)) {
+          const epNode: TopologyNode = {
+            id: entrypointNodeId,
+            label: fact.route || fact.entrypointId,
+            kind: 'entrypoint',
+            subType: 'route',
+            subTypeLabel: 'Route / Handler',
+            aiReachable: 'UNKNOWN',
+            availability: 'AVAILABLE',
+            sourceLocation: fact.sourceLocation,
+            limitations: [],
+          };
+          entrypointNodes.set(entrypointNodeId, epNode);
+          nodes.push(epNode);
+        }
+      }
+
+      // ─── Action Node (repair 16: don't collapse same-named actions) ─────
+      // Identity = scanId + entrypointId + sinkId + protectedAction
+      const actionTuple = [scanId, s(fact.entrypointId), s(fact.sinkId), s(fact.protectedAction)];
+      const actionNodeId = stableNodeId('action', actionTuple);
+      let actionNode = actionOccurrenceNodes.get(actionNodeId);
+      if (!actionNode) {
+        // Five-plane overlay from Action Authority (exact string match — may not join)
+        const planeStatus = fact.protectedAction ? candidateActionMap.get(fact.protectedAction) : undefined;
+        actionNode = {
           id: actionNodeId,
-          label: fact.protectedAction ?? 'Action',
+          label: fact.protectedAction || 'Action',
           kind: 'action',
-          subType: undefined,
           aiReachable: fact.aiReachable,
           availability: 'AVAILABLE',
           sourceLocation: fact.sourceLocation,
           limitations: fact.limitations,
-        });
-      }
-
-      // ─── Consequence Node ───────────────────────────────────────────────
-      // Infer consequence from action type
-      const consequenceKey = inferConsequenceKey(fact.protectedAction);
-      const consequenceNodeId = stableNodeId('consequence', sanitizeSemanticKey(consequenceKey));
-      if (!nodes.some((n) => n.id === consequenceNodeId)) {
-        nodes.push({
-          id: consequenceNodeId,
-          label: inferConsequenceLabel(consequenceKey),
-          kind: 'consequence',
-          aiReachable: fact.aiReachable,
-          availability: 'AVAILABLE',
-          limitations: [],
-        });
+          planeStatus,
+        };
+        actionOccurrenceNodes.set(actionNodeId, actionNode);
+        nodes.push(actionNode);
       }
 
       // ─── Edges ──────────────────────────────────────────────────────────
-      // identity → access
-      const identityToAccessEdge = stableEdgeId(identityNodeId, accessNodeId, 'reaches');
-      if (!edges.some((e) => e.id === identityToAccessEdge)) {
+      // identity → access (reaches)
+      const idToAccessEdge = stableEdgeId(identityNodes.get(identityNodeId)!.id, accessNodeId, 'reaches');
+      if (!edges.some((e) => e.id === idToAccessEdge)) {
         edges.push({
-          id: identityToAccessEdge,
+          id: idToAccessEdge,
           source: identityNodeId,
           target: accessNodeId,
           label: 'reaches',
           kind: 'reaches',
           joinBasis: 'STRUCTURAL_RELATION',
+          style: 'solid',
+        });
+        relations.push({
+          relationType: 'IDENTITY_REACHES_ACCESS',
+          fromRef: identityNodeId,
+          toRef: accessNodeId,
+          joinBasis: 'STRUCTURAL_RELATION',
         });
       }
 
-      // access → action (guarded_by)
-      const accessToActionEdge = stableEdgeId(accessNodeId, actionNodeId, 'guarded_by');
-      if (!edges.some((e) => e.id === accessToActionEdge)) {
-        edges.push({
-          id: accessToActionEdge,
-          source: accessNodeId,
-          target: actionNodeId,
-          label: fact.authorizationOrdering === 'BEFORE_SINK' ? 'guards' : 'does not guard',
-          kind: 'guarded_by',
-          joinBasis: 'SOURCE_LOCATION_CORRELATION',
-        });
+      // access → entrypoint (routes_to) — repair 13
+      if (entrypointNodeId) {
+        const accessToEpEdge = stableEdgeId(accessNodeId, entrypointNodeId, 'routes_to');
+        if (!edges.some((e) => e.id === accessToEpEdge)) {
+          edges.push({
+            id: accessToEpEdge,
+            source: accessNodeId,
+            target: entrypointNodeId,
+            label: 'routes to',
+            kind: 'routes_to',
+            joinBasis: 'SOURCE_LOCATION_CORRELATION',
+            style: 'solid',
+          });
+          relations.push({
+            relationType: 'ACCESS_ROUTES_TO_ENTRYPOINT',
+            fromRef: accessNodeId,
+            toRef: entrypointNodeId,
+            joinBasis: 'SOURCE_LOCATION_CORRELATION',
+          });
+        }
+
+        // entrypoint → action (can_reach) — repair 9: truthful reachability
+        const epToActionEdge = stableEdgeId(entrypointNodeId, actionNodeId, 'can_reach');
+        if (!edges.some((e) => e.id === epToActionEdge)) {
+          const reachLabel = fact.aiReachable === true ? 'can reach' : fact.aiReachable === 'UNKNOWN' ? 'reachability unknown' : 'not AI-reachable';
+          const reachStyle: 'solid' | 'dashed' | 'dotted' = fact.aiReachable === true ? 'solid' : fact.aiReachable === 'UNKNOWN' ? 'dotted' : 'dashed';
+          edges.push({
+            id: epToActionEdge,
+            source: entrypointNodeId,
+            target: actionNodeId,
+            label: reachLabel,
+            kind: 'can_reach',
+            joinBasis: 'STRUCTURAL_RELATION',
+            style: reachStyle,
+          });
+          relations.push({
+            relationType: 'ENTRYPOINT_REACHES_ACTION',
+            fromRef: entrypointNodeId,
+            toRef: actionNodeId,
+            joinBasis: 'STRUCTURAL_RELATION',
+          });
+        }
+      } else {
+        // No entrypoint — access → action directly
+        const accessToActionEdge = stableEdgeId(accessNodeId, actionNodeId, 'guarded_by');
+        if (!edges.some((e) => e.id === accessToActionEdge)) {
+          // repair 10: truthful ordering labels
+          const guardLabel = SUBTYPE_LABELS[fact.authorizationOrdering] || fact.authorizationOrdering;
+          const guardStyle: 'solid' | 'dashed' | 'dotted' =
+            fact.authorizationOrdering === 'BEFORE_SINK' ? 'solid' :
+            fact.authorizationOrdering === 'AFTER_SINK' ? 'dashed' :
+            fact.authorizationOrdering === 'AUTH_NOT_FOUND' ? 'dotted' : 'dotted';
+          edges.push({
+            id: accessToActionEdge,
+            source: accessNodeId,
+            target: actionNodeId,
+            label: guardLabel,
+            kind: 'guarded_by',
+            joinBasis: 'SOURCE_LOCATION_CORRELATION',
+            style: guardStyle,
+          });
+          relations.push({
+            relationType: 'ACCESS_GUARDS_ACTION',
+            fromRef: accessNodeId,
+            toRef: actionNodeId,
+            joinBasis: 'SOURCE_LOCATION_CORRELATION',
+          });
+        }
       }
 
-      // ai_execution → action (executes)
-      const aiToActionEdge = stableEdgeId(aiSystemNode.id, actionNodeId, 'executes');
-      if (!edges.some((e) => e.id === aiToActionEdge)) {
-        edges.push({
-          id: aiToActionEdge,
-          source: aiSystemNode.id,
-          target: actionNodeId,
-          label: 'executes',
-          kind: 'executes',
-          joinBasis: 'EXACT_ID',
-        });
+      // ─── Tenant Branch (repair 14) ──────────────────────────────────────
+      if (fact.tenantContextPresent && fact.entrypointId) {
+        const tenantTuple = [scanId, fact.entrypointId, 'tenant_context'];
+        const tenantNodeId = stableNodeId('identity', tenantTuple);
+        if (!tenantContextNodes.has(tenantNodeId)) {
+          const tenantAvailability: NodeAvailability = fact.tenantFilterBound ? 'AVAILABLE' : 'UNKNOWN';
+          const tenantLabel = fact.tenantFilterBound ? 'Tenant scoped to this action' : 'Tenant context detected';
+          const tenantLimitations = fact.tenantFilterBound
+            ? []
+            : ['Tenant context detected — enforcement on this action not established'];
+          const tenantNode: TopologyNode = {
+            id: tenantNodeId,
+            label: tenantLabel,
+            kind: 'identity',
+            subType: 'tenant',
+            subTypeLabel: 'Tenant context',
+            aiReachable: 'UNKNOWN',
+            availability: tenantAvailability,
+            limitations: tenantLimitations,
+          };
+          tenantContextNodes.set(tenantNodeId, tenantNode);
+          nodes.push(tenantNode);
+        }
+
+        // Tenant → action edge (scoped_by)
+        const tenantEdgeId = stableEdgeId(tenantNodeId, actionNodeId, 'scoped_by');
+        if (!edges.some((e) => e.id === tenantEdgeId)) {
+          // repair 14: solid only when filter is bound; dotted when context-only
+          const tenantEdgeStyle: 'solid' | 'dotted' = fact.tenantFilterBound ? 'solid' : 'dotted';
+          const tenantEdgeLabel = fact.tenantFilterBound ? 'scopes' : 'context only — enforcement not established';
+          edges.push({
+            id: tenantEdgeId,
+            source: tenantNodeId,
+            target: actionNodeId,
+            label: tenantEdgeLabel,
+            kind: 'scoped_by',
+            joinBasis: 'SOURCE_LOCATION_CORRELATION',
+            style: tenantEdgeStyle,
+          });
+          relations.push({
+            relationType: fact.tenantFilterBound ? 'TENANT_SCOPES_ACTION' : 'TENANT_CONTEXT_DETECTED',
+            fromRef: tenantNodeId,
+            toRef: actionNodeId,
+            joinBasis: 'SOURCE_LOCATION_CORRELATION',
+          });
+        }
+
+        // Object authorization remains not established unless AC-1 establishes it
+        if (!fact.objectOwnershipChecked) {
+          // Add limitation to action node
+          const existingAction = actionOccurrenceNodes.get(actionNodeId);
+          if (existingAction && !existingAction.limitations.some((l) => l.includes('Object access'))) {
+            existingAction.limitations.push('Object access not established');
+          }
+        }
       }
 
-      // action → consequence (produces)
-      const actionToConsequenceEdge = stableEdgeId(actionNodeId, consequenceNodeId, 'produces');
-      if (!edges.some((e) => e.id === actionToConsequenceEdge)) {
+      // ─── Consequence (repair 7: no lexical inference) ───────────────────
+      // Consequences are emitted ONLY when source-established by a qualified owner.
+      // The current MVP does not have a qualified consequence owner for AC-1 facts.
+      // Show "Consequence not established" as UNKNOWN presentation state.
+      // Do NOT fabricate a categorical effect.
+      const consequenceTuple = [scanId, s(fact.entrypointId), s(fact.sinkId), 'consequence'];
+      const consequenceNodeId = stableNodeId('consequence', consequenceTuple);
+      if (!nodes.some((n) => n.id === consequenceNodeId)) {
+        nodes.push({
+          id: consequenceNodeId,
+          label: 'Consequence not established',
+          kind: 'consequence',
+          aiReachable: fact.aiReachable,
+          availability: 'UNKNOWN',
+          limitations: ['Consequence semantics require a qualified source owner — not inferred from action name'],
+        });
+        // action → consequence (produces) — repair 8: no unqualified SEMANTIC_REFERENCE
+        const actionToConsequenceEdge = stableEdgeId(actionNodeId, consequenceNodeId, 'produces');
         edges.push({
           id: actionToConsequenceEdge,
           source: actionNodeId,
           target: consequenceNodeId,
-          label: 'produces',
+          label: 'effect not established',
           kind: 'produces',
-          joinBasis: 'SEMANTIC_REFERENCE',
+          joinBasis: 'UNRESOLVED',
+          style: 'dotted',
+        });
+        relations.push({
+          relationType: 'ACTION_CONSEQUENCE_UNRESOLVED',
+          fromRef: actionNodeId,
+          toRef: consequenceNodeId,
+          joinBasis: 'UNRESOLVED',
         });
       }
-
-      // Track entrypoint for tenant filter annotation
-      if (fact.entrypointId && !entrypointMap.has(fact.entrypointId)) {
-        entrypointMap.set(fact.entrypointId, {
-          id: stableNodeId('application_access', `entrypoint:${sanitizeSemanticKey(fact.entrypointId)}`),
-          label: fact.route ?? fact.entrypointId,
-          kind: 'application_access',
-          subType: 'entrypoint',
-          aiReachable: 'UNKNOWN',
-          availability: 'AVAILABLE',
-          sourceLocation: fact.sourceLocation,
-          limitations: [],
-        });
-      }
-
-      // Add wave0 relation for canonical hash
-      relations.push({
-        relationType: 'IDENTITY_REACHES_ACTION',
-        fromRef: identityNodeId,
-        toRef: actionNodeId,
-        joinBasis: 'STRUCTURAL_RELATION',
-      });
-    }
-
-    // Tenant filter annotation
-    const tenantFilteredFacts = snapshot.facts.filter((f) => f.tenantFilterBound);
-    const tenantContextFacts = snapshot.facts.filter((f) => f.tenantContextPresent && !f.tenantFilterBound);
-    if (tenantContextFacts.length > 0) {
-      limitations.push(`${tenantContextFacts.length} action(s) have tenant context but no bound tenant filter`);
     }
   }
 
-  // ─── PROVIDER IAM (separate branch — partial) ───────────────────────────
+  // ─── CONNECTED_ASSET_ADAPTER (repair 12: actually project assets) ───────
+  let assets: Awaited<ReturnType<typeof listConnectedAssets>> = [];
+  try {
+    assets = await listConnectedAssets(aiSystemId, organizationId, { includeRetired: false });
+  } catch {
+    limitations.push('Connected assets could not be loaded');
+  }
+
+  for (const asset of assets) {
+    const assetNodeId = stableNodeId('connected_asset', [asset.id]);
+    nodes.push({
+      id: assetNodeId,
+      label: asset.assetType.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase()),
+      kind: 'connected_asset',
+      subType: asset.assetType,
+      subTypeLabel: asset.assetType.replace(/_/g, ' '),
+      aiReachable: 'UNKNOWN',
+      availability: asset.connectionState === 'CONNECTED' ? 'AVAILABLE' : asset.connectionState === 'REGISTERED' ? 'PARTIAL' : 'UNKNOWN',
+      limitations: [],
+    });
+    // AI System → Connected Asset (connected_to) — inventory relationship, not execution
+    const assetEdgeId = stableEdgeId(aiSystemNodeId, assetNodeId, 'connected_to');
+    edges.push({
+      id: assetEdgeId,
+      source: aiSystemNodeId,
+      target: assetNodeId,
+      label: 'connected to',
+      kind: 'connected_to',
+      joinBasis: 'EXACT_ID',
+      style: 'solid',
+    });
+    relations.push({
+      relationType: 'SYSTEM_CONNECTED_TO_ASSET',
+      fromRef: aiSystemNodeId,
+      toRef: assetNodeId,
+      joinBasis: 'EXACT_ID',
+    });
+    sourceRefs.push({
+      sourceAuthority: 'HAIEC_NATIVE_PERSISTED',
+      sourceId: `ai_system_assets:${asset.id}`,
+      derivationMethod: 'listConnectedAssets',
+    });
+  }
+
+  // ─── PROVIDER IAM (repair 11: evidence, not authorization) ─────────────
   let providerIam: TopologyProjectionResult['providerIam'];
   try {
     const grant = await getCurrentEffectiveGrant(organizationId, aiSystemId);
     if (grant.state !== 'NOT_OBSERVED' && grant.state !== 'INVALID_PERSISTED_STATE') {
-      // PARTIAL_AWS_AUTHORITY_SOURCE — never promote to EFFECTIVELY_GRANTED
+      // repair 11: OBSERVATION_FAILED → UNAVAILABLE, not PARTIAL
+      const iamAvailability: NodeAvailability =
+        grant.state === 'OBSERVATION_FAILED' ? 'UNAVAILABLE' :
+        grant.state === 'OBSERVED_PARTIAL' || grant.state === 'OBSERVED_NO_QUALIFIED' ? 'PARTIAL' :
+        'UNKNOWN';
+
+      const iamLabel = grant.state === 'OBSERVATION_FAILED'
+        ? 'Credential observation failed'
+        : 'Credential evidence';
+
       providerIam = {
         state: grant.state,
         principalArn: grant.principalArn,
         observedAt: grant.observedAt,
         limitations: [
-          'Provider IAM observation is partial — identity policy allows do not equal effective grants',
+          'Credential evidence is partial — identity policy allows do not equal effective grants',
           'Unmodeled authorization layers (resource policies, SCPs, session policies) may change actual authorization',
         ],
       };
-      const iamNodeId = stableNodeId('provider_iam', sanitizeSemanticKey(grant.principalArn ?? 'aws-iam'));
+
+      const iamNodeId = stableNodeId('provider_iam', [s(grant.principalArn), aiSystemId]);
       nodes.push({
         id: iamNodeId,
-        label: 'Provider IAM',
+        label: iamLabel,
         kind: 'provider_iam',
-        subType: 'aws',
+        subType: grant.state,
+        subTypeLabel: SUBTYPE_LABELS[grant.state] || grant.state,
         aiReachable: 'UNKNOWN',
-        availability: 'PARTIAL',
+        availability: iamAvailability,
         limitations: providerIam.limitations,
       });
-      // Connect IAM to AI System
+
+      // repair 11: uses_credential / evidenced_by — NOT authorized_by
+      const iamEdgeKind = grant.state === 'OBSERVATION_FAILED' ? 'evidenced_by' : 'uses_credential';
+      const iamEdgeLabel = grant.state === 'OBSERVATION_FAILED' ? 'observation failed' : 'uses credential';
       edges.push({
-        id: stableEdgeId(iamNodeId, aiSystemNode.id, 'authorized_by'),
+        id: stableEdgeId(iamNodeId, aiSystemNodeId, iamEdgeKind),
         source: iamNodeId,
-        target: aiSystemNode.id,
-        label: 'partial authority',
-        kind: 'authorized_by',
+        target: aiSystemNodeId,
+        label: iamEdgeLabel,
+        kind: iamEdgeKind,
         joinBasis: 'EXACT_ID',
+        style: grant.state === 'OBSERVATION_FAILED' ? 'dashed' : 'dotted',
       });
       relations.push({
-        relationType: 'PROVIDER_IAM_PARTIAL',
+        relationType: 'PROVIDER_CREDENTIAL_EVIDENCE',
         fromRef: iamNodeId,
-        toRef: aiSystemNode.id,
+        toRef: aiSystemNodeId,
         joinBasis: 'EXACT_ID',
       });
     }
   } catch {
-    // Non-fatal — provider IAM is a separate overlay
-    limitations.push('Provider IAM observation could not be loaded');
+    limitations.push('Provider credential evidence could not be loaded');
   }
 
-  // ─── EVIDENCE_ADAPTER (separate overlay) ────────────────────────────────
-  // Add evidence summary node as overlay (does not create new Evidence)
+  // ─── EVIDENCE_ADAPTER (repair 17: reuse canonical resolveSystemEvidence) ─
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const evidenceCount = await (prisma as any).evidence.count({
-      where: {
-        organizationId,
-        status: 'active',
-        metadata: { path: ['target', 'id'], equals: aiSystemId } as any,
-      },
-    });
-    if (evidenceCount > 0) {
-      const evidenceNodeId = stableNodeId('evidence', sanitizeSemanticKey(aiSystemId));
+    const evidenceResult = await resolveSystemEvidence(aiSystemId, organizationId);
+    if (evidenceResult && evidenceResult.records.length > 0) {
+      const evidenceNodeId = stableNodeId('evidence', [aiSystemId]);
       nodes.push({
         id: evidenceNodeId,
         label: 'Evidence',
         kind: 'evidence',
         aiReachable: 'UNKNOWN',
-        availability: 'AVAILABLE',
-        limitations: [],
+        availability: evidenceResult.coverage === 'NOT_ASSESSED' ? 'SOURCE_GAP' : 'AVAILABLE',
+        limitations: evidenceResult.hasPartialProducerEvidence ? ['Some producer evidence is partial'] : [],
       });
       edges.push({
-        id: stableEdgeId(evidenceNodeId, aiSystemNode.id, 'observed_by'),
+        id: stableEdgeId(evidenceNodeId, aiSystemNodeId, 'evidenced_by'),
         source: evidenceNodeId,
-        target: aiSystemNode.id,
-        label: 'observes',
-        kind: 'observed_by',
+        target: aiSystemNodeId,
+        label: 'evidences',
+        kind: 'evidenced_by',
         joinBasis: 'EXACT_ID',
+        style: 'solid',
+      });
+      relations.push({
+        relationType: 'EVIDENCE_FOR_SYSTEM',
+        fromRef: evidenceNodeId,
+        toRef: aiSystemNodeId,
+        joinBasis: 'EXACT_ID',
+      });
+
+      // repair 18: add evidenceRefs to canonical payload
+      for (const rec of evidenceResult.records.slice(0, 20)) {
+        evidenceRefs.push({
+          evidenceId: rec.id,
+          producerId: rec.producerId as any,
+          producerRunId: rec.producerRunId ?? undefined,
+        });
+      }
+      sourceRefs.push({
+        sourceAuthority: 'HAIEC_NATIVE_PERSISTED',
+        sourceId: `evidence:system:${aiSystemId}`,
+        derivationMethod: 'resolveSystemEvidence',
       });
     }
   } catch {
     // Non-fatal
   }
 
-  // ─── Compute deterministic projection hash ──────────────────────────────
+  // ─── Compute deterministic projection hash (repair 18: covers graph truth) ─
   const payload: TopologyProjectionPayload = {
     projectionSchemaVersion: TOPOLOGY_PROJECTION_SCHEMA_VERSION,
     sourceVersion: TOPOLOGY_PROJECTION_VERSION,
@@ -428,15 +700,17 @@ export async function buildTopologyProjection(
     organizationId,
     aiSystemId,
     scanId: scanProvenance?.scanId,
-    primaryTimeBasis: 'SCAN_RUN',
+    // repair 4: CURRENT composite map, not historical scan snapshot
+    primaryTimeBasis: 'CURRENT',
     coverage: mapAvailability === 'AVAILABLE' ? 'PARTIAL' : mapAvailability === 'SOURCE_GAP' ? 'NOT_ASSESSED' : 'UNKNOWN',
     limitations,
     relations,
     sourceRefs,
+    evidenceRefs,
   };
   const projectionHash = computeProjectionHash(payload);
 
-  // ─── Deterministic ordering ─────────────────────────────────────────────
+  // Deterministic ordering
   nodes.sort((a, b) => a.id.localeCompare(b.id));
   edges.sort((a, b) => a.id.localeCompare(b.id));
 
@@ -448,7 +722,7 @@ export async function buildTopologyProjection(
     aiSystemId,
     aiSystemName: aiSystem.name || 'AI System',
     scanId: scanProvenance?.scanId,
-    primaryTimeBasis: 'SCAN_RUN',
+    primaryTimeBasis: 'CURRENT',
     projectionHash,
     coverage: payload.coverage,
     mapAvailability,
@@ -457,34 +731,8 @@ export async function buildTopologyProjection(
     edges,
     scanProvenance,
     providerIam,
+    currentPolicy,
     lenses: SUPPORTED_MAP_LENSES,
     zoomLevels: SUPPORTED_SEMANTIC_ZOOM_LEVELS,
   };
-}
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function inferConsequenceKey(action: string | undefined): string {
-  if (!action) return 'unknown';
-  const lower = action.toLowerCase();
-  if (lower.includes('delete') || lower.includes('remove')) return 'delete';
-  if (lower.includes('create') || lower.includes('insert') || lower.includes('write') || lower.includes('post')) return 'write_data';
-  if (lower.includes('update') || lower.includes('patch') || lower.includes('put')) return 'write_data';
-  if (lower.includes('refund') || lower.includes('charge') || lower.includes('payment')) return 'financial_mutation';
-  if (lower.includes('send') || lower.includes('email') || lower.includes('notify')) return 'send_externally';
-  if (lower.includes('config') || lower.includes('deploy') || lower.includes('infra')) return 'config_change';
-  if (lower.includes('role') || lower.includes('permission') || lower.includes('admin')) return 'authority_change';
-  return 'read_data';
-}
-
-function inferConsequenceLabel(key: string): string {
-  switch (key) {
-    case 'delete': return 'Delete Data';
-    case 'write_data': return 'Write Data';
-    case 'financial_mutation': return 'Financial Mutation';
-    case 'send_externally': return 'Send Externally';
-    case 'config_change': return 'Configuration Change';
-    case 'authority_change': return 'Authority Change';
-    default: return 'Read Data';
-  }
 }

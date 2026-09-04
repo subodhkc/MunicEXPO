@@ -1,34 +1,48 @@
 /**
- * AI Action & Access Map — Stable ID Generation
+ * AI Action & Access Map — Stable Semantic Identity
  *
- * Deterministic node/edge IDs based on semantic identity.
- * IDs are stable across re-projections of the same source data.
- * IDs do NOT depend on array order or insertion sequence.
+ * Node/edge IDs are built from explicit semantic tuples and hashed using
+ * the existing HAIEC deterministic hash owner (hashTextContent).
+ *
+ * LOCK: DISPLAY_LABEL != NODE_IDENTITY
+ * LOCK: SAME_ACTION_LABEL != SAME_EXECUTION_PATH
  *
  * @version topology-1.0.0
  */
 
+import { hashTextContent } from '@/lib/evidence/crypto-hash';
+
 /**
- * Generate a stable node ID from kind + semantic key.
+ * Build a stable node ID from a semantic identity tuple.
+ *
+ * The tuple is an array of strings representing the canonical semantic identity.
+ * It is joined with a unit separator and SHA-256 hashed.
+ *
+ * Example: action occurrence = [scanId, entrypointId, sinkId, protectedAction]
+ * Example: role guard = [scanId, entrypointId, guardType, token]
+ * Example: connected asset = [connectedAssetId]
+ *
+ * The human label is separate from this identity.
  */
-export function stableNodeId(kind: string, semanticKey: string): string {
-  return `node:${kind}:${semanticKey}`;
+export function stableNodeId(kind: string, semanticTuple: string[]): string {
+  const canonical = [kind, ...semanticTuple].join('\x1F');
+  const hash = hashTextContent(canonical);
+  return `node:${kind}:${hash.slice(0, 24)}`;
 }
 
 /**
- * Generate a stable edge ID from source + target + kind.
+ * Build a stable edge ID from source + target + kind.
  */
 export function stableEdgeId(source: string, target: string, kind: string): string {
-  return `edge:${kind}:${source}->${target}`;
+  const canonical = [kind, source, target].join('\x1F');
+  const hash = hashTextContent(canonical);
+  return `edge:${kind}:${hash.slice(0, 24)}`;
 }
 
 /**
- * Sanitize a string for use as a semantic key.
- * Replaces characters that could break ID parsing.
+ * Safely convert a value to a string for semantic tuple inclusion.
+ * Returns empty string for null/undefined.
  */
-export function sanitizeSemanticKey(input: string): string {
-  return input
-    .replace(/[\s<>]/g, '_')
-    .replace(/[^a-zA-Z0-9_:\-\.\/]/g, '')
-    .slice(0, 200) || 'unknown';
+export function s(value: string | undefined | null): string {
+  return value ?? '';
 }
