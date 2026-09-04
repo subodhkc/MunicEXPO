@@ -282,88 +282,71 @@ export function computeSemanticDiff(
     }
   }
 
-  // Compare numeric limits
-  if (draft.maxTargetCount !== undefined || approved.maxTargetCount !== undefined) {
-    const draftVal = draft.maxTargetCount;
-    const approvedVal = approved.maxTargetCount;
-    if (draftVal !== approvedVal) {
-      if (draftVal !== undefined && approvedVal !== undefined) {
-        if (draftVal > approvedVal) {
-          entries.push({
-            changeType: 'LIMIT_INCREASED',
-            description: `Max targets per action increased: ${approvedVal} → ${draftVal}`,
-            field: 'maxTargetCount',
-          });
-          hasExpanded = true;
-        } else {
-          entries.push({
-            changeType: 'LIMIT_REDUCED',
-            description: `Max targets per action reduced: ${approvedVal} → ${draftVal}`,
-            field: 'maxTargetCount',
-          });
-          hasNarrowed = true;
-        }
-      } else if (draftVal !== undefined && approvedVal === undefined) {
-        entries.push({
-          changeType: 'LIMIT_INCREASED',
-          description: `Max targets per action set to ${draftVal} (was unspecified)`,
-          field: 'maxTargetCount',
-        });
-        hasExpanded = true;
-      } else if (draftVal === undefined && approvedVal !== undefined) {
-        entries.push({
-          changeType: 'LIMIT_REDUCED',
-          description: `Max targets per action removed (was ${approvedVal})`,
-          field: 'maxTargetCount',
-        });
-        hasNarrowed = true;
-      }
-    }
-  }
+  // Compare numeric limits (upper bounds)
+  // DEFECT 5 REPAIR: These are UPPER bounds.
+  //   undefined → bound introduced = NARROWS (introduces a new ceiling)
+  //   bound → undefined = EXPANDS (removes a ceiling)
+  //   10 → 20 = EXPANDS (higher ceiling)
+  //   20 → 10 = NARROWS (lower ceiling)
+  const compareLimit = (
+    field: string,
+    draftVal: number | undefined,
+    approvedVal: number | undefined,
+    label: string,
+  ) => {
+    if (draftVal === approvedVal) return; // no change (both undefined or equal)
 
-  if (draft.maxChangeMagnitude !== undefined || approved.maxChangeMagnitude !== undefined) {
-    const draftVal = draft.maxChangeMagnitude;
-    const approvedVal = approved.maxChangeMagnitude;
-    if (draftVal !== approvedVal) {
-      if (draftVal !== undefined && approvedVal !== undefined) {
-        if (draftVal > approvedVal) {
-          entries.push({
-            changeType: 'LIMIT_INCREASED',
-            description: `Max change magnitude increased: ${approvedVal} → ${draftVal}`,
-            field: 'maxChangeMagnitude',
-          });
-          hasExpanded = true;
-        } else {
-          entries.push({
-            changeType: 'LIMIT_REDUCED',
-            description: `Max change magnitude reduced: ${approvedVal} → ${draftVal}`,
-            field: 'maxChangeMagnitude',
-          });
-          hasNarrowed = true;
-        }
-      } else if (draftVal !== undefined && approvedVal === undefined) {
+    if (draftVal !== undefined && approvedVal !== undefined) {
+      // Both defined — compare values
+      if (draftVal > approvedVal) {
         entries.push({
           changeType: 'LIMIT_INCREASED',
-          description: `Max change magnitude set to ${draftVal} (was unspecified)`,
-          field: 'maxChangeMagnitude',
+          description: `${label} increased: ${approvedVal} → ${draftVal}`,
+          field,
         });
         hasExpanded = true;
-      } else if (draftVal === undefined && approvedVal !== undefined) {
+      } else {
         entries.push({
           changeType: 'LIMIT_REDUCED',
-          description: `Max change magnitude removed (was ${approvedVal})`,
-          field: 'maxChangeMagnitude',
+          description: `${label} reduced: ${approvedVal} → ${draftVal}`,
+          field,
         });
         hasNarrowed = true;
       }
+    } else if (draftVal !== undefined && approvedVal === undefined) {
+      // Bound INTRODUCED — a previously absent upper bound is now set.
+      // This NARROWS authority (introduces a new ceiling where none existed).
+      entries.push({
+        changeType: 'LIMIT_REDUCED',
+        description: `Limit introduced: ${label.toLowerCase()} = ${draftVal}`,
+        field,
+      });
+      hasNarrowed = true;
+    } else if (draftVal === undefined && approvedVal !== undefined) {
+      // Bound REMOVED — an existing upper bound is now gone.
+      // This EXPANDS authority (removes a ceiling).
+      entries.push({
+        changeType: 'LIMIT_INCREASED',
+        description: `Limit removed: ${label.toLowerCase()} was ${approvedVal}`,
+        field,
+      });
+      hasExpanded = true;
     }
+  };
+
+  if (draft.maxTargetCount !== undefined || approved.maxTargetCount !== undefined) {
+    compareLimit('maxTargetCount', draft.maxTargetCount, approved.maxTargetCount, 'Max targets per action');
+  }
+  if (draft.maxChangeMagnitude !== undefined || approved.maxChangeMagnitude !== undefined) {
+    compareLimit('maxChangeMagnitude', draft.maxChangeMagnitude, approved.maxChangeMagnitude, 'Max change magnitude');
   }
 
   // Compare approval requirements
+  // DEFECT 6 REPAIR: Also detect role/material changes within an existing requirement.
   const draftApprovals = new Map(draft.approvalRequirements.filter(a => a.requiresApproval).map(a => [a.operation, a]));
   const approvedApprovals = new Map(approved.approvalRequirements.filter(a => a.requiresApproval).map(a => [a.operation, a]));
 
-  for (const [op] of draftApprovals) {
+  for (const [op, draftReq] of draftApprovals) {
     if (!approvedApprovals.has(op)) {
       entries.push({
         changeType: 'APPROVAL_REQUIREMENT_ADDED',
@@ -372,6 +355,20 @@ export function computeSemanticDiff(
       });
       // Adding approval requirements narrows authority (more friction)
       hasNarrowed = true;
+    } else {
+      // Requirement exists in both — check for material role change
+      const approvedReq = approvedApprovals.get(op)!;
+      const draftRole = draftReq.approverRole ?? 'unspecified';
+      const approvedRole = approvedReq.approverRole ?? 'unspecified';
+      if (draftRole !== approvedRole) {
+        entries.push({
+          changeType: 'OTHER_POLICY_CHANGE',
+          description: `Approval role changed for ${op}: ${approvedRole} → ${draftRole}`,
+          field: 'approvalRequirements',
+        });
+        // Do not invent a role hierarchy judgment — classify conservatively.
+        // A role change is a material policy change but not inherently expansion or narrowing.
+      }
     }
   }
   for (const [op] of approvedApprovals) {

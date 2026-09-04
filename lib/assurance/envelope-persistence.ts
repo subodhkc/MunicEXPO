@@ -52,22 +52,34 @@ export async function persistDraftEnvelope(envelope: OperatingEnvelope): Promise
 }
 
 /**
- * UX-2C: Approve a DRAFT envelope in the database with CAS digest protection.
+ * UX-2C: Approve a DRAFT envelope in the database with ATOMIC CAS digest protection.
  *
- * Atomic transaction:
- *   - verify exact organization ownership (tenant safety)
- *   - verify state = DRAFT
- *   - verify envelopeDigest = expectedCurrentDigest (CAS — prevents stale approval)
- *   - mark prior APPROVED version SUPERSEDED (only if this approval succeeds)
- *   - mark the DRAFT APPROVED
- *   - set authoritySourceLabel = AUTHORITATIVE_POLICY server-side
- *   - record approvedBy / approvedAt / approvalReference
+ * The DRAFT→APPROVED transition is performed via a guarded updateMany whose
+ * WHERE clause atomically binds:
+ *   - exact row ID
+ *   - organizationId (tenant safety)
+ *   - envelopeId
+ *   - envelopeVersion
+ *   - state = DRAFT
+ *   - envelopeDigest = expectedCurrentDigest
  *
+ * If a concurrent PATCH changes the DRAFT digest between the initial read and
+ * the mutation, count = 0 and we classify the failure by re-reading.
+ *
+ * Only AFTER the guarded DRAFT→APPROVED mutation succeeds do we supersede any
+ * prior APPROVED version — in the SAME transaction, explicitly excluding the
+ * newly approved row. If any later step fails, transaction rollback leaves the
+ * old APPROVED policy and DRAFT state consistent.
+ *
+ * LOCK: DIGEST_CHECK_BEFORE_WRITE != ATOMIC_CAS
+ * LOCK: APPROVAL_MUTATION_GUARDED_BY_DIGEST = YES
+ * LOCK: APPROVAL_MUTATION_GUARDED_BY_STATE = YES
  * LOCK: REVIEWED_DRAFT_DIGEST != DIFFERENT_APPROVED_DRAFT_DIGEST
  * LOCK: DRAFT_PROPOSAL != AUTHORITATIVE_POLICY
  * LOCK: AUTHORIZED_CUSTOMER_ADOPTION → AUTHORITATIVE_POLICY
  * LOCK: CLIENT_CAN_SET_AUTHORITATIVE_POLICY = NO
  * LOCK: STALE_APPROVAL_CANNOT_SUCCEED = YES
+ * LOCK: FAILED_OR_STALE_APPROVAL_CANNOT_SUPERSEDE_PRIOR_POLICY = YES
  * LOCK: FAILED_APPROVAL_LEAVES_PRIOR_APPROVED_UNTOUCHED = YES
  */
 export async function approveEnvelopeInDb(
@@ -90,7 +102,8 @@ export async function approveEnvelopeInDb(
   }
 
   return await prisma.$transaction(async (tx: any) => {
-    // Verify ownership and current state of the draft to approve
+    // Read the row to get its ID for the guarded mutation.
+    // This read is NOT the CAS guard — the guard is the updateMany WHERE clause below.
     const draft = await tx.operating_envelopes.findFirst({
       where: {
         envelopeId,
@@ -100,39 +113,22 @@ export async function approveEnvelopeInDb(
     });
 
     if (!draft) return { status: 'NOT_FOUND' as const };
-    if (draft.state !== 'DRAFT') {
-      return { status: 'NOT_DRAFT' as const, currentState: draft.state };
-    }
 
-    // CAS: verify the digest matches what the approver reviewed
-    if (draft.envelopeDigest !== expectedCurrentDigest) {
-      return {
-        status: 'STALE_DIGEST' as const,
-        currentDigest: draft.envelopeDigest,
-      };
-    }
+    // ATOMIC CAS: guarded updateMany whose WHERE clause binds ALL of:
+    //   id, organizationId, envelopeId, envelopeVersion, state=DRAFT, envelopeDigest=expected
+    // If a concurrent PATCH changed the digest or state between the read and
+    // this mutation, count = 0 and we classify the failure by re-reading.
+    const atomicWhere: Record<string, unknown> = {
+      id: draft.id,
+      organizationId,
+      envelopeId,
+      envelopeVersion,
+      state: 'DRAFT',
+      envelopeDigest: expectedCurrentDigest,
+    };
 
-    // Supersede the currently APPROVED version (if any) for the same envelope.
-    // This happens INSIDE the transaction — only if the approval succeeds.
-    const priorApproved = await tx.operating_envelopes.findFirst({
-      where: {
-        envelopeId,
-        organizationId,
-        state: 'APPROVED',
-      },
-    });
-
-    if (priorApproved) {
-      await tx.operating_envelopes.update({
-        where: { id: priorApproved.id },
-        data: { state: 'SUPERSEDED' },
-      });
-    }
-
-    // Approve the draft and set AUTHORITATIVE_POLICY server-side.
-    // The client cannot override this — it is set by the act of authorized approval.
-    const updated = await tx.operating_envelopes.update({
-      where: { id: draft.id },
+    const result = await tx.operating_envelopes.updateMany({
+      where: atomicWhere,
       data: {
         state: 'APPROVED',
         approvedBy,
@@ -142,7 +138,41 @@ export async function approveEnvelopeInDb(
       },
     });
 
-    return { status: 'APPROVED' as const, envelope: dbRecordToEnvelope(updated) };
+    if (result.count === 1) {
+      // Guarded mutation succeeded — now supersede prior APPROVED version(s).
+      // Explicitly exclude the newly approved row (by id) so we don't supersede it.
+      await tx.operating_envelopes.updateMany({
+        where: {
+          envelopeId,
+          organizationId,
+          state: 'APPROVED',
+          id: { not: draft.id },
+        },
+        data: { state: 'SUPERSEDED' },
+      });
+
+      // Re-read the approved row to return the full envelope
+      const updated = await tx.operating_envelopes.findFirst({
+        where: { id: draft.id, organizationId },
+      });
+      return { status: 'APPROVED' as const, envelope: dbRecordToEnvelope(updated) };
+    }
+
+    // count = 0 — the row changed between read and mutation.
+    // Re-read to classify the failure.
+    const current = await tx.operating_envelopes.findFirst({
+      where: { id: draft.id, organizationId },
+    });
+
+    if (!current) return { status: 'NOT_FOUND' as const };
+    if (current.state !== 'DRAFT') {
+      return { status: 'NOT_DRAFT' as const, currentState: current.state };
+    }
+    // State is still DRAFT but digest changed → stale digest
+    return {
+      status: 'STALE_DIGEST' as const,
+      currentDigest: current.envelopeDigest,
+    };
   });
 }
 
@@ -227,21 +257,28 @@ export async function createNewEnvelopeVersionInDb(
 }
 
 /**
- * UX-2C: Revoke an APPROVED envelope with CAS digest protection.
+ * UX-2C: Revoke an APPROVED envelope with ATOMIC CAS digest protection.
  *
- * Atomic:
- *   - verify exact organization ownership (tenant safety)
- *   - verify state = APPROVED
- *   - verify envelopeDigest = expectedCurrentDigest (CAS)
- *   - set state = REVOKED
- *   - record audit log (revocation actor/time via existing audit-log-writer)
+ * The APPROVED→REVOKED transition is performed via a guarded updateMany whose
+ * WHERE clause atomically binds:
+ *   - exact row ID
+ *   - organizationId (tenant safety)
+ *   - envelopeId
+ *   - envelopeVersion
+ *   - state = APPROVED
+ *   - envelopeDigest = expectedCurrentDigest
  *
- * LOCK: REVOKED_NO_LONGER_PROVIDES_POLICY_AUTHORIZED = YES
+ * If a concurrent change altered the row between the read and the mutation,
+ * count = 0 and we classify the failure by re-reading.
+ *
+ * LOCK: DIGEST_CHECK_BEFORE_WRITE != ATOMIC_CAS
+ * LOCK: REVOKE_MUTATION_GUARDED_BY_DIGEST = YES
+ * LOCK: REVOKE_MUTATION_GUARDED_BY_STATE = YES
  * LOCK: STALE_REVOKE_CANNOT_SUCCEED = YES
  * LOCK: REVOCATION_DOES_NOT_MUTATE_OTHER_PLANES = YES
  *
  * NOTE: Revocation actor/time provenance is recorded in the audit log
- * (lib/platform/audit/audit-log-writer.ts), NOT on the envelope row itself.
+ * (lib/platform/audit/audit-log-writer.ts) on a BEST-EFFORT / fail-open basis.
  * The canonical OperatingEnvelope model does not persist revokedBy/revokedAt.
  * Adding those fields is a logged follow-up enhancement, not a UX-2C deliverable.
  */
@@ -262,6 +299,8 @@ export async function revokeEnvelopeInDb(
     return { status: 'MISSING_EXPECTED_DIGEST' };
   }
 
+  // Read the row to get its ID for the guarded mutation.
+  // This read is NOT the CAS guard — the guard is the updateMany WHERE clause below.
   const existing = await (prisma as any).operating_envelopes.findFirst({
     where: {
       envelopeId,
@@ -271,44 +310,65 @@ export async function revokeEnvelopeInDb(
   });
 
   if (!existing) return { status: 'NOT_FOUND' };
-  if (existing.state !== 'APPROVED') {
-    return { status: 'NOT_APPROVED', currentState: existing.state };
-  }
 
-  // CAS: verify digest matches
-  if (existing.envelopeDigest !== expectedCurrentDigest) {
-    return {
-      status: 'STALE_DIGEST',
-      currentDigest: existing.envelopeDigest,
-    };
-  }
+  // ATOMIC CAS: guarded updateMany whose WHERE clause binds ALL of:
+  //   id, organizationId, envelopeId, envelopeVersion, state=APPROVED, envelopeDigest=expected
+  const atomicWhere: Record<string, unknown> = {
+    id: existing.id,
+    organizationId,
+    envelopeId,
+    envelopeVersion,
+    state: 'APPROVED',
+    envelopeDigest: expectedCurrentDigest,
+  };
 
-  const updated = await (prisma as any).operating_envelopes.update({
-    where: { id: existing.id },
+  const result = await (prisma as any).operating_envelopes.updateMany({
+    where: atomicWhere,
     data: { state: 'REVOKED' },
   });
 
-  // Record revocation in the audit log (best-effort, fail-open)
-  // The audit log records WHO revoked and WHEN — the envelope row itself
-  // does not carry revokedBy/revokedAt (canonical model limitation).
-  try {
-    const { logRevoke, EvidenceResource } = await import('@/lib/platform/audit/audit-log-writer');
-    await logRevoke(
-      EvidenceResource.OPERATING_ENVELOPE,
-      `${envelopeId}:${envelopeVersion}`,
-      revokedBy,
-      {
-        organizationId,
-        envelopeId,
-        envelopeVersion,
-        envelopeDigest: existing.envelopeDigest,
-      },
-    );
-  } catch {
-    // Audit logging is fail-open — do not block revocation
+  if (result.count === 1) {
+    // Guarded mutation succeeded — re-read to return the revoked envelope
+    const updated = await (prisma as any).operating_envelopes.findFirst({
+      where: { id: existing.id, organizationId },
+    });
+
+    // Record revocation in the audit log (BEST-EFFORT, fail-open)
+    try {
+      const { logRevoke, EvidenceResource } = await import('@/lib/platform/audit/audit-log-writer');
+      await logRevoke(
+        EvidenceResource.OPERATING_ENVELOPE,
+        `${envelopeId}:${envelopeVersion}`,
+        revokedBy,
+        {
+          organizationId,
+          envelopeId,
+          envelopeVersion,
+          envelopeDigest: existing.envelopeDigest,
+        },
+      );
+    } catch {
+      // Audit logging is fail-open — do not block revocation
+    }
+
+    return { status: 'REVOKED', envelope: dbRecordToEnvelope(updated) };
   }
 
-  return { status: 'REVOKED', envelope: dbRecordToEnvelope(updated) };
+  // count = 0 — the row changed between read and mutation.
+  // Re-read to classify the failure.
+  const current = await (prisma as any).operating_envelopes.findFirst({
+    where: { id: existing.id, organizationId },
+  });
+
+  if (!current) return { status: 'NOT_FOUND' };
+  if (current.state !== 'APPROVED') {
+    return { status: 'NOT_APPROVED', currentState: current.state };
+  }
+  // State is still APPROVED but digest changed → stale digest
+  return {
+    status: 'STALE_DIGEST',
+    currentDigest: current.envelopeDigest,
+  };
 }
 
 /**
