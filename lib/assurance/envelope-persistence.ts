@@ -21,8 +21,15 @@ import { computeEnvelopeDigest } from './operating-envelope';
 /**
  * Persist a DRAFT envelope to the database.
  * Returns the persisted envelope with real createdAt.
+ *
+ * LOCK: Only DRAFT envelopes may be persisted through this helper.
+ * Non-DRAFT state is rejected to prevent accidental creation of
+ * APPROVED/SUPERSEDED/REVOKED rows through the DRAFT persistence path.
  */
 export async function persistDraftEnvelope(envelope: OperatingEnvelope): Promise<OperatingEnvelope> {
+  if (envelope.state !== 'DRAFT') {
+    throw new Error(`persistDraftEnvelope cannot persist envelope in state ${envelope.state} — only DRAFT is allowed`);
+  }
   const record = await (prisma as any).operating_envelopes.create({
     data: {
       envelopeId: envelope.envelopeId,
@@ -228,8 +235,120 @@ export async function getApprovedEnvelope(
 }
 
 /**
- * Get all envelope versions for an org + AI system (history).
+ * UX-2A: Get the latest DRAFT envelope for an org + AI system.
+ * A DRAFT is an editable, non-authoritative envelope.
+ * Section 28: organizationId required for tenant safety.
+ *
+ * LOCK: DRAFT_ENVELOPE != POLICY_AUTHORIZED
  */
+export async function getDraftEnvelope(
+  organizationId: string,
+  aiSystemId: string,
+): Promise<OperatingEnvelope | null> {
+  const records = await (prisma as any).operating_envelopes.findMany({
+    where: {
+      organizationId, // Section 28: tenant safety
+      aiSystemId,
+      state: 'DRAFT',
+    },
+  });
+
+  if (records.length === 0) return null;
+
+  // Return the highest-version DRAFT
+  const sorted = records.sort((a: any, b: any) => {
+    const aNum = parseInt(a.envelopeVersion, 10) || 0;
+    const bNum = parseInt(b.envelopeVersion, 10) || 0;
+    return bNum - aNum;
+  });
+
+  return dbRecordToEnvelope(sorted[0]);
+}
+
+/**
+ * UX-2A: Update a DRAFT envelope's constraints in the database.
+ *
+ * Requirements:
+ * - exact organization ownership (tenant safety);
+ * - exact envelope ID + version;
+ * - state must be DRAFT — APPROVED/SUPERSEDED/REVOKED cannot be patched;
+ * - server recomputes the canonical envelope digest;
+ * - never trusts a client-supplied digest;
+ * - mutation changes only constraints — no approval provenance mutation;
+ * - no silent history rewriting.
+ *
+ * Optional expectedCurrentDigest: if provided and the stored digest differs,
+ * returns a deterministic conflict result (stale/lost update prevention).
+ *
+ * LOCK: DRAFT_ENVELOPE != POLICY_AUTHORIZED
+ * LOCK: CLIENT_DIGEST != SERVER_DIGEST
+ * LOCK: APPROVED_IMMUTABLE
+ */
+export async function updateDraftEnvelopeInDb(
+  envelopeId: string,
+  envelopeVersion: string,
+  organizationId: string,
+  newConstraints: OperatingEnvelopeConstraints,
+  expectedCurrentDigest?: string,
+): Promise<
+  | { status: 'UPDATED'; envelope: OperatingEnvelope }
+  | { status: 'CONFLICT'; reason: 'STALE_DIGEST'; currentDigest: string }
+  | { status: 'NOT_FOUND' }
+  | { status: 'NOT_DRAFT'; currentState: string }
+> {
+  // Verify ownership and current state
+  const existing = await (prisma as any).operating_envelopes.findFirst({
+    where: {
+      envelopeId,
+      envelopeVersion,
+      organizationId, // Section 28: tenant safety
+    },
+  });
+
+  if (!existing) {
+    return { status: 'NOT_FOUND' };
+  }
+
+  if (existing.state !== 'DRAFT') {
+    return { status: 'NOT_DRAFT', currentState: existing.state };
+  }
+
+  // Stale digest check (lost update prevention)
+  if (expectedCurrentDigest !== undefined && expectedCurrentDigest !== existing.envelopeDigest) {
+    return {
+      status: 'CONFLICT',
+      reason: 'STALE_DIGEST',
+      currentDigest: existing.envelopeDigest,
+    };
+  }
+
+  // Server recomputes digest — never trusts client digest
+  const updatedDraft: Omit<OperatingEnvelope, 'envelopeDigest'> = {
+    envelopeId,
+    envelopeVersion,
+    organizationId,
+    aiSystemId: existing.aiSystemId,
+    state: 'DRAFT',
+    profileId: existing.profileId,
+    profileVersion: existing.profileVersion,
+    constraints: newConstraints,
+    createdAt: existing.createdAt,
+    authoritySourceLabel: existing.authoritySourceLabel ?? undefined,
+  };
+  const newDigest = computeEnvelopeDigest(updatedDraft);
+
+  const updated = await (prisma as any).operating_envelopes.update({
+    where: { id: existing.id },
+    data: {
+      constraints: newConstraints as any,
+      envelopeDigest: newDigest,
+      // No mutation of: state, approvedBy, approvedAt, approvalReference
+    },
+  });
+
+  return { status: 'UPDATED', envelope: dbRecordToEnvelope(updated) };
+}
+
 export async function getEnvelopeHistory(
   organizationId: string,
   aiSystemId: string,
