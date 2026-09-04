@@ -159,15 +159,18 @@ describe('[PX1.2B-R1 §7-12] Connection choices → asset type mapping', () => {
     expect(CONNECTION_TO_ASSET_TYPE.INTERFACE_SPECIFICATION).toEqual(['INTERFACE_SPECIFICATION']);
   });
 
-  it('all 12 canonical asset types are covered by connection choices (Section 12)', () => {
+  it('all canonical asset types are covered by connection choices or dedicated binding routes (Section 12)', () => {
     const allMappedTypes = new Set<string>();
     for (const choice of CONNECTION_CHOICES) {
       for (const at of CONNECTION_TO_ASSET_TYPE[choice]) {
         allMappedTypes.add(at);
       }
     }
+    // PROVIDER_CREDENTIAL is internal-only — bound via the dedicated
+    // credential-binding route, NOT a generic connection choice (DEFECT 10).
+    const internalOnlyTypes = new Set(['PROVIDER_CREDENTIAL']);
     for (const at of ASSET_TYPES) {
-      expect(allMappedTypes.has(at)).toBe(true);
+      expect(allMappedTypes.has(at) || internalOnlyTypes.has(at)).toBe(true);
     }
   });
 
