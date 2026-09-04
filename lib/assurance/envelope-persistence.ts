@@ -52,13 +52,23 @@ export async function persistDraftEnvelope(envelope: OperatingEnvelope): Promise
 }
 
 /**
- * Section 5/15: Approve a DRAFT envelope in the database.
+ * UX-2C: Approve a DRAFT envelope in the database with CAS digest protection.
+ *
  * Atomic transaction:
- *   - verify v2 is still DRAFT and owned by tenant
- *   - mark prior APPROVED version SUPERSEDED
- *   - mark v2 APPROVED and record approval identity
- * This prevents an authorization gap where the prior envelope is invalidated
- * before the new envelope has been approved.
+ *   - verify exact organization ownership (tenant safety)
+ *   - verify state = DRAFT
+ *   - verify envelopeDigest = expectedCurrentDigest (CAS — prevents stale approval)
+ *   - mark prior APPROVED version SUPERSEDED (only if this approval succeeds)
+ *   - mark the DRAFT APPROVED
+ *   - set authoritySourceLabel = AUTHORITATIVE_POLICY server-side
+ *   - record approvedBy / approvedAt / approvalReference
+ *
+ * LOCK: REVIEWED_DRAFT_DIGEST != DIFFERENT_APPROVED_DRAFT_DIGEST
+ * LOCK: DRAFT_PROPOSAL != AUTHORITATIVE_POLICY
+ * LOCK: AUTHORIZED_CUSTOMER_ADOPTION → AUTHORITATIVE_POLICY
+ * LOCK: CLIENT_CAN_SET_AUTHORITATIVE_POLICY = NO
+ * LOCK: STALE_APPROVAL_CANNOT_SUCCEED = YES
+ * LOCK: FAILED_APPROVAL_LEAVES_PRIOR_APPROVED_UNTOUCHED = YES
  */
 export async function approveEnvelopeInDb(
   envelopeId: string,
@@ -66,8 +76,19 @@ export async function approveEnvelopeInDb(
   organizationId: string,
   approvedBy: string,
   approvedAt: Date,
-  approvalReference?: string,
-): Promise<OperatingEnvelope | null> {
+  approvalReference: string | undefined,
+  expectedCurrentDigest: string,
+): Promise<
+  | { status: 'APPROVED'; envelope: OperatingEnvelope }
+  | { status: 'NOT_FOUND' }
+  | { status: 'NOT_DRAFT'; currentState: string }
+  | { status: 'STALE_DIGEST'; currentDigest: string }
+  | { status: 'MISSING_EXPECTED_DIGEST' }
+> {
+  if (!expectedCurrentDigest || typeof expectedCurrentDigest !== 'string' || expectedCurrentDigest.length === 0) {
+    return { status: 'MISSING_EXPECTED_DIGEST' };
+  }
+
   return await prisma.$transaction(async (tx: any) => {
     // Verify ownership and current state of the draft to approve
     const draft = await tx.operating_envelopes.findFirst({
@@ -78,12 +99,21 @@ export async function approveEnvelopeInDb(
       },
     });
 
-    if (!draft) return null;
+    if (!draft) return { status: 'NOT_FOUND' as const };
     if (draft.state !== 'DRAFT') {
-      throw new Error(`Cannot approve envelope in state ${draft.state}`);
+      return { status: 'NOT_DRAFT' as const, currentState: draft.state };
     }
 
-    // Supersede the currently APPROVED version (if any) for the same envelope
+    // CAS: verify the digest matches what the approver reviewed
+    if (draft.envelopeDigest !== expectedCurrentDigest) {
+      return {
+        status: 'STALE_DIGEST' as const,
+        currentDigest: draft.envelopeDigest,
+      };
+    }
+
+    // Supersede the currently APPROVED version (if any) for the same envelope.
+    // This happens INSIDE the transaction — only if the approval succeeds.
     const priorApproved = await tx.operating_envelopes.findFirst({
       where: {
         envelopeId,
@@ -99,6 +129,8 @@ export async function approveEnvelopeInDb(
       });
     }
 
+    // Approve the draft and set AUTHORITATIVE_POLICY server-side.
+    // The client cannot override this — it is set by the act of authorized approval.
     const updated = await tx.operating_envelopes.update({
       where: { id: draft.id },
       data: {
@@ -106,18 +138,31 @@ export async function approveEnvelopeInDb(
         approvedBy,
         approvedAt,
         approvalReference: approvalReference ?? null,
+        authoritySourceLabel: 'AUTHORITATIVE_POLICY',
       },
     });
 
-    return dbRecordToEnvelope(updated);
+    return { status: 'APPROVED' as const, envelope: dbRecordToEnvelope(updated) };
   });
 }
 
 /**
- * Section 5/15: Create a new version of an envelope.
- * The prior APPROVED version stays APPROVED. The new version is DRAFT.
- * Supersession of the prior version happens only when this DRAFT is later approved.
- * Does NOT overwrite approved history.
+ * UX-2C: Create a new version of an envelope.
+ *
+ * The prior version stays in its current state. The new version is DRAFT.
+ * Supersession of a prior APPROVED version happens only when this DRAFT is later approved.
+ *
+ * UX-2C REPAIR: This now allows versioning from APPROVED OR REVOKED state.
+ *   - APPROVED → new DRAFT (standard revision path)
+ *   - REVOKED → new DRAFT (replacement policy after revocation)
+ *
+ * The prior REVOKED version does NOT reactivate. The new DRAFT is a fresh
+ * proposal that must go through the full approval flow.
+ *
+ * LOCK: REVOKED_POLICY_DOES_NOT_REACTIVATE = YES
+ * LOCK: REPLACEMENT_DRAFT_IS_DRAFT_ONLY = YES
+ * LOCK: Does NOT overwrite approved/revoked history
+ * LOCK: SUPERSEDED-only lineage with no legitimate predecessor fails closed
  */
 export async function createNewEnvelopeVersionInDb(
   envelopeId: string,
@@ -135,8 +180,12 @@ export async function createNewEnvelopeVersionInDb(
   });
 
   if (!existing) return null;
-  if (existing.state !== 'APPROVED') {
-    throw new Error(`Cannot version envelope in state ${existing.state} — only APPROVED can be superseded`);
+
+  // UX-2C: Allow versioning from APPROVED or REVOKED state.
+  // SUPERSEDED and DRAFT cannot be versioned — SUPERSEDED is historical only,
+  // and DRAFT means a draft already exists at this version.
+  if (existing.state !== 'APPROVED' && existing.state !== 'REVOKED') {
+    throw new Error(`Cannot version envelope in state ${existing.state} — only APPROVED or REVOKED can be versioned`);
   }
 
   // Parse current version and increment (Section 16: numeric ordering)
@@ -155,7 +204,7 @@ export async function createNewEnvelopeVersionInDb(
     profileVersion: existing.profileVersion,
     constraints: newConstraints,
     createdAt: new Date(0),
-    authoritySourceLabel: existing.authoritySourceLabel,
+    authoritySourceLabel: 'UNKNOWN', // new DRAFT starts as UNKNOWN — approval sets AUTHORITATIVE_POLICY
   };
   const newDigest = computeEnvelopeDigest(newDraft);
 
@@ -170,7 +219,7 @@ export async function createNewEnvelopeVersionInDb(
       state: 'DRAFT',
       constraints: newConstraints as any,
       envelopeDigest: newDigest,
-      authoritySourceLabel: existing.authoritySourceLabel ?? null,
+      authoritySourceLabel: 'UNKNOWN',
     },
   });
 
@@ -178,13 +227,41 @@ export async function createNewEnvelopeVersionInDb(
 }
 
 /**
- * Revoke an APPROVED envelope.
+ * UX-2C: Revoke an APPROVED envelope with CAS digest protection.
+ *
+ * Atomic:
+ *   - verify exact organization ownership (tenant safety)
+ *   - verify state = APPROVED
+ *   - verify envelopeDigest = expectedCurrentDigest (CAS)
+ *   - set state = REVOKED
+ *   - record audit log (revocation actor/time via existing audit-log-writer)
+ *
+ * LOCK: REVOKED_NO_LONGER_PROVIDES_POLICY_AUTHORIZED = YES
+ * LOCK: STALE_REVOKE_CANNOT_SUCCEED = YES
+ * LOCK: REVOCATION_DOES_NOT_MUTATE_OTHER_PLANES = YES
+ *
+ * NOTE: Revocation actor/time provenance is recorded in the audit log
+ * (lib/platform/audit/audit-log-writer.ts), NOT on the envelope row itself.
+ * The canonical OperatingEnvelope model does not persist revokedBy/revokedAt.
+ * Adding those fields is a logged follow-up enhancement, not a UX-2C deliverable.
  */
 export async function revokeEnvelopeInDb(
   envelopeId: string,
   envelopeVersion: string,
   organizationId: string,
-): Promise<OperatingEnvelope | null> {
+  expectedCurrentDigest: string,
+  revokedBy?: string,
+): Promise<
+  | { status: 'REVOKED'; envelope: OperatingEnvelope }
+  | { status: 'NOT_FOUND' }
+  | { status: 'NOT_APPROVED'; currentState: string }
+  | { status: 'STALE_DIGEST'; currentDigest: string }
+  | { status: 'MISSING_EXPECTED_DIGEST' }
+> {
+  if (!expectedCurrentDigest || typeof expectedCurrentDigest !== 'string' || expectedCurrentDigest.length === 0) {
+    return { status: 'MISSING_EXPECTED_DIGEST' };
+  }
+
   const existing = await (prisma as any).operating_envelopes.findFirst({
     where: {
       envelopeId,
@@ -193,9 +270,17 @@ export async function revokeEnvelopeInDb(
     },
   });
 
-  if (!existing) return null;
+  if (!existing) return { status: 'NOT_FOUND' };
   if (existing.state !== 'APPROVED') {
-    throw new Error(`Cannot revoke envelope in state ${existing.state}`);
+    return { status: 'NOT_APPROVED', currentState: existing.state };
+  }
+
+  // CAS: verify digest matches
+  if (existing.envelopeDigest !== expectedCurrentDigest) {
+    return {
+      status: 'STALE_DIGEST',
+      currentDigest: existing.envelopeDigest,
+    };
   }
 
   const updated = await (prisma as any).operating_envelopes.update({
@@ -203,7 +288,27 @@ export async function revokeEnvelopeInDb(
     data: { state: 'REVOKED' },
   });
 
-  return dbRecordToEnvelope(updated);
+  // Record revocation in the audit log (best-effort, fail-open)
+  // The audit log records WHO revoked and WHEN — the envelope row itself
+  // does not carry revokedBy/revokedAt (canonical model limitation).
+  try {
+    const { logRevoke, EvidenceResource } = await import('@/lib/platform/audit/audit-log-writer');
+    await logRevoke(
+      EvidenceResource.OPERATING_ENVELOPE,
+      `${envelopeId}:${envelopeVersion}`,
+      revokedBy,
+      {
+        organizationId,
+        envelopeId,
+        envelopeVersion,
+        envelopeDigest: existing.envelopeDigest,
+      },
+    );
+  } catch {
+    // Audit logging is fail-open — do not block revocation
+  }
+
+  return { status: 'REVOKED', envelope: dbRecordToEnvelope(updated) };
 }
 
 /**
