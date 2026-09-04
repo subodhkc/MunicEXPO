@@ -176,6 +176,10 @@ export interface SampleNodeContext {
   sampleDelegation: string;
   /** Observation state copy (always "No runtime observation connected") */
   sampleObservation: string;
+  /** Illustrative five-plane status (sample-only, never on canonical planeStatus) */
+  samplePlaneStatus?: PlaneStatusDisplay;
+  /** Illustrative effect label (sample-only, never on canonical effect/effectLabel) */
+  sampleEffectLabel?: string;
 }
 
 // ─── Node ────────────────────────────────────────────────────────────────────

@@ -12,6 +12,14 @@
  *   SYNTHETIC_RELATION != SOURCE_ESTABLISHED_RELATION
  *   ILLUSTRATIVE_OBSERVATION != OBSERVED_PLANE_FACT
  *   DEMO != ASSURANCE
+ *   SAMPLE_AVAILABLE != SOURCE_ESTABLISHED
+ *   SAMPLE_PRESENTATION != PRODUCTION_EVIDENCE_STATE
+ *   SYNTHETIC_PLANE != CURRENT_SOURCE
+ *   SAMPLE_PLANE_DISPLAY != CANONICAL_PLANE_FACT
+ *   SYNTHETIC_EFFECT != SOURCE_BACKED_CAPABILITY_EFFECT
+ *   SYNTHETIC_EDGE != SOURCE_ESTABLISHED_SOLID_EDGE
+ *   NOT_OBSERVED_CONSEQUENCE != PRODUCES
+ *   REQUEST != IDENTITY
  *
  * The sample DTO conforms to TopologyProjectionResult so the existing
  * presentation layer (ActionAccessMapView) can render it without a second
@@ -23,6 +31,15 @@
  *   3. Node IDs use the `sample-node:` prefix (production uses `node:`)
  *   4. organizationId / aiSystemId are clearly synthetic
  *   5. No scanProvenance, no real commit SHA, no real scan ID
+ *   6. Every sample node has sampleContext.isSample === true
+ *   7. No sample node uses canonical planeStatus / planeStatusBasis / effect / effectLabel
+ *   8. No sample edge invents a new canonical JoinBasis — all use UNRESOLVED
+ *   9. No sample structural edge uses solid style (all dashed or dotted)
+ *
+ * SAMPLE_RELATION_HAS_NO_PRODUCTION_EVIDENCE_BASIS:
+ *   All sample edges use joinBasis = 'UNRESOLVED' because sample relations
+ *   have no production evidence correlation. 'ILLUSTRATIVE_SAMPLE' is NOT
+ *   a canonical JoinBasis and is never exported or registered.
  *
  * Scenario: Production Incident Agent
  * Task: Investigate why checkout traffic is failing
@@ -38,6 +55,7 @@ import type {
   TopologyProjectionResult,
   TopologyNode,
   TopologyEdge,
+  PlaneStatusDisplay,
 } from './types';
 import { SUPPORTED_MAP_LENSES } from './types';
 import { SUPPORTED_SEMANTIC_ZOOM_LEVELS } from './types';
@@ -53,7 +71,7 @@ const SN = {
   database: 'sample-node:connected_asset:database-service',
   prodNetwork: 'sample-node:connected_asset:production-network',
 
-  request: 'sample-node:identity:incident-request',
+  request: 'sample-node:entrypoint:incident-request',
   incidentAgent: 'sample-node:ai_execution:production-incident-agent',
   toolRouter: 'sample-node:ai_execution:operations-tool-router',
 
@@ -79,12 +97,26 @@ const SHARED_SAMPLE_CONTEXT = {
   sampleObservation: 'No runtime observation connected',
 } as const;
 
-// ─── Helper to build a sample node with optional context fields ───────────────
+// ─── Illustrative five-plane status (sample-only, never on canonical fields) ──
+// These values live ONLY in sampleContext.samplePlaneStatus.
+// They NEVER appear on the canonical TopologyNode.planeStatus field.
+
+const ILLUSTRATIVE_PLANE_STATUS: PlaneStatusDisplay = {
+  requested: 'PRESENT',
+  policyAuthorized: 'PRESENT',
+  effectivelyGranted: 'PARTIAL',
+  codeCapable: 'PRESENT',
+  observed: 'NOT_PROVIDED',
+};
+
+// ─── Helper to build sample context with optional overrides ──────────────────
 
 type SampleNodeOverrides = {
   sampleAuthorityContext?: string;
   sampleApplicationContext?: string;
   sampleConsequence?: string;
+  samplePlaneStatus?: PlaneStatusDisplay;
+  sampleEffectLabel?: string;
 };
 
 function sampleContext(overrides?: SampleNodeOverrides) {
@@ -97,6 +129,9 @@ function sampleContext(overrides?: SampleNodeOverrides) {
 }
 
 // ─── Sample nodes ────────────────────────────────────────────────────────────
+// EVERY node has sampleContext.isSample === true.
+// No node uses canonical planeStatus, planeStatusBasis, effect, or effectLabel.
+// Illustrative five-plane values live in sampleContext.samplePlaneStatus.
 
 const SAMPLE_NODES: TopologyNode[] = [
   // ── Infrastructure context (connected_asset chain) ─────────────────────────
@@ -112,6 +147,7 @@ const SAMPLE_NODES: TopologyNode[] = [
     assetProvider: 'GitHub',
     assetEnvironment: 'Sample',
     assetConnectionState: 'Illustrative',
+    ...sampleContext(),
   },
   {
     id: SN.vercelHost,
@@ -125,6 +161,7 @@ const SAMPLE_NODES: TopologyNode[] = [
     assetProvider: 'Vercel',
     assetEnvironment: 'Sample',
     assetConnectionState: 'Illustrative',
+    ...sampleContext(),
   },
   {
     id: SN.apiLayer,
@@ -138,6 +175,7 @@ const SAMPLE_NODES: TopologyNode[] = [
     assetProvider: 'Sample',
     assetEnvironment: 'Sample',
     assetConnectionState: 'Illustrative',
+    ...sampleContext(),
   },
   {
     id: SN.aiProvider,
@@ -151,6 +189,7 @@ const SAMPLE_NODES: TopologyNode[] = [
     assetProvider: 'Sample AI provider',
     assetEnvironment: 'Sample',
     assetConnectionState: 'Illustrative',
+    ...sampleContext(),
   },
   {
     id: SN.cloudInfra,
@@ -164,6 +203,7 @@ const SAMPLE_NODES: TopologyNode[] = [
     assetProvider: 'Sample cloud provider',
     assetEnvironment: 'Production (sample)',
     assetConnectionState: 'Illustrative',
+    ...sampleContext(),
   },
   {
     id: SN.database,
@@ -177,6 +217,7 @@ const SAMPLE_NODES: TopologyNode[] = [
     assetProvider: 'Sample',
     assetEnvironment: 'Sample',
     assetConnectionState: 'Illustrative',
+    ...sampleContext(),
   },
   {
     id: SN.prodNetwork,
@@ -190,15 +231,17 @@ const SAMPLE_NODES: TopologyNode[] = [
     assetProvider: 'Sample cloud provider',
     assetEnvironment: 'Production (sample)',
     assetConnectionState: 'Illustrative',
+    ...sampleContext(),
   },
 
   // ── Action flow ────────────────────────────────────────────────────────────
+  // UX CORRECTION 2: Request is an entrypoint, not an identity.
   {
     id: SN.request,
     label: 'Investigate production incident',
-    kind: 'identity',
-    subType: 'agent_identity',
-    subTypeLabel: 'Requested task',
+    kind: 'entrypoint',
+    subType: 'incident_request',
+    subTypeLabel: 'Incident request',
     aiReachable: true,
     availability: 'AVAILABLE',
     limitations: [],
@@ -276,15 +319,8 @@ const SAMPLE_NODES: TopologyNode[] = [
     ...sampleContext({
       sampleApplicationContext: 'Operations agent',
       sampleAuthorityContext: 'Cloud credential',
+      samplePlaneStatus: ILLUSTRATIVE_PLANE_STATUS,
     }),
-    planeStatus: {
-      requested: 'PRESENT',
-      policyAuthorized: 'PRESENT',
-      effectivelyGranted: 'PARTIAL',
-      codeCapable: 'PRESENT',
-      observed: 'NOT_PROVIDED',
-    },
-    planeStatusBasis: 'CURRENT_SOURCE',
   },
   {
     id: SN.modifySecurityGroup,
@@ -302,17 +338,9 @@ const SAMPLE_NODES: TopologyNode[] = [
       sampleApplicationContext: 'Operations agent',
       sampleAuthorityContext: 'Cloud credential',
       sampleConsequence: 'Production network exposure',
+      samplePlaneStatus: ILLUSTRATIVE_PLANE_STATUS,
+      sampleEffectLabel: 'Configuration change',
     }),
-    effect: 'CONFIGURATION_CHANGE',
-    effectLabel: 'Configuration change',
-    planeStatus: {
-      requested: 'PRESENT',
-      policyAuthorized: 'PRESENT',
-      effectivelyGranted: 'PARTIAL',
-      codeCapable: 'PRESENT',
-      observed: 'NOT_PROVIDED',
-    },
-    planeStatusBasis: 'CURRENT_SOURCE',
   },
   {
     id: SN.networkExposure,
@@ -326,9 +354,10 @@ const SAMPLE_NODES: TopologyNode[] = [
       'Consequence not established — no runtime observation connected',
       'Delegation not established',
     ],
-    effect: 'CONFIGURATION_CHANGE',
-    effectLabel: 'Configuration change',
-    ...sampleContext({ sampleConsequence: 'Production network exposure' }),
+    ...sampleContext({
+      sampleConsequence: 'Production network exposure',
+      sampleEffectLabel: 'Configuration change',
+    }),
   },
 
   // ── Branch 2: Service path ─────────────────────────────────────────────────
@@ -344,15 +373,8 @@ const SAMPLE_NODES: TopologyNode[] = [
     ...sampleContext({
       sampleApplicationContext: 'Operations agent',
       sampleAuthorityContext: 'Cloud credential',
+      samplePlaneStatus: ILLUSTRATIVE_PLANE_STATUS,
     }),
-    planeStatus: {
-      requested: 'PRESENT',
-      policyAuthorized: 'PRESENT',
-      effectivelyGranted: 'PARTIAL',
-      codeCapable: 'PRESENT',
-      observed: 'NOT_PROVIDED',
-    },
-    planeStatusBasis: 'CURRENT_SOURCE',
   },
   {
     id: SN.restartService,
@@ -370,17 +392,9 @@ const SAMPLE_NODES: TopologyNode[] = [
       sampleApplicationContext: 'Operations agent',
       sampleAuthorityContext: 'Cloud credential',
       sampleConsequence: 'Production service state change',
+      samplePlaneStatus: ILLUSTRATIVE_PLANE_STATUS,
+      sampleEffectLabel: 'Configuration change',
     }),
-    effect: 'CONFIGURATION_CHANGE',
-    effectLabel: 'Configuration change',
-    planeStatus: {
-      requested: 'PRESENT',
-      policyAuthorized: 'PRESENT',
-      effectivelyGranted: 'PARTIAL',
-      codeCapable: 'PRESENT',
-      observed: 'NOT_PROVIDED',
-    },
-    planeStatusBasis: 'CURRENT_SOURCE',
   },
   {
     id: SN.stateChange,
@@ -394,26 +408,36 @@ const SAMPLE_NODES: TopologyNode[] = [
       'Consequence not established — no runtime observation connected',
       'Delegation not established',
     ],
-    effect: 'CONFIGURATION_CHANGE',
-    effectLabel: 'Configuration change',
-    ...sampleContext({ sampleConsequence: 'Production service state change' }),
+    ...sampleContext({
+      sampleConsequence: 'Production service state change',
+      sampleEffectLabel: 'Configuration change',
+    }),
   },
 ];
 
 // ─── Sample edges ────────────────────────────────────────────────────────────
 // All structural edges are static (non-animated). The presentation layer
 // enforces animated: false on all edges regardless.
+//
+// SAMPLE_RELATION_HAS_NO_PRODUCTION_EVIDENCE_BASIS:
+//   All sample edges use joinBasis = 'UNRESOLVED' (the frozen non-evidence
+//   placeholder). 'ILLUSTRATIVE_SAMPLE' is NOT a canonical JoinBasis and
+//   is never exported or registered.
+//
+// DEFECT 5: No sample structural edge uses solid style.
+//   Structural relationships use dashed.
+//   Unresolved/potential consequence relationships use dotted.
 
 const SAMPLE_EDGES: TopologyEdge[] = [
-  // ── Infrastructure context chain ───────────────────────────────────────────
+  // ── Infrastructure context chain (all dashed) ──────────────────────────────
   {
     id: 'sample-edge:connected_to:github-to-vercel',
     source: SN.githubRepo,
     target: SN.vercelHost,
     label: 'deploys to',
     kind: 'connected_to',
-    joinBasis: 'ILLUSTRATIVE_SAMPLE',
-    style: 'solid',
+    joinBasis: 'UNRESOLVED',
+    style: 'dashed',
   },
   {
     id: 'sample-edge:connected_to:vercel-to-api',
@@ -421,8 +445,8 @@ const SAMPLE_EDGES: TopologyEdge[] = [
     target: SN.apiLayer,
     label: 'hosts',
     kind: 'connected_to',
-    joinBasis: 'ILLUSTRATIVE_SAMPLE',
-    style: 'solid',
+    joinBasis: 'UNRESOLVED',
+    style: 'dashed',
   },
   {
     id: 'sample-edge:connected_to:api-to-ai',
@@ -430,8 +454,8 @@ const SAMPLE_EDGES: TopologyEdge[] = [
     target: SN.aiProvider,
     label: 'calls',
     kind: 'connected_to',
-    joinBasis: 'ILLUSTRATIVE_SAMPLE',
-    style: 'solid',
+    joinBasis: 'UNRESOLVED',
+    style: 'dashed',
   },
   {
     id: 'sample-edge:connected_to:ai-to-cloud',
@@ -439,7 +463,7 @@ const SAMPLE_EDGES: TopologyEdge[] = [
     target: SN.cloudInfra,
     label: 'reaches',
     kind: 'connected_to',
-    joinBasis: 'ILLUSTRATIVE_SAMPLE',
+    joinBasis: 'UNRESOLVED',
     style: 'dashed',
   },
   {
@@ -448,7 +472,7 @@ const SAMPLE_EDGES: TopologyEdge[] = [
     target: SN.database,
     label: 'connects to',
     kind: 'connected_to',
-    joinBasis: 'ILLUSTRATIVE_SAMPLE',
+    joinBasis: 'UNRESOLVED',
     style: 'dashed',
   },
   {
@@ -457,19 +481,30 @@ const SAMPLE_EDGES: TopologyEdge[] = [
     target: SN.prodNetwork,
     label: 'contains',
     kind: 'connected_to',
-    joinBasis: 'ILLUSTRATIVE_SAMPLE',
+    joinBasis: 'UNRESOLVED',
     style: 'dashed',
   },
 
-  // ── Action flow: request → agent → router ──────────────────────────────────
+  // ── UX CORRECTION 3: API Layer → Production Incident Agent (story connection) ─
+  {
+    id: 'sample-edge:connected_to:api-to-agent',
+    source: SN.apiLayer,
+    target: SN.incidentAgent,
+    label: 'invokes',
+    kind: 'connected_to',
+    joinBasis: 'UNRESOLVED',
+    style: 'dashed',
+  },
+
+  // ── Action flow: request → agent → router (all dashed) ─────────────────────
   {
     id: 'sample-edge:reaches:request-to-agent',
     source: SN.request,
     target: SN.incidentAgent,
     label: 'dispatches to',
     kind: 'reaches',
-    joinBasis: 'ILLUSTRATIVE_SAMPLE',
-    style: 'solid',
+    joinBasis: 'UNRESOLVED',
+    style: 'dashed',
   },
   {
     id: 'sample-edge:routes_to:agent-to-router',
@@ -477,8 +512,8 @@ const SAMPLE_EDGES: TopologyEdge[] = [
     target: SN.toolRouter,
     label: 'routes through',
     kind: 'routes_to',
-    joinBasis: 'ILLUSTRATIVE_SAMPLE',
-    style: 'solid',
+    joinBasis: 'UNRESOLVED',
+    style: 'dashed',
   },
   {
     id: 'sample-edge:governed_by:router-to-policy',
@@ -486,19 +521,19 @@ const SAMPLE_EDGES: TopologyEdge[] = [
     target: SN.policyEnvelope,
     label: 'governed by',
     kind: 'governed_by',
-    joinBasis: 'ILLUSTRATIVE_SAMPLE',
+    joinBasis: 'UNRESOLVED',
     style: 'dashed',
   },
 
-  // ── Branch 1: network path ─────────────────────────────────────────────────
+  // ── Branch 1: network path (all dashed) ────────────────────────────────────
   {
     id: 'sample-edge:reaches:router-to-app-access',
     source: SN.toolRouter,
     target: SN.appAccess,
     label: 'uses',
     kind: 'reaches',
-    joinBasis: 'ILLUSTRATIVE_SAMPLE',
-    style: 'solid',
+    joinBasis: 'UNRESOLVED',
+    style: 'dashed',
   },
   {
     id: 'sample-edge:uses_credential:app-access-to-credential',
@@ -506,7 +541,7 @@ const SAMPLE_EDGES: TopologyEdge[] = [
     target: SN.cloudCredential,
     label: 'uses credential',
     kind: 'uses_credential',
-    joinBasis: 'ILLUSTRATIVE_SAMPLE',
+    joinBasis: 'UNRESOLVED',
     style: 'dashed',
   },
   {
@@ -515,7 +550,7 @@ const SAMPLE_EDGES: TopologyEdge[] = [
     target: SN.networkTool,
     label: 'reaches',
     kind: 'reaches',
-    joinBasis: 'ILLUSTRATIVE_SAMPLE',
+    joinBasis: 'UNRESOLVED',
     style: 'dashed',
   },
   {
@@ -524,17 +559,19 @@ const SAMPLE_EDGES: TopologyEdge[] = [
     target: SN.modifySecurityGroup,
     label: 'can reach',
     kind: 'can_reach',
-    joinBasis: 'ILLUSTRATIVE_SAMPLE',
-    style: 'solid',
+    joinBasis: 'UNRESOLVED',
+    style: 'dashed',
   },
+  // DEFECT 6: Potential consequence uses 'could result in', not 'produces'.
+  // Uses connected_to kind + dotted style (not solid, not produces).
   {
-    id: 'sample-edge:produces:modify-sg-to-exposure',
+    id: 'sample-edge:connected_to:modify-sg-to-exposure',
     source: SN.modifySecurityGroup,
     target: SN.networkExposure,
-    label: 'produces',
-    kind: 'produces',
-    joinBasis: 'ILLUSTRATIVE_SAMPLE',
-    style: 'solid',
+    label: 'could result in',
+    kind: 'connected_to',
+    joinBasis: 'UNRESOLVED',
+    style: 'dotted',
   },
   {
     id: 'sample-edge:reaches:modify-sg-to-prod-network',
@@ -542,19 +579,19 @@ const SAMPLE_EDGES: TopologyEdge[] = [
     target: SN.prodNetwork,
     label: 'reaches',
     kind: 'reaches',
-    joinBasis: 'ILLUSTRATIVE_SAMPLE',
+    joinBasis: 'UNRESOLVED',
     style: 'dashed',
   },
 
-  // ── Branch 2: service path ─────────────────────────────────────────────────
+  // ── Branch 2: service path (all dashed) ────────────────────────────────────
   {
     id: 'sample-edge:reaches:router-to-service-tool',
     source: SN.toolRouter,
     target: SN.serviceControlTool,
     label: 'uses',
     kind: 'reaches',
-    joinBasis: 'ILLUSTRATIVE_SAMPLE',
-    style: 'solid',
+    joinBasis: 'UNRESOLVED',
+    style: 'dashed',
   },
   {
     id: 'sample-edge:can_reach:service-tool-to-restart',
@@ -562,17 +599,18 @@ const SAMPLE_EDGES: TopologyEdge[] = [
     target: SN.restartService,
     label: 'can reach',
     kind: 'can_reach',
-    joinBasis: 'ILLUSTRATIVE_SAMPLE',
-    style: 'solid',
+    joinBasis: 'UNRESOLVED',
+    style: 'dashed',
   },
+  // DEFECT 6: Potential consequence uses 'could result in', not 'produces'.
   {
-    id: 'sample-edge:produces:restart-to-state-change',
+    id: 'sample-edge:connected_to:restart-to-state-change',
     source: SN.restartService,
     target: SN.stateChange,
-    label: 'produces',
-    kind: 'produces',
-    joinBasis: 'ILLUSTRATIVE_SAMPLE',
-    style: 'solid',
+    label: 'could result in',
+    kind: 'connected_to',
+    joinBasis: 'UNRESOLVED',
+    style: 'dotted',
   },
 ];
 
