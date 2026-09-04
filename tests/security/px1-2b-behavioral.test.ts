@@ -159,7 +159,7 @@ describe('[PX1.2B-R1 §7-12] Connection choices → asset type mapping', () => {
     expect(CONNECTION_TO_ASSET_TYPE.INTERFACE_SPECIFICATION).toEqual(['INTERFACE_SPECIFICATION']);
   });
 
-  it('all 11 canonical asset types are covered by connection choices (Section 12)', () => {
+  it('all 12 canonical asset types are covered by connection choices (Section 12)', () => {
     const allMappedTypes = new Set<string>();
     for (const choice of CONNECTION_CHOICES) {
       for (const at of CONNECTION_TO_ASSET_TYPE[choice]) {
