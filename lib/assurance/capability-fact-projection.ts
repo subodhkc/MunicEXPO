@@ -310,7 +310,10 @@ const PLANE_ORDER: AssurancePlane[] = ['REQUESTED', 'POLICY_AUTHORIZED', 'EFFECT
 
 /** U6: canonical producers that currently emit qualifying capability evidence per plane. */
 const PLANE_PRODUCERS: Record<AssurancePlane, string[]> = {
-  REQUESTED: [], // no native REQUESTED capability producer currently
+  // UX-2B: SAAS_INVENTORY now emits REQUESTED Capability Manifest evidence
+  // (evidenceType = requested_capability_manifest). This is customer/operator
+  // self-reported intent, NOT policy authorization.
+  REQUESTED: [PRODUCER_IDS.SAAS_INVENTORY],
   POLICY_AUTHORIZED: [], // operating envelope / policy record
   EFFECTIVELY_GRANTED: [], // IAM/grant evidence not yet integrated
   CODE_CAPABLE: [PRODUCER_IDS.SAAS_STATIC], // bounded R2/R10 finding-derived bridge only
@@ -385,6 +388,31 @@ export function buildPlaneAvailability(
             // saas-static participated but Capability Core was NOT reported
             // LOCK: CAPABILITY_CORE_NOT_REPORTED != EVALUATED_NO_QUALIFYING_FACTS
             status = 'NOT_EVALUATED';
+          }
+        } else if (plane === 'REQUESTED' && evidence) {
+          // UX-2B: REQUESTED plane availability is determined by whether a
+          // requested_capability_manifest evidence row specifically participated
+          // in this evaluation — NOT merely by saas-inventory participation.
+          //
+          // LOCK: SAAS_INVENTORY_PARTICIPATED != REQUESTED_MANIFEST_PROVIDED
+          // LOCK: NO_REQUESTED_MANIFEST != EXPLICIT_EMPTY_REQUESTED_MANIFEST
+          //
+          // A manifest with zero capabilities is an explicit empty declaration
+          // → EVALUATED_NO_QUALIFYING_FACTS (not NOT_PROVIDED).
+          // No manifest at all → NOT_PROVIDED.
+          // General inventory (system_configuration) evidence alone does NOT
+          // constitute a REQUESTED manifest.
+          const hasManifestEvidence = evidence.some(ev =>
+            ev.evidenceType === 'requested_capability_manifest'
+          );
+          if (hasManifestEvidence) {
+            // Manifest exists (possibly explicit empty) — evaluated with zero facts
+            status = 'EVALUATED_NO_QUALIFYING_FACTS';
+          } else {
+            // No requested manifest evidence — NOT_PROVIDED
+            // (saas-inventory may have participated with system_configuration,
+            // but that is NOT a REQUESTED manifest)
+            status = 'NOT_PROVIDED';
           }
         } else {
           status = 'EVALUATED_NO_QUALIFYING_FACTS';
