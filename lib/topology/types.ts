@@ -157,6 +157,31 @@ export const EFFECT_LABELS: Record<string, string> = {
   UNKNOWN: 'Consequence not established',
 };
 
+// ─── Sample-only inspector context (never set on production nodes) ───────────
+// Optional display context for the sample Map demo. Production topology
+// projectors never set this field, so it never appears in production.
+
+export interface SampleNodeContext {
+  /** True for all sample nodes — never set on production nodes */
+  isSample: true;
+  /** Authority context for the inspector (e.g. "Cloud credential") */
+  sampleAuthorityContext?: string;
+  /** Application context for the inspector (e.g. "Operations agent") */
+  sampleApplicationContext?: string;
+  /** Consequence context for the inspector (e.g. "Production network exposure") */
+  sampleConsequence?: string;
+  /** Evidence status copy (always "Illustrative sample") */
+  sampleEvidenceStatus: string;
+  /** Delegation state copy (always "Not established") */
+  sampleDelegation: string;
+  /** Observation state copy (always "No runtime observation connected") */
+  sampleObservation: string;
+  /** Illustrative five-plane status (sample-only, never on canonical planeStatus) */
+  samplePlaneStatus?: PlaneStatusDisplay;
+  /** Illustrative effect label (sample-only, never on canonical effect/effectLabel) */
+  sampleEffectLabel?: string;
+}
+
 // ─── Node ────────────────────────────────────────────────────────────────────
 
 export interface TopologyNode {
@@ -184,6 +209,8 @@ export interface TopologyNode {
   assetConnectionState?: string;
   /** Scan/run provenance for detail zoom */
   scanId?: string;
+  /** Sample-only inspector context (never set on production nodes) */
+  sampleContext?: SampleNodeContext;
 }
 
 export interface PlaneStatusDisplay {
