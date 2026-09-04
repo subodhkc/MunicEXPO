@@ -315,7 +315,7 @@ const PLANE_PRODUCERS: Record<AssurancePlane, string[]> = {
   // self-reported intent, NOT policy authorization.
   REQUESTED: [PRODUCER_IDS.SAAS_INVENTORY],
   POLICY_AUTHORIZED: [], // operating envelope / policy record
-  EFFECTIVELY_GRANTED: [], // IAM/grant evidence not yet integrated
+  EFFECTIVELY_GRANTED: [PRODUCER_IDS.SAAS_IAM_GRANT], // EG-1: AWS IAM effective grant observation
   CODE_CAPABLE: [PRODUCER_IDS.SAAS_STATIC], // bounded R2/R10 finding-derived bridge only
   OBSERVED: [PRODUCER_IDS.SAAS_RUNTIME], // authoritative action witness evidence
 };
