@@ -74,33 +74,57 @@ import {
 } from './types';
 import { stableNodeId, stableEdgeId, s } from './stable-ids';
 
-// ─── Exact capability join key (Part 1) ──────────────────────────────────────
-// The strongest defensible exact join between an AC-1 occurrence and a
-// canonical capability action is: sourceLocation + action string match.
+// ─── Unique canonical capability source correlation ──────────────────────────
+// The join between an AC-1 occurrence and a canonical capability action is
+// a UNIQUE_SOURCE_OPERATION_CORRELATION, not a full canonical capability identity.
 // Both sides carry sourceLocation (source-established) and action/protectedAction.
-// If either differs, NO JOIN is made and no plane status is attached.
+//
+// Qualification rules (fail-closed):
+//   1. CANONICAL_MAPPING_REQUIRED — only exact/canonical mappingStrength candidates are eligible
+//   2. RESOURCE_MATCH_WHEN_KNOWN — if AC-1 has protectedResource, require exact normalized match
+//   3. UNIQUE_RESULT_REQUIRED — exactly ONE qualified candidate may remain (0 or >1 → NO JOIN)
 //
 // LOCK: SIMILAR_ACTION_STRING != CANONICAL_CAPABILITY_JOIN
 // LOCK: NO_EXACT_CAPABILITY_JOIN => NO_CAPABILITY_EFFECT_PROMOTION
+// LOCK: MULTIPLE_SOURCE_CORRELATED_CAPABILITIES != ONE_EXACT_CAPABILITY
+// LOCK: LAST_CANDIDATE != CORRECT_CAPABILITY
+// LOCK: HEURISTIC_CAPABILITY_SUGGESTION != EXACT_ACTION_CAPABILITY_JOIN
+// LOCK: HEURISTIC_EFFECT != SOURCE_ESTABLISHED_CONSEQUENCE
+// LOCK: RESOURCE_A != RESOURCE_B
+// LOCK: AMBIGUOUS_JOIN != EXACT_JOIN
 
 interface CapabilityJoinEntry {
   planeStatus: PlaneStatusDisplay;
   effect: string;
   capabilityId: string;
+  resource: string;
+  mappingStrength: string;
   basis: 'CURRENT_SOURCE' | 'EVALUATED_BASIS';
+}
+
+// Mapping strengths that qualify as canonical/exact (per Action Surface semantics)
+const CANONICAL_MAPPING_STRENGTHS = new Set([
+  'EXACT_RULE_MAPPING',
+  'EXACT_CAPABILITY_MAPPING',
+  'PROFILE_MAPPING',
+  'MANUAL_APPROVED_MAPPING',
+]);
+
+function normalizeResource(r: string | undefined | null): string {
+  return (r ?? '').trim().toLowerCase();
 }
 
 function buildCapabilityJoinMap(
   actionAuthority: Awaited<ReturnType<typeof buildSystemActionAuthorityReadModel>>,
-): Map<string, CapabilityJoinEntry> {
-  const joinMap = new Map<string, CapabilityJoinEntry>();
+): Map<string, CapabilityJoinEntry[]> {
+  // Multi-value map: key → all candidates (qualified + unqualified)
+  // Join resolution happens at lookup time with fail-closed semantics
+  const joinMap = new Map<string, CapabilityJoinEntry[]>();
   if (!actionAuthority?.currentSourceBasis?.candidateActions) return joinMap;
 
   for (const ca of actionAuthority.currentSourceBasis.candidateActions) {
-    // Key: sourceLocation + action — both source-established
-    // This is the exact join. Action string alone is NOT sufficient.
     const key = `${ca.sourceLocation}::${ca.action}`;
-    joinMap.set(key, {
+    const entry: CapabilityJoinEntry = {
       planeStatus: {
         requested: ca.planeStatus.requested,
         policyAuthorized: ca.planeStatus.policyAuthorized,
@@ -110,19 +134,53 @@ function buildCapabilityJoinMap(
       },
       effect: ca.effect || 'UNKNOWN',
       capabilityId: ca.capabilityId,
+      resource: ca.resource,
+      mappingStrength: ca.mappingStrength,
       basis: 'CURRENT_SOURCE',
-    });
+    };
+    const existing = joinMap.get(key);
+    if (existing) {
+      existing.push(entry);
+    } else {
+      joinMap.set(key, [entry]);
+    }
   }
   return joinMap;
 }
 
-function tryExactCapabilityJoin(
-  fact: { protectedAction?: string; sourceLocation: string },
-  joinMap: Map<string, CapabilityJoinEntry>,
+function tryUniqueCanonicalJoin(
+  fact: { protectedAction?: string; protectedResource?: string; sourceLocation: string },
+  joinMap: Map<string, CapabilityJoinEntry[]>,
 ): CapabilityJoinEntry | undefined {
   if (!fact.protectedAction) return undefined;
   const key = `${fact.sourceLocation}::${fact.protectedAction}`;
-  return joinMap.get(key);
+  const candidates = joinMap.get(key);
+  if (!candidates || candidates.length === 0) return undefined;
+
+  // Qualification Rule 1: canonical mapping only
+  // LOCK: HEURISTIC_CAPABILITY_SUGGESTION != EXACT_ACTION_CAPABILITY_JOIN
+  const canonicalCandidates = candidates.filter((c) =>
+    CANONICAL_MAPPING_STRENGTHS.has(c.mappingStrength),
+  );
+
+  // Qualification Rule 2: resource match when AC-1 knows it
+  // LOCK: RESOURCE_A != RESOURCE_B
+  const ac1Resource = normalizeResource(fact.protectedResource);
+  const hasAc1Resource = ac1Resource.length > 0;
+
+  const resourceMatched = canonicalCandidates.filter((c) => {
+    if (hasAc1Resource) {
+      return normalizeResource(c.resource) === ac1Resource;
+    }
+    return true;
+  });
+
+  // Qualification Rule 3: unique result required
+  // LOCK: AMBIGUOUS_JOIN != EXACT_JOIN
+  // LOCK: MULTIPLE_SOURCE_CORRELATED_CAPABILITIES != ONE_EXACT_CAPABILITY
+  if (resourceMatched.length === 0) return undefined; // ZERO → NO JOIN
+  if (resourceMatched.length > 1) return undefined; // AMBIGUOUS → NO JOIN
+  return resourceMatched[0]; // ONE → qualified join
 }
 
 /**
@@ -391,10 +449,10 @@ export async function buildTopologyProjection(
       if (!actionNode) {
         // Part 1: Exact capability join — NO string-only match
         // LOCK: NO_EXACT_CAPABILITY_JOIN => NO_CAPABILITY_EFFECT_PROMOTION
-        const exactJoin = tryExactCapabilityJoin(fact, capabilityJoinMap);
+        const exactJoin = tryUniqueCanonicalJoin(fact, capabilityJoinMap);
         const actionLimitations = [...fact.limitations];
         if (!exactJoin) {
-          actionLimitations.push('Authority comparison is not linked to this exact action path');
+          actionLimitations.push('Authority comparison is not linked to a unique canonical capability for this action path');
         }
         actionNode = {
           id: actionNodeId,
@@ -576,7 +634,7 @@ export async function buildTopologyProjection(
       const consequenceTuple = [scanId, s(fact.entrypointId), s(fact.sinkId), 'consequence'];
       const consequenceNodeId = stableNodeId('consequence', consequenceTuple);
       if (!nodes.some((n) => n.id === consequenceNodeId)) {
-        const exactJoin = tryExactCapabilityJoin(fact, capabilityJoinMap);
+        const exactJoin = tryUniqueCanonicalJoin(fact, capabilityJoinMap);
         if (exactJoin && exactJoin.effect && exactJoin.effect !== 'UNKNOWN') {
           // Source-backed effect from canonical Capability semantics
           const effectLabel = EFFECT_LABELS[exactJoin.effect] || exactJoin.effect;
@@ -597,14 +655,14 @@ export async function buildTopologyProjection(
             target: consequenceNodeId,
             label: 'produces',
             kind: 'produces',
-            joinBasis: 'EXACT_OPERATIONAL_IDENTITY',
+            joinBasis: 'SOURCE_LOCATION_CORRELATION',
             style: 'solid',
           });
           relations.push({
             relationType: 'ACTION_PRODUCES_EFFECT',
             fromRef: actionNodeId,
             toRef: consequenceNodeId,
-            joinBasis: 'EXACT_OPERATIONAL_IDENTITY',
+            joinBasis: 'SOURCE_LOCATION_CORRELATION',
           });
         } else {
           // No exact join → UNKNOWN consequence, no fabricated effect
