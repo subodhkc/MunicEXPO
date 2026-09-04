@@ -268,39 +268,51 @@ export async function getDraftEnvelope(
 /**
  * UX-2A: Update a DRAFT envelope's constraints in the database.
  *
- * DEFECT E correction: uses atomic compare-and-set via updateMany with
- * state = DRAFT and (optionally) expectedCurrentDigest bound to the WHERE
- * clause. This prevents TOCTOU where a concurrent editor/approval path
- * changes the row between the read and the unconditional update.
+ * DEFECT 1 (final correction): expectedCurrentDigest is REQUIRED.
+ * The atomic compare-and-set always binds:
+ *   state = DRAFT
+ *   envelopeDigest = expectedCurrentDigest
+ * to the WHERE clause. This prevents TOCTOU where a concurrent editor
+ * or approval path changes the row between read and write.
  *
  * Requirements:
  * - exact organization ownership (tenant safety);
  * - exact envelope ID + version;
  * - state must be DRAFT — APPROVED/SUPERSEDED/REVOKED cannot be patched;
+ * - expectedCurrentDigest must be a non-empty string;
  * - server recomputes the canonical envelope digest;
- * - never trusts a client-supplied digest;
+ * - never trusts a client-supplied digest as the NEW digest;
  * - mutation changes only constraints — no approval provenance mutation;
  * - no silent history rewriting.
- * - atomic: the write is conditioned on state = DRAFT AND (when provided)
+ * - atomic: the write is conditioned on state = DRAFT AND
  *   envelopeDigest = expectedCurrentDigest.
  *
  * LOCK: DRAFT_ENVELOPE != POLICY_AUTHORIZED
- * LOCK: CLIENT_DIGEST != SERVER_DIGEST
+ * LOCK: CLIENT_PROVIDED_EXPECTED_DIGEST != NEW_SERVER_DIGEST
+ * LOCK: DRAFT_UPDATE_WITHOUT_EXPECTED_DIGEST = REJECTED
  * LOCK: APPROVED_IMMUTABLE
- * LOCK: CHECK_THEN_UNCONDITIONAL_WRITE != IMMUTABLE_STATE_GUARD
+ * LOCK: ATOMIC_STATE_GUARD = YES
+ * LOCK: ATOMIC_DIGEST_GUARD = YES
+ * LOCK: STALE_WRITE_CAN_OVERWRITE_NEWER_DRAFT = NO
  */
 export async function updateDraftEnvelopeInDb(
   envelopeId: string,
   envelopeVersion: string,
   organizationId: string,
   newConstraints: OperatingEnvelopeConstraints,
-  expectedCurrentDigest?: string,
+  expectedCurrentDigest: string,
 ): Promise<
   | { status: 'UPDATED'; envelope: OperatingEnvelope }
   | { status: 'CONFLICT'; reason: 'STALE_DIGEST'; currentDigest: string }
   | { status: 'NOT_FOUND' }
   | { status: 'NOT_DRAFT'; currentState: string }
+  | { status: 'MISSING_EXPECTED_DIGEST' }
 > {
+  // DEFECT 1: expectedCurrentDigest is mandatory
+  if (!expectedCurrentDigest || typeof expectedCurrentDigest !== 'string' || expectedCurrentDigest.length === 0) {
+    return { status: 'MISSING_EXPECTED_DIGEST' };
+  }
+
   // Read current row to compute server digest and classify failure cases.
   // The actual mutation is atomic via updateMany below — this read is only
   // for digest computation and error classification, not for guarding the write.
@@ -321,7 +333,7 @@ export async function updateDraftEnvelopeInDb(
   }
 
   // Stale digest pre-check (fast path — the atomic write also enforces this)
-  if (expectedCurrentDigest !== undefined && expectedCurrentDigest !== existing.envelopeDigest) {
+  if (expectedCurrentDigest !== existing.envelopeDigest) {
     return {
       status: 'CONFLICT',
       reason: 'STALE_DIGEST',
@@ -344,14 +356,14 @@ export async function updateDraftEnvelopeInDb(
   };
   const newDigest = computeEnvelopeDigest(updatedDraft);
 
-  // DEFECT E: atomic compare-and-set via updateMany.
-  // The WHERE clause binds the mutation to:
+  // Atomic compare-and-set via updateMany.
+  // The WHERE clause ALWAYS binds the mutation to:
   //   id = existing.id
   //   organizationId = organizationId
   //   envelopeId = envelopeId
   //   envelopeVersion = envelopeVersion
   //   state = 'DRAFT'
-  //   envelopeDigest = expectedCurrentDigest (when provided)
+  //   envelopeDigest = expectedCurrentDigest
   //
   // If a concurrent editor/approval path changed the row between the read
   // and this write, count == 0 and we classify the failure.
@@ -361,10 +373,8 @@ export async function updateDraftEnvelopeInDb(
     envelopeId,
     envelopeVersion,
     state: 'DRAFT',
+    envelopeDigest: expectedCurrentDigest,
   };
-  if (expectedCurrentDigest !== undefined) {
-    atomicWhere.envelopeDigest = expectedCurrentDigest;
-  }
 
   const result = await (prisma as any).operating_envelopes.updateMany({
     where: atomicWhere,
