@@ -446,8 +446,10 @@ export async function buildTopologyProjection(
       }
 
       // ─── Action Node (repair 16: don't collapse same-named actions) ─────
-      // Identity = scanId + entrypointId + sinkId + protectedAction
-      const actionTuple = [scanId, s(fact.entrypointId), s(fact.sinkId), s(fact.protectedAction)];
+      // Identity = scanId + entrypointId + sinkId + protectedAction + protectedResource
+      // LOCK: SAME_SINK_ACTION_DIFFERENT_RESOURCE != SAME_ACTION_OCCURRENCE
+      // LOCK: RESOURCE_A != RESOURCE_B
+      const actionTuple = [scanId, s(fact.entrypointId), s(fact.sinkId), s(fact.protectedAction), s(fact.protectedResource)];
       const actionNodeId = stableNodeId('action', actionTuple);
       let actionNode = actionOccurrenceNodes.get(actionNodeId);
       if (!actionNode) {
@@ -526,25 +528,31 @@ export async function buildTopologyProjection(
           });
         }
 
-        // entrypoint → action (can_reach) — repair 9: truthful reachability
-        const epToActionEdge = stableEdgeId(entrypointNodeId, actionNodeId, 'can_reach');
+        // entrypoint → action — truthful reachability relation
+        // LOCK: AI_REACHABILITY_UNKNOWN != ENTRYPOINT_REACHES_ACTION
+        // LOCK: AI_NOT_REACHABLE != ENTRYPOINT_REACHES_ACTION
+        // LOCK: DISPLAY_LABEL_TRUTH == RELATION_TRUTH
+        const reachKind = fact.aiReachable === true ? 'can_reach' : fact.aiReachable === 'UNKNOWN' ? 'reachability_unknown' : 'not_ai_reachable';
+        const epToActionEdge = stableEdgeId(entrypointNodeId, actionNodeId, reachKind);
         if (!edges.some((e) => e.id === epToActionEdge)) {
           const reachLabel = fact.aiReachable === true ? 'can reach' : fact.aiReachable === 'UNKNOWN' ? 'reachability unknown' : 'not AI-reachable';
           const reachStyle: 'solid' | 'dashed' | 'dotted' = fact.aiReachable === true ? 'solid' : fact.aiReachable === 'UNKNOWN' ? 'dotted' : 'dashed';
+          const reachRelationType = fact.aiReachable === true ? 'ENTRYPOINT_CAN_REACH_ACTION' : fact.aiReachable === 'UNKNOWN' ? 'ENTRYPOINT_ACTION_REACHABILITY_UNKNOWN' : 'ENTRYPOINT_NOT_AI_REACHABLE';
+          const reachJoinBasis = fact.aiReachable === true ? 'STRUCTURAL_RELATION' : 'UNRESOLVED';
           edges.push({
             id: epToActionEdge,
             source: entrypointNodeId,
             target: actionNodeId,
             label: reachLabel,
-            kind: 'can_reach',
-            joinBasis: 'STRUCTURAL_RELATION',
+            kind: reachKind,
+            joinBasis: reachJoinBasis,
             style: reachStyle,
           });
           relations.push({
-            relationType: 'ENTRYPOINT_REACHES_ACTION',
+            relationType: reachRelationType,
             fromRef: entrypointNodeId,
             toRef: actionNodeId,
-            joinBasis: 'STRUCTURAL_RELATION',
+            joinBasis: reachJoinBasis,
           });
         }
       } else {
@@ -635,7 +643,8 @@ export async function buildTopologyProjection(
       // ─── Consequence (Part 7: source-backed effect on exact join) ───────
       // LOCK: NO_EXACT_CAPABILITY_JOIN => NO_CAPABILITY_EFFECT_PROMOTION
       // LOCK: LEXICAL_EFFECT_INFERENCE = NO
-      const consequenceTuple = [scanId, s(fact.entrypointId), s(fact.sinkId), 'consequence'];
+      // Consequence identity depends on action occurrence identity (includes resource)
+      const consequenceTuple = [scanId, s(fact.entrypointId), s(fact.sinkId), s(fact.protectedAction), s(fact.protectedResource), 'consequence'];
       const consequenceNodeId = stableNodeId('consequence', consequenceTuple);
       if (!nodes.some((n) => n.id === consequenceNodeId)) {
         const exactJoin = tryUniqueCanonicalJoin(fact, capabilityJoinMap);
@@ -786,22 +795,27 @@ export async function buildTopologyProjection(
         limitations: providerIam.limitations,
       });
 
-      // repair 11: uses_credential / evidenced_by — NOT authorized_by
+      // Defect 2: edge direction must agree with label.
+      // AI System → Credential evidence (AI System uses credential)
+      // NOT: Credential → AI System (which reads as "credential uses credential")
+      // LOCK: PARTIAL_CREDENTIAL_EVIDENCE != AUTHORIZATION
+      // LOCK: PARTIAL_AWS_OBSERVATION != EFFECTIVELY_GRANTED
+      // LOCK: OBSERVATION_FAILED = UNAVAILABLE
       const iamEdgeKind = grant.state === 'OBSERVATION_FAILED' ? 'evidenced_by' : 'uses_credential';
       const iamEdgeLabel = grant.state === 'OBSERVATION_FAILED' ? 'observation failed' : 'uses credential';
       edges.push({
-        id: stableEdgeId(iamNodeId, aiSystemNodeId, iamEdgeKind),
-        source: iamNodeId,
-        target: aiSystemNodeId,
+        id: stableEdgeId(aiSystemNodeId, iamNodeId, iamEdgeKind),
+        source: aiSystemNodeId,
+        target: iamNodeId,
         label: iamEdgeLabel,
         kind: iamEdgeKind,
         joinBasis: 'EXACT_ID',
         style: grant.state === 'OBSERVATION_FAILED' ? 'dashed' : 'dotted',
       });
       relations.push({
-        relationType: 'PROVIDER_CREDENTIAL_EVIDENCE',
-        fromRef: iamNodeId,
-        toRef: aiSystemNodeId,
+        relationType: 'SYSTEM_USES_CREDENTIAL_EVIDENCE',
+        fromRef: aiSystemNodeId,
+        toRef: iamNodeId,
         joinBasis: 'EXACT_ID',
       });
     }

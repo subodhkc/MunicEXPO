@@ -212,6 +212,8 @@ export type TopologyEdgeKind =
   | 'guarded_by'
   | 'routes_to'
   | 'can_reach'
+  | 'reachability_unknown'
+  | 'not_ai_reachable'
   | 'produces'
   | 'connected_to'
   | 'uses_credential'
