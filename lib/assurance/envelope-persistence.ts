@@ -268,6 +268,11 @@ export async function getDraftEnvelope(
 /**
  * UX-2A: Update a DRAFT envelope's constraints in the database.
  *
+ * DEFECT E correction: uses atomic compare-and-set via updateMany with
+ * state = DRAFT and (optionally) expectedCurrentDigest bound to the WHERE
+ * clause. This prevents TOCTOU where a concurrent editor/approval path
+ * changes the row between the read and the unconditional update.
+ *
  * Requirements:
  * - exact organization ownership (tenant safety);
  * - exact envelope ID + version;
@@ -276,13 +281,13 @@ export async function getDraftEnvelope(
  * - never trusts a client-supplied digest;
  * - mutation changes only constraints — no approval provenance mutation;
  * - no silent history rewriting.
- *
- * Optional expectedCurrentDigest: if provided and the stored digest differs,
- * returns a deterministic conflict result (stale/lost update prevention).
+ * - atomic: the write is conditioned on state = DRAFT AND (when provided)
+ *   envelopeDigest = expectedCurrentDigest.
  *
  * LOCK: DRAFT_ENVELOPE != POLICY_AUTHORIZED
  * LOCK: CLIENT_DIGEST != SERVER_DIGEST
  * LOCK: APPROVED_IMMUTABLE
+ * LOCK: CHECK_THEN_UNCONDITIONAL_WRITE != IMMUTABLE_STATE_GUARD
  */
 export async function updateDraftEnvelopeInDb(
   envelopeId: string,
@@ -296,7 +301,9 @@ export async function updateDraftEnvelopeInDb(
   | { status: 'NOT_FOUND' }
   | { status: 'NOT_DRAFT'; currentState: string }
 > {
-  // Verify ownership and current state
+  // Read current row to compute server digest and classify failure cases.
+  // The actual mutation is atomic via updateMany below — this read is only
+  // for digest computation and error classification, not for guarding the write.
   const existing = await (prisma as any).operating_envelopes.findFirst({
     where: {
       envelopeId,
@@ -313,7 +320,7 @@ export async function updateDraftEnvelopeInDb(
     return { status: 'NOT_DRAFT', currentState: existing.state };
   }
 
-  // Stale digest check (lost update prevention)
+  // Stale digest pre-check (fast path — the atomic write also enforces this)
   if (expectedCurrentDigest !== undefined && expectedCurrentDigest !== existing.envelopeDigest) {
     return {
       status: 'CONFLICT',
@@ -337,8 +344,30 @@ export async function updateDraftEnvelopeInDb(
   };
   const newDigest = computeEnvelopeDigest(updatedDraft);
 
-  const updated = await (prisma as any).operating_envelopes.update({
-    where: { id: existing.id },
+  // DEFECT E: atomic compare-and-set via updateMany.
+  // The WHERE clause binds the mutation to:
+  //   id = existing.id
+  //   organizationId = organizationId
+  //   envelopeId = envelopeId
+  //   envelopeVersion = envelopeVersion
+  //   state = 'DRAFT'
+  //   envelopeDigest = expectedCurrentDigest (when provided)
+  //
+  // If a concurrent editor/approval path changed the row between the read
+  // and this write, count == 0 and we classify the failure.
+  const atomicWhere: Record<string, unknown> = {
+    id: existing.id,
+    organizationId,
+    envelopeId,
+    envelopeVersion,
+    state: 'DRAFT',
+  };
+  if (expectedCurrentDigest !== undefined) {
+    atomicWhere.envelopeDigest = expectedCurrentDigest;
+  }
+
+  const result = await (prisma as any).operating_envelopes.updateMany({
+    where: atomicWhere,
     data: {
       constraints: newConstraints as any,
       envelopeDigest: newDigest,
@@ -346,7 +375,34 @@ export async function updateDraftEnvelopeInDb(
     },
   });
 
-  return { status: 'UPDATED', envelope: dbRecordToEnvelope(updated) };
+  if (result.count === 1) {
+    // Atomic update succeeded — re-read the updated row to return the full envelope
+    const updated = await (prisma as any).operating_envelopes.findFirst({
+      where: { id: existing.id, organizationId },
+    });
+    return { status: 'UPDATED', envelope: dbRecordToEnvelope(updated) };
+  }
+
+  // count == 0 — the row changed between read and write.
+  // Re-read to classify the failure.
+  const current = await (prisma as any).operating_envelopes.findFirst({
+    where: { id: existing.id, organizationId },
+  });
+
+  if (!current) {
+    return { status: 'NOT_FOUND' };
+  }
+
+  if (current.state !== 'DRAFT') {
+    return { status: 'NOT_DRAFT', currentState: current.state };
+  }
+
+  // State is still DRAFT but digest changed → stale digest
+  return {
+    status: 'CONFLICT',
+    reason: 'STALE_DIGEST',
+    currentDigest: current.envelopeDigest,
+  };
 }
 
 export async function getEnvelopeHistory(
