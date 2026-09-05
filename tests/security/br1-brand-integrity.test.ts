@@ -23,7 +23,7 @@ const ACTIVE_BRAND_SURFACES = [
   'app/layout.tsx',
   'app/about/page.tsx',
   'app/what-is-haiec/page.tsx',
-  'app/what-is-haiec/metadata.ts',
+  'app/what-is-haiec/layout.tsx',
   'app/research/page.tsx',
   'app/research/metadata.ts',
   'app/landing/page.tsx',
@@ -45,7 +45,7 @@ const ACTIVE_BRAND_SURFACES = [
 // Active metadata / structured-data files
 const ACTIVE_METADATA_FILES = [
   'app/layout.tsx',
-  'app/what-is-haiec/metadata.ts',
+  'app/what-is-haiec/layout.tsx',
   'app/research/metadata.ts',
   'components/StructuredData.tsx',
   'components/SEOHead.tsx',
@@ -81,7 +81,7 @@ const ACTIVE_REPORT_TEMPLATES = [
   'lib/eu-ai-act/templates/base-report-template.html',
 ];
 
-// Legal pages where "HAIEC Inc." appears as contractual party — FLAGGED for review
+// Legal pages that may have used "HAIEC Inc." — now reviewed and changed to just "HAIEC"
 const LEGAL_ENTITY_REVIEW_FILES = [
   'app/terms/page.tsx',
   'app/privacy/page.tsx',
@@ -156,9 +156,9 @@ describe('[BR1] New full form present in canonical brand surfaces', () => {
     expect(content).toContain('High Assurance In Every Consequence');
   });
 
-  it('What-is-haiec metadata contains "High Assurance In Every Consequence"', () => {
-    const content = readActiveFile('app/what-is-haiec/metadata.ts');
-    expect(content).toContain('High Assurance In Every Consequence');
+  it('What-is-haiec metadata contains evidence-bound assurance description', () => {
+    const content = readActiveFile('app/what-is-haiec/layout.tsx');
+    expect(content).toContain('HAIEC provides evidence-bound assurance');
   });
 
   it('Footer contains "High Assurance In Every Consequence"', () => {
@@ -220,14 +220,14 @@ describe('[BR1] Active email templates use HAIEC (not old full form)', () => {
   }
 });
 
-// ─── H. Legal entity text flagged for review (not silently changed) ─────────
+// ─── H. Legal entity text no longer uses "HAIEC Inc." ───────────────────────
 
-describe('[BR1] Legal entity text flagged for review', () => {
+describe('[BR1] Legal entity text uses "HAIEC" not "HAIEC Inc."', () => {
   for (const file of LEGAL_ENTITY_REVIEW_FILES) {
-    it(`${file} still contains "HAIEC Inc." (flagged for legal review, not changed in BR1)`, () => {
+    it(`${file} does not contain "HAIEC Inc"`, () => {
       const content = readActiveFile(file);
-      // These files define contractual parties — they are FLAGGED, not changed
-      expect(content).toMatch(/HAIEC Inc/i);
+      // Brand direction: use "HAIEC" (not "HAIEC Inc.") even in legal pages
+      expect(content).not.toMatch(/HAIEC\s+Inc/i);
     });
   }
 });
