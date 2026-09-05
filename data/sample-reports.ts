@@ -105,7 +105,7 @@ export const SAMPLE_ARTIFACTS: SampleArtifact[] = [
     currentCapability: 'HISTORICAL',
     integrityState: 'NOT_VERIFIED',
     category: 'report',
-    description: 'Executive dashboard with compliance score, bias audit status, critical gaps, and remediation roadmap. Covers LL144 requirements with pass/fail verdicts.',
+    description: 'Executive dashboard with assessment score, bias audit status, critical gaps, and remediation roadmap. Covers LL144 requirements with pass/fail verdicts.',
     demonstrates: [
       'Compliance checklist with verdicts',
       'Bias audit readiness assessment',
