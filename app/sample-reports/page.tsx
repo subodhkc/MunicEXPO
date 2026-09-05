@@ -12,8 +12,8 @@ const itemListElements = SAMPLE_ARTIFACTS.map((artifact, i) => ({
 }))
 
 export const metadata: Metadata = {
-  title: 'Sample Reports | AI Assurance Evidence & Framework Mapping | HAIEC',
-  description: 'Preview sample HAIEC reports and evidence artifacts. NYC LL144 bias audit mapping, Colorado AI Act impact assessments, SOC 2 control mapping, HIPAA Security Rule mapping, EU AI Act documentation, and AI security scanner reports. Framework mapping, not certification or audit opinion.',
+  title: 'AI Assurance Report Examples & Sample Artifacts | HAIEC',
+  description: 'AI assurance report examples and sample artifacts. Action & Access Map, assurance baseline, decision receipt, evidence coverage, security findings, and framework mapping. Framework mapping, not certification or audit opinion.',
   keywords: [
     'NYC Local Law 144 sample bias audit report',
     'NYC LL144 compliance report example',
@@ -45,8 +45,8 @@ export const metadata: Metadata = {
     'AI assurance sample deliverables',
   ],
   openGraph: {
-    title: 'Sample Reports | AI Assurance Evidence & Framework Mapping | HAIEC',
-    description: 'Preview sample HAIEC reports: NYC LL144 bias audit mapping, Colorado AI Act assessments, SOC 2 control mapping, HIPAA Security Rule mapping, and AI security scanner output. Framework mapping, not certification.',
+    title: 'AI Assurance Report Examples & Sample Artifacts | HAIEC',
+    description: 'AI assurance report examples and sample artifacts. Action & Access Map, assurance baseline, decision receipt, evidence coverage, security findings, and framework mapping. Framework mapping, not certification or audit opinion.',
     type: 'website',
     url: 'https://www.haiec.com/sample-reports',
     siteName: 'HAIEC',
