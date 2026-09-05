@@ -8,7 +8,6 @@ import {
   Shield,
   Scale,
   GitBranch,
-  Scan,
   ExternalLink,
   ChevronRight,
   Eye,
@@ -17,262 +16,52 @@ import {
   Maximize2,
   Minimize2,
   CheckCircle2,
-  Lock,
-  Hash,
 } from 'lucide-react'
+import {
+  SAMPLE_ARTIFACTS,
+  SAMPLE_ARTIFACT_COUNT,
+  SAMPLE_CATEGORIES,
+  type SampleArtifact,
+} from '@/data/sample-reports'
 
-interface SampleArtifact {
-  id: string
-  name: string
-  product: string
-  productIcon: React.ComponentType<{ className?: string }>
-  category: 'report' | 'artifact' | 'disclosure'
-  description: string
-  proves: string[]
-  previewUrl: string
-  ctaLabel: string
-  ctaHref: string
-  badge: string
-  badgeColor: string
+// Icon mapping by product owner (presentation only, not truth)
+const PRODUCT_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
+  'Compliance Wizard': FileText,
+  'AI Security Scanner': Shield,
+  'NYC Bias Audit': Scale,
+  'GitHub App': GitBranch,
+  'AI Security Runtime Engine': Shield,
+  'Colorado AI Service': FileText,
 }
 
-const artifacts: SampleArtifact[] = [
-  {
-    id: 'soc2-detailed',
-    name: 'SOC 2 Control Mapping Report',
-    product: 'Compliance Wizard',
-    productIcon: FileText,
-    category: 'report',
-    description: 'Sample report mapping HAIEC evidence to SOC 2 Trust Services Criteria. Framework mapping — not a SOC 2 audit opinion or Type II attestation. Formatted for print with cover page and table of contents.',
-    proves: [
-      'Control environment assessment across CC1–CC9',
-      'Testing procedures with sampling methodology',
-      'Findings with risk levels and remediation timelines',
-    ],
-    previewUrl: '/demo/compliance-wizard-soc2-sample-report.html',
-    ctaLabel: 'Get SOC 2 Ready',
-    ctaHref: '/compliance-readiness',
-    badge: 'SOC 2',
-    badgeColor: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
-  },
-  {
-    id: 'soc2-artifact',
-    name: 'SOC 2 Trust Artifact',
-    product: 'AI Security Scanner',
-    productIcon: Shield,
-    category: 'artifact',
-    description: 'Shareable compliance artifact with cryptographic verification. Maps findings to SOC 2, GDPR, ISO 27001, and OWASP controls. Includes contract-ready language.',
-    proves: [
-      'Evidence hash (SHA-256) for tamper-evident verification',
-      'Compliance framework mapping with control IDs',
-      'Legal use cases: VSQ, RFP, due diligence, insurance',
-    ],
-    previewUrl: '/demo/artifact-showcase.html',
-    ctaLabel: 'Scan Your Code',
-    ctaHref: '/security',
-    badge: 'Trust Artifact',
-    badgeColor: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
-  },
-  {
-    id: 'll144-report',
-    name: 'NYC LL144 Compliance Assessment',
-    product: 'NYC Bias Audit',
-    productIcon: Scale,
-    category: 'report',
-    description: 'Executive dashboard with compliance score, bias audit status, critical gaps, and remediation roadmap. Covers all 22 LL144 requirements with pass/fail verdicts.',
-    proves: [
-      '22-point compliance checklist with verdicts',
-      'Bias audit readiness assessment',
-      'Gap analysis with prioritized remediation steps',
-    ],
-    previewUrl: '/demo/nyc-ll144-sample-report.html',
-    ctaLabel: 'Start Bias Audit',
-    ctaHref: '/services/nyc-bias-audit',
-    badge: 'NYC LL144',
-    badgeColor: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
-  },
-  {
-    id: 'll144-disclosure',
-    name: 'NYC LL144 Public Disclosure',
-    product: 'NYC Bias Audit',
-    productIcon: Scale,
-    category: 'disclosure',
-    description: 'Employer-facing public notice page with selection rate tables by sex and race/ethnicity, methodology section, auditor information, and embed/QR/PDF sharing options.',
-    proves: [
-      'Selection rates by sex and race/ethnicity categories',
-      'EEOC 4/5ths rule compliance with adverse impact flags',
-      'Embeddable disclosure with QR code and PDF download',
-    ],
-    previewUrl: '/demo/nyc-ll144-sample-disclosure.html',
-    ctaLabel: 'Start Bias Audit',
-    ctaHref: '/services/nyc-bias-audit',
-    badge: 'NYC LL144',
-    badgeColor: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
-  },
-  {
-    id: 'll144-evidence',
-    name: 'NYC LL144 Evidence Bundle',
-    product: 'NYC Bias Audit',
-    productIcon: Lock,
-    category: 'artifact',
-    description: '9-file SHA-256 evidence bundle with manifest, run spec, input hashes, validation report, analysis results, and methodology. Cryptographically sealed for audit trail.',
-    proves: [
-      '9 evidence files with individual SHA-256 hashes',
-      'Deterministic reproducibility — same inputs produce same hashes',
-      'Chain of custody from raw data to final verdict',
-    ],
-    previewUrl: '/demo/nyc-ll144-sample-evidence-bundle.html',
-    ctaLabel: 'Start Bias Audit',
-    ctaHref: '/services/nyc-bias-audit',
-    badge: 'Evidence Bundle',
-    badgeColor: 'bg-purple-500/10 text-purple-400 border-purple-500/20',
-  },
-  {
-    id: 'ai-security-scanner',
-    name: 'AI Security Scanner Report',
-    product: 'AI Security Scanner',
-    productIcon: Scan,
-    category: 'report',
-    description: 'Illustrative HAIEC Security Report generated through the HAIEC reporting pipeline using a synthetic demonstration scenario. Static analysis report with executive dashboard, security findings by severity, code snippets, industry risk context, and remediation roadmap. HAIEC-owned security checks executed via the Semgrep analysis engine.',
-    proves: [
-      'AI attack surface analysis with risk score',
-      'Vulnerability findings mapped to OWASP LLM Top 10',
-      'Remediation roadmap with priority and timeline',
-    ],
-    previewUrl: '/demo/ai-security-scanner-sample-report.html',
-    ctaLabel: 'Scan Your Code',
-    ctaHref: '/security',
-    badge: 'AI Security',
-    badgeColor: 'bg-red-500/10 text-red-400 border-red-500/20',
-  },
-  {
-    id: 'github-app',
-    name: 'GitHub App Security Controls Report',
-    product: 'GitHub App',
-    productIcon: GitBranch,
-    category: 'report',
-    description: 'Repository security controls assessment with branch protection, CI/CD configuration, policy enforcement, and security posture scoring. Auto-generated on every PR.',
-    proves: [
-      'Security controls score with pass/fail per control',
-      'Branch protection and CI/CD configuration audit',
-      'Remediation steps for each missing control',
-    ],
-    previewUrl: '/demo/github-app-sample-report.html',
-    ctaLabel: 'Connect GitHub',
-    ctaHref: '/github-integration',
-    badge: 'GitHub App',
-    badgeColor: 'bg-slate-500/10 text-slate-400 border-slate-500/20',
-  },
-  {
-    id: 'colorado-ai-act',
-    name: 'Colorado AI Act Compliance Assessment',
-    product: 'Compliance Wizard',
-    productIcon: FileText,
-    category: 'report',
-    description: 'SB 26-189 compliance assessment with covered ADMT classification, technical documentation review, consumer notice evaluation, post-adverse-outcome disclosure procedures, and record retention framework. Effective: January 1, 2027.',
-    proves: [
-      '8-section compliance scoring against SB 26-189 requirements',
-      'Critical gaps with statutory references',
-      'Phased remediation roadmap with cost estimates',
-    ],
-    previewUrl: '/demo/colorado-ai-act-sample-report.html',
-    ctaLabel: 'Start Assessment',
-    ctaHref: '/colorado-ai-act',
-    badge: 'Colorado AI Act',
-    badgeColor: 'bg-orange-500/10 text-orange-400 border-orange-500/20',
-  },
-  {
-    id: 'colorado-impact-assessment',
-    name: 'Colorado AI Impact Assessment',
-    product: 'Colorado AI Service',
-    productIcon: FileText,
-    category: 'report',
-    description: 'CRS §6-1-1703 deployer impact assessment with system description, training data analysis, known biases, performance metrics, affected populations, and human oversight measures.',
-    proves: [
-      'Complete 7-section impact assessment per CRS §6-1-1703(3)',
-      'Performance metrics with bias testing benchmarks',
-      'Assessor evidence inputs (not a third-party certification)',
-    ],
-    previewUrl: '/demo/colorado-ai-impact-assessment-sample.html',
-    ctaLabel: 'Get Started',
-    ctaHref: '/services/colorado-ai-compliance',
-    badge: 'Colorado Deployer',
-    badgeColor: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
-  },
-  {
-    id: 'colorado-consumer-notice',
-    name: 'Colorado AI Consumer Notice',
-    product: 'Colorado AI Service',
-    productIcon: FileText,
-    category: 'disclosure',
-    description: 'CRS §6-1-1704 consumer notice template covering AI disclosure, data collection, opt-out instructions, adverse decision appeal process, and contact information.',
-    proves: [
-      'General and adverse decision notice in one document',
-      'Opt-out and appeal process with timelines',
-      'Consumer-friendly language per statutory requirements',
-    ],
-    previewUrl: '/demo/colorado-ai-consumer-notice-sample.html',
-    ctaLabel: 'Get Started',
-    ctaHref: '/services/colorado-ai-compliance',
-    badge: 'Colorado Notice',
-    badgeColor: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
-  },
-  {
-    id: 'ai-runtime-security',
-    name: 'AI Runtime Security Test Report',
-    product: 'AI Security Runtime Engine',
-    productIcon: Shield,
-    category: 'report',
-    description: 'Controlled adversarial runtime test report with executive dashboard, attack-by-category breakdown, detailed findings with attack payloads and model responses, safety property evaluation, attack coverage matrix, and compliance framework mappings.',
-    proves: [
-      'Empirical evidence from 148 live adversarial attacks across 9 categories',
-      'Safety property pass/fail with SP001-SP060 evaluation',
-      'Compliance mapping to SOC 2, HIPAA, NIST AI RMF, ISO 42001, EU AI Act',
-    ],
-    previewUrl: '/demo/ai-runtime-security-sample-report.html',
-    ctaLabel: 'Run Runtime Test',
-    ctaHref: '/dashboard/runtime-security',
-    badge: 'Runtime Engine',
-    badgeColor: 'bg-violet-500/10 text-violet-400 border-violet-500/20',
-  },
-  {
-    id: 'colorado-risk-policy',
-    name: 'Colorado ADMT Act Record Retention Framework',
-    product: 'Colorado AI Service',
-    productIcon: FileText,
-    category: 'report',
-    description: 'SB 26-189 3-year compliance record retention framework with documentation standards for technical documentation, consumer notices, post-adverse-outcome disclosures, and consumer rights requests.',
-    proves: [
-      'NIST/ISO-aligned for safe harbor defense',
-      'Risk matrix with 5 categories and ownership',
-      'Incident response protocol with AG notification workflow',
-    ],
-    previewUrl: '/demo/colorado-ai-risk-policy-sample.html',
-    ctaLabel: 'Get Started',
-    ctaHref: '/services/colorado-ai-compliance',
-    badge: 'Colorado Policy',
-    badgeColor: 'bg-violet-500/10 text-violet-400 border-violet-500/20',
-  },
-]
+function iconFor(artifact: SampleArtifact) {
+  return PRODUCT_ICONS[artifact.productOwner] || FileText
+}
 
-const categories = [
-  { key: 'all', label: 'All Samples' },
-  { key: 'report', label: 'Reports' },
-  { key: 'artifact', label: 'Artifacts & Evidence' },
-  { key: 'disclosure', label: 'Disclosures' },
-]
+// Integrity label mapping (per artifact, not global)
+const INTEGRITY_LABELS: Record<string, string> = {
+  HASH_BOUND: 'Hash-bound example',
+  NOT_VERIFIED: 'Integrity metadata not independently verified',
+  NOT_APPLICABLE: 'Not applicable',
+}
+
+const CAPABILITY_LABELS: Record<string, string> = {
+  CURRENT: 'Current generated example',
+  PARTIAL: 'Partial capability',
+  HISTORICAL: 'Historical example',
+}
 
 export default function SampleReportsContent() {
-  const [selectedId, setSelectedId] = useState<string>(artifacts[0].id)
+  const [selectedId, setSelectedId] = useState<string>(SAMPLE_ARTIFACTS[0].id)
   const [activeCategory, setActiveCategory] = useState<string>('all')
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [isMobilePreviewOpen, setIsMobilePreviewOpen] = useState(false)
 
   const filtered = activeCategory === 'all'
-    ? artifacts
-    : artifacts.filter(a => a.category === activeCategory)
+    ? SAMPLE_ARTIFACTS
+    : SAMPLE_ARTIFACTS.filter(a => a.category === activeCategory)
 
-  const selected = artifacts.find(a => a.id === selectedId) || artifacts[0]
+  const selected = SAMPLE_ARTIFACTS.find(a => a.id === selectedId) || SAMPLE_ARTIFACTS[0]
 
   const handleSelect = (id: string) => {
     setSelectedId(id)
@@ -300,21 +89,17 @@ export default function SampleReportsContent() {
             </h1>
             <p className="mt-4 text-lg text-slate-400 max-w-2xl mx-auto">
               Preview the structure and level of detail HAIEC can produce.
-              Each sample is labeled as a live-run output, historical example, or synthetic demonstration.
+              Each sample is labeled by type: current generated, historical, or synthetic demonstration.
               Structured outputs designed for technical, executive, and assurance review.
             </p>
             <div className="mt-6 flex items-center justify-center gap-6 text-sm text-slate-500">
               <span className="flex items-center gap-1.5">
                 <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                5 sample deliverables
-              </span>
-              <span className="flex items-center gap-1.5">
-                <Hash className="w-4 h-4 text-emerald-500" />
-                SHA-256 verified
+                {SAMPLE_ARTIFACT_COUNT} sample deliverables
               </span>
               <span className="flex items-center gap-1.5">
                 <Shield className="w-4 h-4 text-emerald-500" />
-                Framework mapping — not certification
+                Framework mapping, not certification
               </span>
             </div>
           </motion.div>
@@ -324,7 +109,7 @@ export default function SampleReportsContent() {
       {/* Category Filter */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 pb-4">
         <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-hide">
-          {categories.map(cat => (
+          {SAMPLE_CATEGORIES.map(cat => (
             <button
               key={cat.key}
               onClick={() => setActiveCategory(cat.key)}
@@ -348,7 +133,7 @@ export default function SampleReportsContent() {
           <div className="w-full lg:w-[380px] xl:w-[420px] flex-shrink-0 space-y-3 overflow-y-auto max-h-[800px] pr-1 custom-scrollbar">
             <AnimatePresence mode="popLayout">
               {filtered.map((artifact, i) => {
-                const Icon = artifact.productIcon
+                const Icon = iconFor(artifact)
                 const isActive = artifact.id === selectedId
                 return (
                   <motion.button
@@ -372,14 +157,19 @@ export default function SampleReportsContent() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
-                          <span className={`text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full border ${artifact.badgeColor}`}>
+                          <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full border bg-slate-800 text-slate-400 border-slate-700">
                             {artifact.badge}
                           </span>
                         </div>
                         <h3 className={`text-sm font-semibold truncate ${isActive ? 'text-white' : 'text-slate-300'}`}>
                           {artifact.name}
                         </h3>
-                        <p className="text-xs text-slate-500 mt-0.5">{artifact.product}</p>
+                        <p className="text-xs text-slate-500 mt-0.5">{artifact.productOwner}</p>
+                        <div className="flex items-center gap-1.5 mt-1">
+                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-500">
+                            {CAPABILITY_LABELS[artifact.currentCapability]}
+                          </span>
+                        </div>
                       </div>
                       <ChevronRight className={`w-4 h-4 flex-shrink-0 mt-1 transition-transform ${
                         isActive ? 'text-emerald-400 translate-x-0.5' : 'text-slate-600 group-hover:text-slate-400'
@@ -394,18 +184,29 @@ export default function SampleReportsContent() {
                       >
                         <p className="text-xs text-slate-400 leading-relaxed">{artifact.description}</p>
                         <div className="mt-2.5 space-y-1.5">
-                          {artifact.proves.map((item, j) => (
+                          {artifact.demonstrates.map((item, j) => (
                             <div key={j} className="flex items-start gap-1.5">
                               <CheckCircle2 className="w-3 h-3 text-emerald-500 mt-0.5 flex-shrink-0" />
                               <span className="text-[11px] text-slate-400">{item}</span>
                             </div>
                           ))}
                         </div>
+                        {/* Per-artifact provenance */}
+                        <div className="mt-3 space-y-1 text-[10px] text-slate-500">
+                          <div>
+                            <span className="text-slate-600">Integrity:</span> {INTEGRITY_LABELS[artifact.integrityState]}
+                          </div>
+                          {artifact.limitations.length > 0 && (
+                            <div>
+                              <span className="text-slate-600">Limitations:</span> {artifact.limitations[0]}
+                            </div>
+                          )}
+                        </div>
                         <Link
-                          href={artifact.ctaHref}
+                          href={artifact.cta.href}
                           className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-400 hover:text-emerald-300 transition-colors"
                         >
-                          {artifact.ctaLabel}
+                          {artifact.cta.label}
                           <ArrowRight className="w-3 h-3" />
                         </Link>
                       </motion.div>
@@ -471,13 +272,13 @@ export default function SampleReportsContent() {
               {/* Preview Footer */}
               <div className="flex items-center justify-between px-4 py-2.5 bg-slate-800/80 border-t border-slate-700/50">
                 <p className="text-xs text-slate-500">
-                  Sample output — actual reports use your data
+                  {CAPABILITY_LABELS[selected.currentCapability]}
                 </p>
                 <Link
-                  href={selected.ctaHref}
+                  href={selected.cta.href}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg transition-colors"
                 >
-                  {selected.ctaLabel}
+                  {selected.cta.label}
                   <ArrowRight className="w-3 h-3" />
                 </Link>
               </div>
@@ -500,7 +301,7 @@ export default function SampleReportsContent() {
                 <div className="flex items-center justify-between px-4 py-3 bg-slate-900 border-b border-slate-700/50">
                   <div className="flex-1 min-w-0">
                     <h3 className="text-sm font-semibold text-white truncate">{selected.name}</h3>
-                    <p className="text-xs text-slate-400">{selected.product}</p>
+                    <p className="text-xs text-slate-400">{selected.productOwner}</p>
                   </div>
                   <div className="flex items-center gap-2">
                     <a
@@ -532,12 +333,12 @@ export default function SampleReportsContent() {
                 </div>
                 {/* Mobile Footer */}
                 <div className="flex items-center justify-between px-4 py-3 bg-slate-900 border-t border-slate-700/50">
-                  <p className="text-xs text-slate-500">Sample output</p>
+                  <p className="text-xs text-slate-500">{CAPABILITY_LABELS[selected.currentCapability]}</p>
                   <Link
-                    href={selected.ctaHref}
+                    href={selected.cta.href}
                     className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg transition-colors"
                   >
-                    {selected.ctaLabel}
+                    {selected.cta.label}
                     <ArrowRight className="w-3 h-3" />
                   </Link>
                 </div>
@@ -554,8 +355,8 @@ export default function SampleReportsContent() {
             Ready to generate your own reports?
           </h2>
           <p className="mt-3 text-slate-400 max-w-xl mx-auto">
-            Every report above was generated by HAIEC engines — deterministic, reproducible, and audit-grade. 
-            Start with a free self-audit to see where you stand.
+            Every report above was produced by HAIEC engines. Start with a free
+            self-audit to see where you stand.
           </p>
           <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
             <Link

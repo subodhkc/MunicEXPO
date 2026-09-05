@@ -47,11 +47,12 @@ export const TECHNICAL_PLANE_ALIASES = {
 
 // ─── Map Lenses (customer-facing labels) ─────────────────────────────────────
 
-export type MapLens = 'system' | 'action_consequence' | 'access_authority' | 'evidence_coverage';
+export type MapLens = 'overview' | 'system' | 'action_consequence' | 'access_authority' | 'evidence_coverage';
 
-export const SUPPORTED_MAP_LENSES: MapLens[] = ['system', 'action_consequence', 'access_authority', 'evidence_coverage'];
+export const SUPPORTED_MAP_LENSES: MapLens[] = ['overview', 'system', 'action_consequence', 'access_authority', 'evidence_coverage'];
 
 export const LENS_LABELS: Record<MapLens, string> = {
+  overview: 'Overview',
   system: 'System Map',
   action_consequence: 'Action → Consequence',
   access_authority: 'Access & Authority',

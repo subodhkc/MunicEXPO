@@ -199,7 +199,7 @@ const SAMPLE_NODES: TopologyNode[] = [
     subTypeLabel: 'Cloud infrastructure',
     aiReachable: 'UNKNOWN',
     availability: 'PARTIAL',
-    limitations: ['Credential evidence — limited'],
+    limitations: ['Credential evidence: limited'],
     assetProvider: 'Sample cloud provider',
     assetEnvironment: 'Production (sample)',
     assetConnectionState: 'Illustrative',
@@ -277,7 +277,7 @@ const SAMPLE_NODES: TopologyNode[] = [
     subTypeLabel: 'Illustrative policy state',
     aiReachable: false,
     availability: 'AVAILABLE',
-    limitations: ['Illustrative policy state — not a real approval'],
+    limitations: ['Illustrative policy state: not a real approval'],
     ...sampleContext(),
   },
 
@@ -302,7 +302,7 @@ const SAMPLE_NODES: TopologyNode[] = [
     aiReachable: true,
     availability: 'PARTIAL',
     limitations: [
-      'Credential evidence — limited',
+      'Credential evidence: limited',
       'Identity policy allows do not equal effective grants',
     ],
     ...sampleContext({ sampleAuthorityContext: 'Cloud credential' }),
@@ -351,7 +351,7 @@ const SAMPLE_NODES: TopologyNode[] = [
     aiReachable: 'UNKNOWN',
     availability: 'UNKNOWN',
     limitations: [
-      'Consequence not established — no runtime observation connected',
+      'Consequence not established: no runtime observation connected',
       'Delegation not established',
     ],
     ...sampleContext({
@@ -405,7 +405,7 @@ const SAMPLE_NODES: TopologyNode[] = [
     aiReachable: 'UNKNOWN',
     availability: 'UNKNOWN',
     limitations: [
-      'Consequence not established — no runtime observation connected',
+      'Consequence not established: no runtime observation connected',
       'Delegation not established',
     ],
     ...sampleContext({
@@ -628,10 +628,10 @@ export const SAMPLE_PROJECTION: TopologyProjectionResult = {
   coverage: 'PARTIAL',
   mapAvailability: 'AVAILABLE',
   limitations: [
-    'Illustrative sample data — not evidence',
+    'Illustrative sample data: not evidence',
     'No runtime observation connected',
     'Delegation not established',
-    'Credential evidence — limited',
+    'Credential evidence: limited',
   ],
   nodes: SAMPLE_NODES,
   edges: SAMPLE_EDGES,
@@ -648,8 +648,8 @@ export const SAMPLE_PROJECTION: TopologyProjectionResult = {
 export const SAMPLE_SCENARIO = {
   title: 'Explore a Sample AI Action & Access Map',
   subtitle:
-    'See how identities, permissions, AI actions, APIs, infrastructure, data, and consequences connect—before you connect your own system.',
-  bannerLabel: 'Sample environment — illustrative data',
+    'See how identities, permissions, AI actions, APIs, infrastructure, data, and consequences connect before you connect your own system.',
+  bannerLabel: 'Sample environment · illustrative data',
   coreReveal: 'Permission can be valid while delegation of the consequential choice remains unproven.',
   secondaryReveal: 'Permission is not delegation.',
   scenarioName: 'Production Incident Agent',
