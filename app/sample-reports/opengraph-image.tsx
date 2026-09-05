@@ -6,9 +6,9 @@ export { size, contentType }
 
 export default function SampleReportsOGImage() {
   return createOGImage({
-    title: 'Sample AI Compliance Reports',
+    title: 'Sample Assurance Reports',
     category: 'Resources',
-    insight: 'Preview real scan output: NYC LL144 bias audits, Colorado AI Act assessments, SOC 2 reports, HIPAA artifacts, SARIF',
+    insight: 'Preview sample output: NYC LL144, Colorado AI Act, SOC 2 control mapping, HIPAA mapping, SARIF. Framework mapping — not certification',
     url: 'haiec.com/sample-reports',
     accentColor: '#06b6d4',
   })

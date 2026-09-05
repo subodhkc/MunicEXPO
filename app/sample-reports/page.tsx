@@ -2,8 +2,8 @@ import { Metadata } from 'next'
 import SampleReportsContent from './SampleReportsContent'
 
 export const metadata: Metadata = {
-  title: 'Sample AI Compliance Reports | NYC LL144 Bias Audit, Colorado AI Act, SOC 2, HIPAA | HAIEC',
-  description: 'Preview real AI compliance reports before you buy. NYC Local Law 144 bias audit reports, Colorado AI Act SB 26-189 impact assessments, SOC 2 Type II audit reports, HIPAA compliance artifacts, EU AI Act documentation, and AI security scanner reports. Deterministic, SHA-256 verified, audit-grade output.',
+  title: 'Sample Reports | AI Assurance Evidence & Framework Mapping | HAIEC',
+  description: 'Preview sample HAIEC reports and evidence artifacts. NYC LL144 bias audit mapping, Colorado AI Act impact assessments, SOC 2 control mapping, HIPAA Security Rule mapping, EU AI Act documentation, and AI security scanner reports. Framework mapping — not certification or audit opinion.',
   keywords: [
     'NYC Local Law 144 sample bias audit report',
     'NYC LL144 compliance report example',
@@ -21,26 +21,23 @@ export const metadata: Metadata = {
     'SB 26-189 covered ADMT documentation',
     'Colorado ADMT Act deadline January 2027',
     'EU AI Act compliance report sample',
-    'EU AI Act conformity assessment example',
     'EU AI Act high-risk AI documentation',
-    'HIPAA AI compliance report',
-    'HIPAA AI security assessment sample',
-    'HIPAA covered entity AI audit',
-    'SOC 2 Type II AI audit report sample',
-    'SOC 2 compliance report template',
+    'HIPAA AI security mapping sample',
+    'HIPAA Security Rule AI evidence',
+    'SOC 2 control mapping sample',
+    'SOC 2 Type II evidence artifact example',
     'AI security scanner report example',
     'OWASP LLM Top 10 vulnerability report',
-    'AI compliance report examples',
-    'AI governance audit report',
+    'AI assurance report examples',
+    'AI governance evidence report',
     'AI bias audit report template',
-    'compliance evidence bundle SHA-256',
-    'deterministic compliance report',
-    'audit-grade AI compliance output',
-    'AI compliance sample deliverables',
+    'evidence bundle SHA-256',
+    'framework mapping report',
+    'AI assurance sample deliverables',
   ],
   openGraph: {
-    title: 'Sample AI Compliance Reports | NYC LL144, Colorado AI Act, SOC 2, HIPAA',
-    description: 'Preview real compliance reports: NYC LL144 bias audits, Colorado AI Act impact assessments, SOC 2 audit reports, HIPAA artifacts, and AI security scanner output. SHA-256 verified, deterministic, audit-grade.',
+    title: 'Sample Reports | AI Assurance Evidence & Framework Mapping | HAIEC',
+    description: 'Preview sample HAIEC reports: NYC LL144 bias audit mapping, Colorado AI Act assessments, SOC 2 control mapping, HIPAA Security Rule mapping, and AI security scanner output. Framework mapping — not certification.',
     type: 'website',
     url: 'https://www.haiec.com/sample-reports',
     siteName: 'HAIEC',
@@ -49,14 +46,14 @@ export const metadata: Metadata = {
         url: 'https://www.haiec.com/og-sample-reports.jpg',
         width: 1200,
         height: 630,
-        alt: 'HAIEC Sample Compliance Reports | NYC LL144, Colorado AI Act, SOC 2, HIPAA',
+        alt: 'HAIEC Sample Reports | AI Assurance Evidence & Framework Mapping',
       },
     ],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Sample AI Compliance Reports | NYC LL144, Colorado AI Act, SOC 2, HIPAA',
-    description: 'Preview real compliance reports before you buy. NYC bias audits, Colorado AI Act assessments, SOC 2 reports, HIPAA artifacts. Deterministic, SHA-256 verified.',
+    title: 'Sample Reports | AI Assurance Evidence | HAIEC',
+    description: 'Preview sample reports: NYC LL144, Colorado AI Act, SOC 2 control mapping, HIPAA mapping, AI security scanner. Framework mapping — not certification.',
   },
   alternates: {
     canonical: 'https://www.haiec.com/sample-reports',
@@ -67,8 +64,8 @@ export const metadata: Metadata = {
       '@graph': [
         {
           '@type': 'ItemList',
-          name: 'HAIEC Sample AI Compliance Reports',
-          description: 'Enterprise-grade AI compliance reports and artifacts covering NYC LL144, Colorado AI Act, SOC 2, HIPAA, EU AI Act, and AI security.',
+          name: 'HAIEC Sample AI Assurance Reports',
+          description: 'Sample HAIEC reports and evidence artifacts covering NYC LL144, Colorado AI Act, SOC 2 control mapping, HIPAA Security Rule mapping, EU AI Act, and AI security. Framework mapping — not certification or audit opinion.',
           url: 'https://www.haiec.com/sample-reports',
           numberOfItems: 12,
           itemListElement: [
@@ -104,7 +101,7 @@ export const metadata: Metadata = {
               '@type': 'ListItem',
               position: 5,
               name: 'Colorado AI Impact Assessment',
-              description: 'CRS §6-1-1703 deployer impact assessment with training data analysis, bias testing benchmarks, and assessor certification.',
+              description: 'CRS §6-1-1703 deployer impact assessment with training data analysis, bias testing benchmarks, and assessor evidence inputs. Framework mapping — not a third-party certification.',
               url: 'https://www.haiec.com/sample-reports#colorado-impact-assessment',
             },
             {
@@ -124,8 +121,8 @@ export const metadata: Metadata = {
             {
               '@type': 'ListItem',
               position: 8,
-              name: 'SOC 2 Type II Audit Report',
-              description: 'Full 30+ page audit report with executive summary, CC1-CC9 control testing, findings, and remediation timelines.',
+              name: 'SOC 2 Control Mapping Report',
+              description: 'Sample report mapping HAIEC evidence to SOC 2 Trust Services Criteria (CC1-CC9). Framework mapping — not a SOC 2 audit opinion or Type II attestation.',
               url: 'https://www.haiec.com/sample-reports#soc2-detailed',
             },
             {
@@ -139,7 +136,7 @@ export const metadata: Metadata = {
               '@type': 'ListItem',
               position: 10,
               name: 'AI Runtime Security Test Report',
-              description: 'Adversarial runtime test report with 148 live attacks, safety property evaluation, and HIPAA/SOC 2/EU AI Act compliance mapping.',
+              description: 'Adversarial runtime test report with 148 live attacks, safety property evaluation, and HIPAA/SOC 2/EU AI Act framework mapping. Mapping — not compliance certification.',
               url: 'https://www.haiec.com/sample-reports#ai-runtime-security',
             },
             {
@@ -187,20 +184,20 @@ export const metadata: Metadata = {
             },
             {
               '@type': 'Question',
-              name: 'Can I use these sample reports for HIPAA AI compliance?',
+              name: 'Can I use these sample reports for HIPAA AI security mapping?',
               acceptedAnswer: {
                 '@type': 'Answer',
-                text: 'Yes. The AI Runtime Security Test Report includes compliance mapping to HIPAA, SOC 2, NIST AI RMF, ISO 42001, and EU AI Act. It provides empirical evidence from adversarial attacks with safety property evaluation, which can support HIPAA Security Rule requirements for AI systems handling protected health information (PHI).',
+                text: 'The AI Runtime Security Test Report includes framework mapping to HIPAA Security Rule controls, SOC 2, NIST AI RMF, ISO 42001, and EU AI Act. It provides empirical evidence from adversarial attacks with safety property evaluation, which can support HIPAA Security Rule documentation for AI systems handling protected health information (PHI). This is framework mapping — not a HIPAA compliance certification or audit opinion.',
               },
             },
           ],
         },
         {
           '@type': 'SoftwareApplication',
-          name: 'HAIEC AI Compliance Platform',
+          name: 'HAIEC Platform',
           applicationCategory: 'BusinessApplication',
           operatingSystem: 'Web',
-          description: 'Enterprise AI compliance platform generating deterministic, audit-grade reports for NYC LL144, Colorado AI Act, SOC 2, HIPAA, EU AI Act, and OWASP LLM Top 10.',
+          description: 'Evidence-bound assurance for consequential AI systems. Framework mapping for NYC LL144, Colorado AI Act, SOC 2, HIPAA Security Rule, EU AI Act, and OWASP LLM Top 10. Not a certification or audit opinion.',
           url: 'https://www.haiec.com',
           offers: {
             '@type': 'AggregateOffer',

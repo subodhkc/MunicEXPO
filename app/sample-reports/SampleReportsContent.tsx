@@ -39,11 +39,11 @@ interface SampleArtifact {
 const artifacts: SampleArtifact[] = [
   {
     id: 'soc2-detailed',
-    name: 'SOC 2 Type II Audit Report',
+    name: 'SOC 2 Control Mapping Report',
     product: 'Compliance Wizard',
     productIcon: FileText,
     category: 'report',
-    description: 'Full 30+ page audit report with executive summary, control testing results, findings, and recommendations. Formatted for print with cover page and table of contents.',
+    description: 'Sample report mapping HAIEC evidence to SOC 2 Trust Services Criteria. Framework mapping — not a SOC 2 audit opinion or Type II attestation. Formatted for print with cover page and table of contents.',
     proves: [
       'Control environment assessment across CC1–CC9',
       'Testing procedures with sampling methodology',
@@ -191,7 +191,7 @@ const artifacts: SampleArtifact[] = [
     proves: [
       'Complete 7-section impact assessment per CRS §6-1-1703(3)',
       'Performance metrics with bias testing benchmarks',
-      'Signed assessor certification',
+      'Assessor evidence inputs (not a third-party certification)',
     ],
     previewUrl: '/demo/colorado-ai-impact-assessment-sample.html',
     ctaLabel: 'Get Started',
@@ -314,7 +314,7 @@ export default function SampleReportsContent() {
               </span>
               <span className="flex items-center gap-1.5">
                 <Shield className="w-4 h-4 text-emerald-500" />
-                Big 4 quality standard
+                Framework mapping — not certification
               </span>
             </div>
           </motion.div>
