@@ -35,6 +35,8 @@ describe('[UX0] No em dash in active metadata', () => {
 
   for (const file of metadataFiles) {
     it(`${file} has no em dash in metadata title/description`, () => {
+      const fullPath = path.join(cwd, file);
+      if (!fs.existsSync(fullPath)) return; // Skip non-existent files (deleted metadata.ts files)
       const content = readActiveFile(file);
       // Check title and description fields for em dash
       const titleMatches = content.match(/title:\s*['"`]([^'"`]*—[^'"`]*)['"`]/g);
@@ -45,21 +47,25 @@ describe('[UX0] No em dash in active metadata', () => {
   }
 });
 
-// ─── B. DynamicCTA does not rotate ──────────────────────────────────────────
+// ─── B. DynamicCTA removed from header (consolidated into single Get Started control) ──
 
-describe('[UX0] DynamicCTA is stable (no rotating)', () => {
-  it('DynamicCTA does not contain setInterval or rotation logic', () => {
-    const content = readActiveFile('components/DynamicCTA.tsx');
-    expect(content).not.toMatch(/setInterval/);
-    expect(content).not.toMatch(/AnimatePresence/);
-    expect(content).not.toMatch(/ctaIndex/);
+describe('[UX0] DynamicCTA removed from header', () => {
+  it('DynamicCTA component file does not exist', () => {
+    // DynamicCTA was removed and consolidated into the single Get Started/Account
+    // control in AutoHideNavigation. The old standalone "Validate My AI" CTA
+    // is no longer the global product CTA.
+    const ctaPath = path.join(cwd, 'components/DynamicCTA.tsx');
+    expect(fs.existsSync(ctaPath)).toBe(false);
   });
 
-  it('DynamicCTA uses emerald (not blue/gradient)', () => {
-    const content = readActiveFile('components/DynamicCTA.tsx');
-    expect(content).toMatch(/bg-emerald-700/);
-    expect(content).not.toMatch(/from-blue/);
-    expect(content).not.toMatch(/gradient/);
+  it('AutoHideNavigation does not import DynamicCTA', () => {
+    const content = readActiveFile('components/AutoHideNavigation.tsx');
+    expect(content).not.toMatch(/DynamicCTA/);
+  });
+
+  it('AutoHideNavigation does not have standalone Validate My AI button', () => {
+    const content = readActiveFile('components/AutoHideNavigation.tsx');
+    expect(content).not.toMatch(/Validate My AI/);
   });
 });
 
