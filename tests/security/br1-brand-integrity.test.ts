@@ -313,10 +313,75 @@ describe('[BR1] Canonical brand document exists', () => {
     expect(content).toContain('Company Descriptor');
     expect(content).toContain('Tagline');
     expect(content).toContain('TAGLINE != FULL_FORM');
-    expect(content).toContain('BRAND_NAME != REGISTERED_LEGAL_ENTITY');
+    expect(content).toContain('BRAND_NAME != LEGAL_ENTITY_NAME');
+  });
+
+  it('brand document establishes KingCaliber LLC as legal operator', () => {
+    const content = readActiveFile('docs/brand/HAIEC-BRAND-IDENTITY.md');
+    // LOCK: BRAND_NAME != LEGAL_ENTITY_NAME, HAIEC is operated by KingCaliber LLC
+    expect(content).toContain('KingCaliber LLC');
+    expect(content).toContain('kingcaliber.com');
+    expect(content).toContain('LEGAL_OPERATOR = KingCaliber LLC');
+    expect(content).toContain('BRAND_NAME != LEGAL_ENTITY_NAME');
+  });
+
+  it('privacy page discloses legal operator', () => {
+    const content = readActiveFile('app/privacy/page.tsx');
+    expect(content).toContain('KingCaliber LLC');
+  });
+
+  it('terms page discloses legal operator', () => {
+    const content = readActiveFile('app/terms/page.tsx');
+    expect(content).toContain('KingCaliber LLC');
   });
 
   it('external brand rollout inventory exists', () => {
     expect(fs.existsSync(path.join(cwd, 'docs/brand/EXTERNAL-BRAND-ROLLOUT-INVENTORY.md'))).toBe(true);
+  });
+});
+
+// ─── K. Contact page commercial claims and alias safety ─────────────────────
+
+describe('[BR1] Contact page commercial claims and alias safety', () => {
+  it('contact page does not display unconfigured email aliases', () => {
+    const content = readActiveFile('app/contact/page.tsx');
+    // These aliases are not source-established in lib/email.ts
+    expect(content).not.toContain('enterprise@haiec.com');
+    expect(content).not.toContain('assurance@haiec.com');
+    expect(content).not.toContain('partners@haiec.com');
+    expect(content).not.toContain('developers@haiec.com');
+    expect(content).not.toContain('trust@haiec.com');
+  });
+
+  it('contact page does not make unestablished SLA claims', () => {
+    const content = readActiveFile('app/contact/page.tsx');
+    // LOCK: MARKETING_COPY != SLA, UNCONFIGURED_RESPONSE_TARGET != CUSTOMER_COMMITMENT
+    expect(content).not.toMatch(/SLA-backed/i);
+    expect(content).not.toMatch(/SLA applies/i);
+  });
+
+  it('contact page does not manufacture scarcity', () => {
+    const content = readActiveFile('app/contact/page.tsx');
+    // LOCK: Do not manufacture scarcity unless explicitly configured
+    expect(content).not.toMatch(/Limited engagements per quarter/i);
+  });
+
+  it('contact page does not overclaim assurance-firm engine execution', () => {
+    const content = readActiveFile('app/contact/page.tsx');
+    // LOCK: VERIFY_ARTIFACT != RUN_ANALYZER, READ_EVIDENCE != SEE_PROPRIETARY_RULE_IMPLEMENTATION
+    expect(content).not.toMatch(/run the same deterministic engines your clients run/i);
+    expect(content).not.toMatch(/No black-box.*auditors see the rule logic/i);
+    expect(content).not.toMatch(/Independent verification without a second engagement/i);
+  });
+
+  it('contact form retains enterprise intake fields in message', () => {
+    const content = readActiveFile('components/ContactForm.tsx');
+    // LOCK: FORM_FIELD_SUBMITTED != FORM_FIELD_PERSISTED, USER_INPUT_SILENTLY_DROPPED = FORBIDDEN
+    // Enterprise fields (phone, role, teamSize) must be folded into the persisted message
+    expect(content).toContain('buildPersistedMessage');
+    expect(content).toContain('Intake metadata');
+    expect(content).toMatch(/Role.*\$\{formData\.role\}/);
+    expect(content).toMatch(/Team size.*\$\{formData\.teamSize\}/);
+    expect(content).toMatch(/Phone.*\$\{formData\.phone\}/);
   });
 });
