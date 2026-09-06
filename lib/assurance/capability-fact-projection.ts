@@ -91,7 +91,7 @@ function projectRequestedFacts(evidence: DecisionEvidenceProjection[], aiSystemI
  * POLICY_AUTHORIZED may ONLY come from an APPROVED operating envelope.
  * DRAFT / SUPERSEDED / REVOKED envelopes produce no POLICY_AUTHORIZED facts.
  */
-export function projectPolicyFacts(operatingEnvelope: OperatingEnvelope | undefined, aiSystemId: string): CapabilityFact[] {
+function projectPolicyFacts(operatingEnvelope: OperatingEnvelope | undefined, aiSystemId: string): CapabilityFact[] {
   if (!operatingEnvelope) return [];
   if (operatingEnvelope.state !== 'APPROVED') return [];
 
