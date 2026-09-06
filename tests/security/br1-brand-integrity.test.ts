@@ -118,14 +118,29 @@ describe('[BR1] Master entity name remains HAIEC', () => {
     expect(content).toMatch(/name:\s*['"]HAIEC['"]/);
   });
 
-  it('StructuredData does not set name to full form', () => {
+  it('StructuredData does not set name to company descriptor', () => {
     const content = readActiveFile('components/StructuredData.tsx');
-    expect(content).not.toMatch(/name:\s*['"]High Assurance In Every Consequence['"]/);
+    expect(content).not.toMatch(/name:\s*['"]Human AI Evidence Company['"]/);
   });
 
-  it('StructuredData has alternateName as full form', () => {
+  it('StructuredData does not set name to tagline', () => {
     const content = readActiveFile('components/StructuredData.tsx');
-    expect(content).toMatch(/alternateName:\s*['"]High Assurance In Every Consequence['"]/);
+    expect(content).not.toMatch(/name:\s*['"]High Assurance In Every Consequence['"]/i);
+  });
+
+  it('StructuredData has alternateName as company descriptor', () => {
+    const content = readActiveFile('components/StructuredData.tsx');
+    expect(content).toMatch(/alternateName:\s*['"]Human AI Evidence Company['"]/);
+  });
+
+  it('StructuredData has slogan as tagline', () => {
+    const content = readActiveFile('components/StructuredData.tsx');
+    expect(content).toMatch(/slogan:\s*['"]High assurance in every consequence\.['"]/i);
+  });
+
+  it('StructuredData alternateName is NOT the tagline', () => {
+    const content = readActiveFile('components/StructuredData.tsx');
+    expect(content).not.toMatch(/alternateName:\s*['"]High Assurance In Every Consequence['"]/i);
   });
 
   it('layout.tsx authors/creator/publisher is HAIEC', () => {
@@ -135,25 +150,38 @@ describe('[BR1] Master entity name remains HAIEC', () => {
     expect(content).toMatch(/publisher:\s*['"]HAIEC['"]/);
   });
 
-  it('well-known authority JSON has correct full_name', () => {
+  it('well-known authority JSON has correct full_name and tagline', () => {
     const content = readActiveFile('public/.well-known/haiec-authority.json');
     const json = JSON.parse(content);
     expect(json.organization.name).toBe('HAIEC');
-    expect(json.organization.full_name).toBe('High Assurance In Every Consequence');
+    expect(json.organization.full_name).toBe('Human AI Evidence Company');
+    expect(json.organization.tagline).toBe('High assurance in every consequence.');
   });
 });
 
-// ─── D. New full form present in canonical surfaces ─────────────────────────
+// ─── D. Company descriptor and tagline present in canonical surfaces ────────
 
-describe('[BR1] New full form present in canonical brand surfaces', () => {
-  it('About page contains "High Assurance In Every Consequence"', () => {
+describe('[BR1] Company descriptor and tagline present in canonical brand surfaces', () => {
+  it('About page contains "Human AI Evidence Company"', () => {
     const content = readActiveFile('app/about/page.tsx');
-    expect(content).toContain('High Assurance In Every Consequence');
+    expect(content).toContain('Human AI Evidence Company');
   });
 
-  it('What-is-haiec page contains "High Assurance In Every Consequence"', () => {
+  it('About page does not present tagline as company expansion', () => {
+    const content = readActiveFile('app/about/page.tsx');
+    // LOCK: TAGLINE != FULL_FORM
+    expect(content).not.toMatch(/HAIEC\s*\(High Assurance In Every Consequence\)/i);
+  });
+
+  it('What-is-haiec page contains "Human AI Evidence Company"', () => {
     const content = readActiveFile('app/what-is-haiec/page.tsx');
-    expect(content).toContain('High Assurance In Every Consequence');
+    expect(content).toContain('Human AI Evidence Company');
+  });
+
+  it('What-is-haiec page does not say "HAIEC stands for High Assurance"', () => {
+    const content = readActiveFile('app/what-is-haiec/page.tsx');
+    // LOCK: TAGLINE != FULL_FORM
+    expect(content).not.toMatch(/HAIEC stands for.*High Assurance/i);
   });
 
   it('What-is-haiec metadata contains evidence-bound assurance description', () => {
@@ -161,9 +189,9 @@ describe('[BR1] New full form present in canonical brand surfaces', () => {
     expect(content).toContain('HAIEC provides evidence-bound assurance');
   });
 
-  it('Footer contains "High Assurance In Every Consequence"', () => {
+  it('Footer contains tagline "High assurance in every consequence"', () => {
     const content = readActiveFile('components/Footer.tsx');
-    expect(content).toContain('High Assurance In Every Consequence');
+    expect(content).toMatch(/High assurance in every consequence/i);
   });
 });
 
@@ -270,12 +298,22 @@ describe('[BR1] Canonical brand document exists', () => {
     expect(fs.existsSync(path.join(cwd, 'docs/brand/HAIEC-BRAND-IDENTITY.md'))).toBe(true);
   });
 
-  it('brand document contains master brand, full form, and thesis', () => {
+  it('brand document contains master brand, descriptor, tagline, and thesis', () => {
     const content = readActiveFile('docs/brand/HAIEC-BRAND-IDENTITY.md');
     expect(content).toContain('HAIEC');
-    expect(content).toContain('High Assurance In Every Consequence');
+    expect(content).toContain('Human AI Evidence Company');
+    expect(content).toMatch(/High assurance in every consequence/i);
     expect(content).toContain('Permission is not delegation');
     expect(content).toContain('AI Action Assurance');
+  });
+
+  it('brand document distinguishes descriptor from tagline', () => {
+    const content = readActiveFile('docs/brand/HAIEC-BRAND-IDENTITY.md');
+    // LOCK: TAGLINE != FULL_FORM, BRAND_NAME != LEGAL_ENTITY
+    expect(content).toContain('Company Descriptor');
+    expect(content).toContain('Tagline');
+    expect(content).toContain('TAGLINE != FULL_FORM');
+    expect(content).toContain('BRAND_NAME != REGISTERED_LEGAL_ENTITY');
   });
 
   it('external brand rollout inventory exists', () => {
