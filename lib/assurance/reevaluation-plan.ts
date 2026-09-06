@@ -10,34 +10,27 @@
  *     → calls buildSystemActionAuthorityReadModel for CANONICAL triggers
  *     → loads latest completed evaluation + its orchestrator run
  *     → validates prior evidence through canonical U4 projection
- *     → determines evidence membership from the prior run
+ *     → derives reuse membership FROM prior U4 projection (NOT nullable run IDs)
  *     → validates static scan reuse eligibility
  *     → returns plan
  *
  * LOCK: POLICY_CHANGE != SOURCE_CHANGE
- * LOCK: REQUESTED_CHANGE != SOURCE_CHANGE
- * LOCK: REPOSITORY_INTERPRETATION_REVIEW != ASSURANCE_REEVALUATION_TRIGGER
  * LOCK: STATIC_REUSE != EVIDENCE_MEMBERSHIP_CHANGE
  * LOCK: NO_NEWER_SOURCE_EVIDENCE != REPOSITORY_UNCHANGED
- * LOCK: OLD_EVALUATED_SOURCE != CURRENT_SOURCE_WHEN_NEWER_ACCEPTED_SOURCE_EXISTS
- * LOCK: NEWER_ACCEPTED_STATIC_EXISTS != STATIC_MUST_RUN_AGAIN
- * LOCK: REUSE_FAILED != SILENT_RESCAN
- * LOCK: CLIENT_CANNOT_SELECT_ARBITRARY_BASIS_RUN
  * LOCK: CLIENT_REEVALUATION_REASON != CANONICAL_DIVERGENCE
  * LOCK: NO_DIVERGENCE != REEVALUATION_REQUIRED
  * LOCK: RUN_BOUND_EVIDENCE_REUSED != ALL_EVALUATION_INPUTS_FROZEN
  * LOCK: POLICY_REEVALUATION = QUALIFIED_RUN_BOUND_EVIDENCE_REUSE + CURRENT_SYSTEM_FACT_RESOLUTION
  * LOCK: NEW_SOURCE != OLD_RUNTIME_STILL_APPLICABLE
- * LOCK: NEW_SOURCE != OLD_EXTERNAL_SCAN_STILL_APPLICABLE
- * LOCK: NEW_SOURCE != OLD_REGULATORY_RESULT_STILL_APPLICABLE
- * LOCK: SOURCE_CONTINUITY_NOT_PROVEN != EVIDENCE_CONTINUITY_PROVEN
- * LOCK: EXPECTED_REUSED_EVIDENCE_MISSING != EVIDENCE_NOT_SELECTED
- * LOCK: MISSING_PRIOR_RUNTIME != RUNTIME_ZERO_FINDINGS
- * LOCK: MISSING_PRIOR_REGULATORY != REGULATORY_NOT_APPLICABLE
- * LOCK: NEW_REEVALUATION_RUN_ID != OLD_REGULATORY_PRODUCER_RUN_ID
- * LOCK: NULL_REGULATORY_REPORT_ID != NO_REGULATORY_EVIDENCE
+ * LOCK: RUN_RELATIONSHIP_EXISTS != EVIDENCE_PARTICIPATED_IN_PRIOR_EVALUATION
+ * LOCK: PRODUCER_RUN_ID_PRESENT_ON_BASIS_RUN != REUSE_MEMBER
+ * LOCK: PRIOR_PROJECTED_EVIDENCE = CANONICAL_REUSE_MEMBERSHIP_OWNER
+ * LOCK: STATIC_SCAN_RELATIONSHIP != STATIC_EVIDENCE_PARTICIPATED
+ * LOCK: RUN_BOUND_REUSE_REFS != CURRENT_SYSTEM_FACTS
+ * LOCK: RESULT_AVAILABLE_FOR_RUN != ENGINE_EXECUTED_IN_RUN
  */
 
+import { createHash } from 'crypto';
 import { prisma } from '@/lib/prisma';
 import { validateStaticScanReuse } from '@/lib/audit-orchestrator/static-scan-reuse-validator';
 import { buildSystemActionAuthorityReadModel } from '@/lib/ai-inventory/system-action-authority';
@@ -76,6 +69,20 @@ export type EvidenceMemberType =
   | 'EXTERNAL_CI'
   | 'EXTERNAL_SARIF';
 
+/**
+ * A run-bound evidence reference derived from the prior U4 projection.
+ * Only includes RUN-BOUND producer evidence — NOT current system facts.
+ * LOCK: RUN_BOUND_REUSE_REFS != CURRENT_SYSTEM_FACTS
+ */
+export interface RunBoundEvidenceRef {
+  memberType: EvidenceMemberType;
+  producerId: string;
+  producerRunId: string | null;
+  evidenceId: string;
+  semanticDigest: string | null;
+  contentHash: string | null;
+}
+
 export interface ReevaluationEvidenceMembership {
   staticScanId: string | null;
   runtimeTestId: string | null;
@@ -84,6 +91,7 @@ export interface ReevaluationEvidenceMembership {
   regulatoryProducerRunRef: string | null;
   selectedEngines: string[];
   externalAttachments: Array<{ producerId: string; producerRunId: string }>;
+  runBoundEvidenceRefs: RunBoundEvidenceRef[];
   evidenceMemberTypes: EvidenceMemberType[];
   evidenceMembershipDigest: string;
 }
@@ -116,13 +124,19 @@ export interface AssuranceReevaluationPlan {
  *
  * The server derives the canonical triggers from buildSystemActionAuthorityReadModel.
  * The client cannot override canonical divergence.
+ *
+ * Reuse membership is derived FROM the prior U4 projection, NOT from nullable
+ * basis run IDs. This ensures only evidence that ACTUALLY participated in the
+ * prior evaluation is reused.
+ *
+ * LOCK: PRIOR_PROJECTED_EVIDENCE = CANONICAL_REUSE_MEMBERSHIP_OWNER
+ * LOCK: PRODUCER_RUN_ID_PRESENT_ON_BASIS_RUN != REUSE_MEMBER
  */
 export async function buildReevaluationPlan(
   aiSystemId: string,
   organizationId: string,
 ): Promise<AssuranceReevaluationPlan> {
   // 1. Derive CANONICAL triggers from the read model.
-  // LOCK: CLIENT_REEVALUATION_REASON != CANONICAL_DIVERGENCE
   const readModel = await buildSystemActionAuthorityReadModel(aiSystemId, organizationId);
   if (!readModel) {
     return planWithState(aiSystemId, organizationId, 'INVALID_EVIDENCE_BASIS');
@@ -136,7 +150,6 @@ export async function buildReevaluationPlan(
     triggerReasons.push('SOURCE_NEWER_THAN_EVALUATION');
   }
 
-  // LOCK: NO_DIVERGENCE != REEVALUATION_REQUIRED
   if (triggerReasons.length === 0) {
     return planWithState(aiSystemId, organizationId, 'NO_REEVALUATION_NEEDED');
   }
@@ -181,7 +194,7 @@ export async function buildReevaluationPlan(
   }
 
   // 4. Validate prior evidence through canonical U4 projection.
-  // LOCK: EXPECTED_REUSED_EVIDENCE_MISSING != EVIDENCE_NOT_SELECTED
+  // LOCK: PRIOR_PROJECTED_EVIDENCE = CANONICAL_REUSE_MEMBERSHIP_OWNER
   const parseResult = normalizeSelectedEnginesResult(basisRun.selectedEngines);
   if (parseResult.state === 'INVALID') {
     return planWithState(aiSystemId, organizationId, 'INVALID_EVIDENCE_BASIS');
@@ -202,20 +215,47 @@ export async function buildReevaluationPlan(
       completedAt: latestEvaluation.evaluationSnapshotAt ?? basisRun.completedAt ?? new Date(),
     });
   } catch {
-    // If canonical U4 projection fails, fail closed.
     return planWithState(aiSystemId, organizationId, 'REUSED_EVIDENCE_SOURCE_GAP');
   }
 
-  // 5. Classify evidence member types from the prior projection.
-  const evidenceMemberTypes = classifyEvidenceMembers(priorProjectedEvidence);
+  // 5. Build run-bound evidence refs FROM the prior U4 projection.
+  // This is the canonical reuse membership owner.
+  // LOCK: PRODUCER_RUN_ID_PRESENT_ON_BASIS_RUN != REUSE_MEMBER
+  const runBoundRefs = buildRunBoundRefsFromProjection(priorProjectedEvidence);
+  const evidenceMemberTypes = Array.from(new Set(runBoundRefs.map(r => r.memberType))).sort() as EvidenceMemberType[];
 
-  // 6. Load external evidence attachments bound to the basis run.
-  const externalAttachments = await prisma.audit_run_evidence_attachments.findMany({
+  // 6. Derive reuse fields FROM the projected refs, NOT from nullable run IDs.
+  // LOCK: RUN_RELATIONSHIP_EXISTS != EVIDENCE_PARTICIPATED_IN_PRIOR_EVALUATION
+  const staticRef = runBoundRefs.find(r => r.memberType === 'STATIC');
+  const runtimeRef = runBoundRefs.find(r => r.memberType === 'RUNTIME');
+  const wizardRef = runBoundRefs.find(r => r.memberType === 'WIZARD');
+  const regulatoryRef = runBoundRefs.find(r => r.memberType === 'REGULATORY');
+  const externalRefs = runBoundRefs.filter(
+    r => r.memberType === 'EXTERNAL_CI' || r.memberType === 'EXTERNAL_SARIF'
+  );
+
+  // 7. STATIC is required for this WF-1 path.
+  // LOCK: STATIC_SCAN_RELATIONSHIP != STATIC_EVIDENCE_PARTICIPATED
+  if (!staticRef) {
+    // basisRun.staticScanId exists but prior U4 projection has no STATIC member.
+    // Do NOT promote the run field itself to evidence participation.
+    return planWithState(aiSystemId, organizationId, 'REUSED_EVIDENCE_SOURCE_GAP');
+  }
+
+  // 8. Load external evidence attachments bound to the basis run.
+  // Cross-check: only reuse attachments that ACTUALLY participated in prior U4.
+  const storedAttachments = await prisma.audit_run_evidence_attachments.findMany({
     where: { auditRunId: basisRun.id },
     select: { producerId: true, producerRunId: true },
   });
+  const projectedExternalKeys = new Set(
+    externalRefs.map(r => `${r.producerId}:${r.producerRunId}`)
+  );
+  const reusedExternalAttachments = storedAttachments.filter(
+    a => projectedExternalKeys.has(`${a.producerId}:${a.producerRunId}`)
+  );
 
-  // 7. Find the current accepted source (latest orchestrator run with a static scan).
+  // 9. Find the current accepted source (latest orchestrator run with a static scan).
   const currentSourceRun = await prisma.audit_orchestrator_runs.findFirst({
     where: {
       aiSystemId,
@@ -231,11 +271,13 @@ export async function buildReevaluationPlan(
     orderBy: { createdAt: 'desc' },
   });
 
-  // 8. Determine which static scan to use for reuse.
-  let reuseScanId = basisRun.staticScanId;
+  // 10. Determine which static scan to use for reuse.
+  // For POLICY-ONLY: reuse the prior projected static scan.
+  // For SOURCE-NEWER: use the newer accepted scan (if static-only prior).
+  let reuseScanId = staticRef.producerRunId;
   const hasNewerSource = triggerReasons.includes('SOURCE_NEWER_THAN_EVALUATION')
     && currentSourceRun?.staticScanId
-    && currentSourceRun.staticScanId !== basisRun.staticScanId;
+    && currentSourceRun.staticScanId !== staticRef.producerRunId;
 
   if (hasNewerSource && currentSourceRun?.staticScanId) {
     reuseScanId = currentSourceRun.staticScanId;
@@ -245,7 +287,7 @@ export async function buildReevaluationPlan(
     return planWithState(aiSystemId, organizationId, 'NO_CURRENT_ACCEPTED_SOURCE');
   }
 
-  // 9. Load the scan.
+  // 11. Load the scan.
   const scan = await prisma.ai_security_scans.findFirst({
     where: { scanId: reuseScanId, organizationId },
     select: {
@@ -260,19 +302,15 @@ export async function buildReevaluationPlan(
     return planWithState(aiSystemId, organizationId, 'NO_CURRENT_ACCEPTED_SOURCE');
   }
 
-  // 10. SOURCE-NEWER SAFETY: If source is newer and prior evaluation had
+  // 12. SOURCE-NEWER SAFETY: If source is newer and prior evaluation had
   // non-static run-bound evidence, reject automatic cross-source carry-forward.
   // LOCK: NEW_SOURCE != OLD_RUNTIME_STILL_APPLICABLE
-  // LOCK: NEW_SOURCE != OLD_EXTERNAL_SCAN_STILL_APPLICABLE
-  // LOCK: NEW_SOURCE != OLD_REGULATORY_RESULT_STILL_APPLICABLE
   // LOCK: SOURCE_CONTINUITY_NOT_PROVEN != EVIDENCE_CONTINUITY_PROVEN
+  // IMPORTANT: "non-static evidence participated" comes from prior U4 projection,
+  // NOT merely from nullable basisRun fields.
   if (hasNewerSource) {
-    const nonStaticMembers = evidenceMemberTypes.filter(
-      t => t !== 'STATIC'
-    );
+    const nonStaticMembers = evidenceMemberTypes.filter(t => t !== 'STATIC');
     if (nonStaticMembers.length > 0) {
-      // Prior evaluation had non-static evidence whose applicability to the
-      // newer source is not established. Do NOT silently carry it forward.
       return {
         state: 'SOURCE_CHANGE_REQUIRES_EVIDENCE_REFRESH',
         organizationId,
@@ -298,7 +336,7 @@ export async function buildReevaluationPlan(
     // Static-only prior evaluation with newer source: safe to reuse newer Static.
   }
 
-  // 11. Validate static scan reuse eligibility.
+  // 13. Validate static scan reuse eligibility.
   const reuseValidation = await validateStaticScanReuse(
     prisma,
     reuseScanId,
@@ -307,32 +345,33 @@ export async function buildReevaluationPlan(
     { expectedAiSystemId: aiSystemId },
   );
 
-  // 12. Determine regulatory producer run ref.
-  // LOCK: NEW_REEVALUATION_RUN_ID != OLD_REGULATORY_PRODUCER_RUN_ID
+  // 14. Build evidence membership from projected refs.
   // LOCK: NULL_REGULATORY_REPORT_ID != NO_REGULATORY_EVIDENCE
-  const regulatoryProducerRunRef = basisRun.regulatoryReportId
-    ?? (evidenceMemberTypes.includes('REGULATORY') ? basisRun.id : null);
+  // LOCK: NEW_REEVALUATION_RUN_ID != OLD_REGULATORY_PRODUCER_RUN_ID
+  const regulatoryProducerRunRef = regulatoryRef?.producerRunId ?? null;
 
-  // 13. Build evidence membership.
   const evidenceMembership: ReevaluationEvidenceMembership = {
     staticScanId: reuseScanId,
-    runtimeTestId: basisRun.runtimeTestId,
-    wizardAssessmentId: basisRun.wizardAssessmentId,
-    regulatoryReportId: basisRun.regulatoryReportId,
+    // Derive from projected refs, NOT from basisRun fields
+    runtimeTestId: runtimeRef?.producerRunId ?? null,
+    wizardAssessmentId: wizardRef?.producerRunId ?? null,
+    regulatoryReportId: regulatoryRef?.producerRunId ?? null,
     regulatoryProducerRunRef,
     selectedEngines: basisSelectedEngines,
-    externalAttachments: externalAttachments.map(a => ({
+    externalAttachments: reusedExternalAttachments.map(a => ({
       producerId: a.producerId,
       producerRunId: a.producerRunId,
     })),
+    runBoundEvidenceRefs: runBoundRefs,
     evidenceMemberTypes,
-    evidenceMembershipDigest: computeMembershipDigest(evidenceMemberTypes, externalAttachments),
+    evidenceMembershipDigest: computeMembershipDigest(runBoundRefs, reusedExternalAttachments),
   };
 
-  // 14. Determine plan state.
+  // 15. Determine plan state.
   const limitations: string[] = [
     'NO_NEWER_SOURCE_EVIDENCE != REPOSITORY_UNCHANGED — HAIEC cannot prove the repository has not changed merely because no newer scan exists.',
     'RUN_BOUND_EVIDENCE_REUSED != ALL_EVALUATION_INPUTS_FROZEN — current system facts (Requested, Effective Grant, Inventory, Operating Envelope, Evaluated Scope) are resolved at the new evaluation snapshot.',
+    'RUN_BOUND_PRODUCER_MEMBERSHIP_IMMUTABLE_BY_PRODUCER_RUN = YES — run-bound evidence is selected by exact producerRunId; no new rows can appear for the same scan/test/assessment ID.',
   ];
 
   if (!reuseValidation.valid) {
@@ -378,32 +417,58 @@ export async function buildReevaluationPlan(
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function classifyEvidenceMembers(
+/**
+ * Build run-bound evidence refs from the prior U4 projection.
+ * Only includes RUN-BOUND producer evidence — NOT current system facts
+ * (Requested, Effective Grant, Inventory, Operating Envelope, Evaluated Scope).
+ *
+ * LOCK: PRIOR_PROJECTED_EVIDENCE = CANONICAL_REUSE_MEMBERSHIP_OWNER
+ * LOCK: RUN_BOUND_REUSE_REFS != CURRENT_SYSTEM_FACTS
+ */
+function buildRunBoundRefsFromProjection(
   projected: Awaited<ReturnType<typeof projectEvidenceForRun>>,
-): EvidenceMemberType[] {
-  const types = new Set<EvidenceMemberType>();
+): RunBoundEvidenceRef[] {
+  const refs: RunBoundEvidenceRef[] = [];
   for (const e of projected) {
     const canonicalId = resolveCanonicalProducerId(e.producerId);
-    if (canonicalId === 'saas-static') types.add('STATIC');
-    else if (canonicalId === 'saas-runtime') types.add('RUNTIME');
-    else if (canonicalId === 'saas-wizard') types.add('WIZARD');
-    else if (canonicalId === 'saas-regulatory') types.add('REGULATORY');
-    else if (canonicalId === 'ci-cd-scanner') types.add('EXTERNAL_CI');
-    else if (canonicalId === 'sarif-import') types.add('EXTERNAL_SARIF');
+    let memberType: EvidenceMemberType | null = null;
+    if (canonicalId === 'saas-static') memberType = 'STATIC';
+    else if (canonicalId === 'saas-runtime') memberType = 'RUNTIME';
+    else if (canonicalId === 'saas-wizard') memberType = 'WIZARD';
+    else if (canonicalId === 'saas-regulatory') memberType = 'REGULATORY';
+    else if (canonicalId === 'ci-cd-scanner') memberType = 'EXTERNAL_CI';
+    else if (canonicalId === 'sarif-import') memberType = 'EXTERNAL_SARIF';
+    // Skip current-system-fact producers (saas-inventory, requested, grant)
+    if (!memberType) continue;
+
+    refs.push({
+      memberType,
+      producerId: e.producerId,
+      producerRunId: e.producerRunId,
+      evidenceId: e.evidenceId,
+      semanticDigest: e.semanticDigest ?? null,
+      contentHash: e.contentHash ?? null,
+    });
   }
-  return Array.from(types).sort();
+  return refs;
 }
 
+/**
+ * Compute SHA-256 digest over deterministic canonical membership refs.
+ * Sorts deterministically first, then hashes.
+ *
+ * LOCK: EVIDENCE_MEMBERSHIP_DIGEST_CRYPTOGRAPHIC = YES
+ */
 function computeMembershipDigest(
-  types: EvidenceMemberType[],
+  refs: RunBoundEvidenceRef[],
   attachments: Array<{ producerId: string; producerRunId: string }>,
 ): string {
-  const parts = [
-    ...types,
-    ...attachments.map(a => `${a.producerId}:${a.producerRunId}`),
+  const parts: string[] = [
+    ...refs.map(r => `${r.memberType}:${r.producerId}:${r.producerRunId ?? 'null'}:${r.evidenceId}`),
+    ...attachments.map(a => `EXT:${a.producerId}:${a.producerRunId}`),
   ].sort();
-  // Simple deterministic digest — not cryptographic, just for provenance.
-  return parts.join('|');
+
+  return createHash('sha256').update(parts.join('|')).digest('hex');
 }
 
 function emptyMembership(): ReevaluationEvidenceMembership {
@@ -415,6 +480,7 @@ function emptyMembership(): ReevaluationEvidenceMembership {
     regulatoryProducerRunRef: null,
     selectedEngines: [],
     externalAttachments: [],
+    runBoundEvidenceRefs: [],
     evidenceMemberTypes: [],
     evidenceMembershipDigest: '',
   };
