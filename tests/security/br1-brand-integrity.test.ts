@@ -118,14 +118,29 @@ describe('[BR1] Master entity name remains HAIEC', () => {
     expect(content).toMatch(/name:\s*['"]HAIEC['"]/);
   });
 
-  it('StructuredData does not set name to full form', () => {
+  it('StructuredData does not set name to company descriptor', () => {
     const content = readActiveFile('components/StructuredData.tsx');
-    expect(content).not.toMatch(/name:\s*['"]High Assurance In Every Consequence['"]/);
+    expect(content).not.toMatch(/name:\s*['"]Human AI Evidence Company['"]/);
   });
 
-  it('StructuredData has alternateName as full form', () => {
+  it('StructuredData does not set name to tagline', () => {
     const content = readActiveFile('components/StructuredData.tsx');
-    expect(content).toMatch(/alternateName:\s*['"]High Assurance In Every Consequence['"]/);
+    expect(content).not.toMatch(/name:\s*['"]High Assurance In Every Consequence['"]/i);
+  });
+
+  it('StructuredData has alternateName as company descriptor', () => {
+    const content = readActiveFile('components/StructuredData.tsx');
+    expect(content).toMatch(/alternateName:\s*['"]Human AI Evidence Company['"]/);
+  });
+
+  it('StructuredData has slogan as tagline', () => {
+    const content = readActiveFile('components/StructuredData.tsx');
+    expect(content).toMatch(/slogan:\s*['"]High assurance in every consequence\.['"]/i);
+  });
+
+  it('StructuredData alternateName is NOT the tagline', () => {
+    const content = readActiveFile('components/StructuredData.tsx');
+    expect(content).not.toMatch(/alternateName:\s*['"]High Assurance In Every Consequence['"]/i);
   });
 
   it('layout.tsx authors/creator/publisher is HAIEC', () => {
@@ -135,25 +150,38 @@ describe('[BR1] Master entity name remains HAIEC', () => {
     expect(content).toMatch(/publisher:\s*['"]HAIEC['"]/);
   });
 
-  it('well-known authority JSON has correct full_name', () => {
+  it('well-known authority JSON has correct full_name and tagline', () => {
     const content = readActiveFile('public/.well-known/haiec-authority.json');
     const json = JSON.parse(content);
     expect(json.organization.name).toBe('HAIEC');
-    expect(json.organization.full_name).toBe('High Assurance In Every Consequence');
+    expect(json.organization.full_name).toBe('Human AI Evidence Company');
+    expect(json.organization.tagline).toBe('High assurance in every consequence.');
   });
 });
 
-// ─── D. New full form present in canonical surfaces ─────────────────────────
+// ─── D. Company descriptor and tagline present in canonical surfaces ────────
 
-describe('[BR1] New full form present in canonical brand surfaces', () => {
-  it('About page contains "High Assurance In Every Consequence"', () => {
+describe('[BR1] Company descriptor and tagline present in canonical brand surfaces', () => {
+  it('About page contains "Human AI Evidence Company"', () => {
     const content = readActiveFile('app/about/page.tsx');
-    expect(content).toContain('High Assurance In Every Consequence');
+    expect(content).toContain('Human AI Evidence Company');
   });
 
-  it('What-is-haiec page contains "High Assurance In Every Consequence"', () => {
+  it('About page does not present tagline as company expansion', () => {
+    const content = readActiveFile('app/about/page.tsx');
+    // LOCK: TAGLINE != FULL_FORM
+    expect(content).not.toMatch(/HAIEC\s*\(High Assurance In Every Consequence\)/i);
+  });
+
+  it('What-is-haiec page contains "Human AI Evidence Company"', () => {
     const content = readActiveFile('app/what-is-haiec/page.tsx');
-    expect(content).toContain('High Assurance In Every Consequence');
+    expect(content).toContain('Human AI Evidence Company');
+  });
+
+  it('What-is-haiec page does not say "HAIEC stands for High Assurance"', () => {
+    const content = readActiveFile('app/what-is-haiec/page.tsx');
+    // LOCK: TAGLINE != FULL_FORM
+    expect(content).not.toMatch(/HAIEC stands for.*High Assurance/i);
   });
 
   it('What-is-haiec metadata contains evidence-bound assurance description', () => {
@@ -161,9 +189,9 @@ describe('[BR1] New full form present in canonical brand surfaces', () => {
     expect(content).toContain('HAIEC provides evidence-bound assurance');
   });
 
-  it('Footer contains "High Assurance In Every Consequence"', () => {
+  it('Footer contains tagline "High assurance in every consequence"', () => {
     const content = readActiveFile('components/Footer.tsx');
-    expect(content).toContain('High Assurance In Every Consequence');
+    expect(content).toMatch(/High assurance in every consequence/i);
   });
 });
 
@@ -270,15 +298,90 @@ describe('[BR1] Canonical brand document exists', () => {
     expect(fs.existsSync(path.join(cwd, 'docs/brand/HAIEC-BRAND-IDENTITY.md'))).toBe(true);
   });
 
-  it('brand document contains master brand, full form, and thesis', () => {
+  it('brand document contains master brand, descriptor, tagline, and thesis', () => {
     const content = readActiveFile('docs/brand/HAIEC-BRAND-IDENTITY.md');
     expect(content).toContain('HAIEC');
-    expect(content).toContain('High Assurance In Every Consequence');
+    expect(content).toContain('Human AI Evidence Company');
+    expect(content).toMatch(/High assurance in every consequence/i);
     expect(content).toContain('Permission is not delegation');
     expect(content).toContain('AI Action Assurance');
   });
 
+  it('brand document distinguishes descriptor from tagline', () => {
+    const content = readActiveFile('docs/brand/HAIEC-BRAND-IDENTITY.md');
+    // LOCK: TAGLINE != FULL_FORM, BRAND_NAME != LEGAL_ENTITY
+    expect(content).toContain('Company Descriptor');
+    expect(content).toContain('Tagline');
+    expect(content).toContain('TAGLINE != FULL_FORM');
+    expect(content).toContain('BRAND_NAME != LEGAL_ENTITY_NAME');
+  });
+
+  it('brand document establishes KingCaliber LLC as legal operator', () => {
+    const content = readActiveFile('docs/brand/HAIEC-BRAND-IDENTITY.md');
+    // LOCK: BRAND_NAME != LEGAL_ENTITY_NAME, HAIEC is operated by KingCaliber LLC
+    expect(content).toContain('KingCaliber LLC');
+    expect(content).toContain('kingcaliber.com');
+    expect(content).toContain('LEGAL_OPERATOR = KingCaliber LLC');
+    expect(content).toContain('BRAND_NAME != LEGAL_ENTITY_NAME');
+  });
+
+  it('privacy page discloses legal operator', () => {
+    const content = readActiveFile('app/privacy/page.tsx');
+    expect(content).toContain('KingCaliber LLC');
+  });
+
+  it('terms page discloses legal operator', () => {
+    const content = readActiveFile('app/terms/page.tsx');
+    expect(content).toContain('KingCaliber LLC');
+  });
+
   it('external brand rollout inventory exists', () => {
     expect(fs.existsSync(path.join(cwd, 'docs/brand/EXTERNAL-BRAND-ROLLOUT-INVENTORY.md'))).toBe(true);
+  });
+});
+
+// ─── K. Contact page commercial claims and alias safety ─────────────────────
+
+describe('[BR1] Contact page commercial claims and alias safety', () => {
+  it('contact page does not display unconfigured email aliases', () => {
+    const content = readActiveFile('app/contact/page.tsx');
+    // These aliases are not source-established in lib/email.ts
+    expect(content).not.toContain('enterprise@haiec.com');
+    expect(content).not.toContain('assurance@haiec.com');
+    expect(content).not.toContain('partners@haiec.com');
+    expect(content).not.toContain('developers@haiec.com');
+    expect(content).not.toContain('trust@haiec.com');
+  });
+
+  it('contact page does not make unestablished SLA claims', () => {
+    const content = readActiveFile('app/contact/page.tsx');
+    // LOCK: MARKETING_COPY != SLA, UNCONFIGURED_RESPONSE_TARGET != CUSTOMER_COMMITMENT
+    expect(content).not.toMatch(/SLA-backed/i);
+    expect(content).not.toMatch(/SLA applies/i);
+  });
+
+  it('contact page does not manufacture scarcity', () => {
+    const content = readActiveFile('app/contact/page.tsx');
+    // LOCK: Do not manufacture scarcity unless explicitly configured
+    expect(content).not.toMatch(/Limited engagements per quarter/i);
+  });
+
+  it('contact page does not overclaim assurance-firm engine execution', () => {
+    const content = readActiveFile('app/contact/page.tsx');
+    // LOCK: VERIFY_ARTIFACT != RUN_ANALYZER, READ_EVIDENCE != SEE_PROPRIETARY_RULE_IMPLEMENTATION
+    expect(content).not.toMatch(/run the same deterministic engines your clients run/i);
+    expect(content).not.toMatch(/No black-box.*auditors see the rule logic/i);
+    expect(content).not.toMatch(/Independent verification without a second engagement/i);
+  });
+
+  it('contact form retains enterprise intake fields in message', () => {
+    const content = readActiveFile('components/ContactForm.tsx');
+    // LOCK: FORM_FIELD_SUBMITTED != FORM_FIELD_PERSISTED, USER_INPUT_SILENTLY_DROPPED = FORBIDDEN
+    // Enterprise fields (phone, role, teamSize) must be folded into the persisted message
+    expect(content).toContain('buildPersistedMessage');
+    expect(content).toContain('Intake metadata');
+    expect(content).toMatch(/Role.*\$\{formData\.role\}/);
+    expect(content).toMatch(/Team size.*\$\{formData\.teamSize\}/);
+    expect(content).toMatch(/Phone.*\$\{formData\.phone\}/);
   });
 });
