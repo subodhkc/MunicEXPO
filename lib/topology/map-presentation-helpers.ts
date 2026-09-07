@@ -9,8 +9,12 @@
  * LOCK: PRESENTATION_REGION != TOPOLOGY_NODE
  * LOCK: ASSET_SUBTYPE MAY_DRIVE PRESENTATION_REGION
  * LOCK: DISPLAY_NAME_KEYWORD != ARCHITECTURE_ROLE_PROOF
+ * LOCK: LAYOUT_PROFILE != TOPOLOGY_SEMANTIC
+ * LOCK: ONE_UNIVERSAL_LAYOUT != HTML_REPLICA
+ * LOCK: HTML_NODE_POSITION != CANONICAL_PRODUCTION_NODE_POSITION
+ * LOCK: HTML_SPATIAL_GRAMMAR = PRODUCTION_LAYOUT_TEMPLATE
  *
- * @version presentation-helpers-1.0.0
+ * @version presentation-helpers-2.0.0 — LayoutProfile + neutral region
  */
 
 import type { TopologyNode, TopologyEdge, MapLens, SemanticZoom } from './types';
@@ -18,12 +22,46 @@ import { ARCHITECTURE_REGIONS, getRegionForKind } from './map-presentation';
 
 // ─── Region ID type ──────────────────────────────────────────────────────────
 
-export type RegionId = 'source-deployment' | 'access-authority' | 'ai-execution' | 'action-surface' | 'state-consequence' | 'evidence-assurance';
+export type RegionId =
+  | 'source-deployment'
+  | 'access-authority'
+  | 'ai-execution'
+  | 'action-surface'
+  | 'state-consequence'
+  | 'evidence-assurance'
+  | 'unclassified-infrastructure'; // neutral — NOT source/build
+
+// ─── Layout Profile ──────────────────────────────────────────────────────────
+// Different customer stories require different presentation layouts.
+// LOCK: ONE_UNIVERSAL_SIX_COLUMN_LAYOUT != HTML_REPLICA
+
+export type LayoutProfile = 'SYSTEM_ARCHITECTURE' | 'ACTION_CONSEQUENCE' | 'ACCESS_AUTHORITY' | 'EVIDENCE_ASSURANCE';
+
+/**
+ * Map a customer lens to a layout profile.
+ * The layout profile controls region placement, shape, guides, and boundary.
+ */
+export function lensToLayoutProfile(lens: MapLens): LayoutProfile {
+  switch (lens) {
+    case 'system':
+      return 'SYSTEM_ARCHITECTURE';
+    case 'action_consequence':
+      return 'ACTION_CONSEQUENCE';
+    case 'access_authority':
+      return 'ACCESS_AUTHORITY';
+    case 'evidence_coverage':
+      return 'EVIDENCE_ASSURANCE';
+    case 'overview':
+    default:
+      return 'SYSTEM_ARCHITECTURE';
+  }
+}
 
 // ─── Connected Asset region classification by subType ────────────────────────
 // LOCK: ASSET_SUBTYPE MAY_DRIVE PRESENTATION_REGION
 // LOCK: DISPLAY_NAME_KEYWORD != ARCHITECTURE_ROLE_PROOF
-// LOCK: PRESENTATION_REGION != TOPOLOGY_TRUTH
+// LOCK: UNKNOWN_ROLE != SOURCE_BUILD_ROLE
+// LOCK: NEUTRAL != SOURCE_DEPLOYMENT
 
 const ASSET_REGION_MAP: Record<string, RegionId> = {
   SOURCE_REPOSITORY: 'source-deployment',
@@ -36,31 +74,32 @@ const ASSET_REGION_MAP: Record<string, RegionId> = {
   KNOWLEDGE_BASE: 'state-consequence',
   POLICY_SOURCE: 'access-authority',
   PROVIDER_CREDENTIAL: 'access-authority',
-  PROVIDER_PROJECT: 'source-deployment', // neutral infrastructure — nearest neutral region
-  OTHER: 'source-deployment', // ambiguous — neutral, no fabricated semantic role
+  PROVIDER_PROJECT: 'unclassified-infrastructure', // neutral — NOT source/build
+  OTHER: 'unclassified-infrastructure', // ambiguous — neutral, no fabricated semantic role
 };
 
 /**
- * Classify a connected_asset node into a presentation region using its
- * source-established subType (canonical Connected Asset assetType).
+ * Classify a node into a presentation region.
  *
- * For non-connected_asset nodes, falls back to the domain-based region.
+ * For connected_asset nodes, uses source-established subType (assetType).
+ * For other nodes, falls back to domain-based region.
  *
  * LOCK: DISPLAY_NAME_USED_TO_GUESS_REGION = NO
+ * LOCK: CANVAS_REGION == INSPECTOR_REGION
  */
 export function classifyNodeRegion(node: TopologyNode): RegionId {
   if (node.kind === 'connected_asset' && node.subType) {
     const region = ASSET_REGION_MAP[node.subType];
     if (region) return region;
-    // Unknown asset type → neutral region, no fabricated semantic role
-    return 'source-deployment';
+    // Unknown asset type → neutral unclassified, NOT source/build
+    return 'unclassified-infrastructure';
   }
   // Non-asset nodes: use domain-based region from map-presentation
   const regionKey = getRegionForKind(node.kind);
   if (regionKey && regionKey in ARCHITECTURE_REGIONS) {
     return regionKey as RegionId;
   }
-  return 'source-deployment'; // neutral fallback
+  return 'unclassified-infrastructure'; // neutral fallback
 }
 
 // ─── Lens filtering (production owner) ───────────────────────────────────────
@@ -149,11 +188,12 @@ export function computeNeighborhood(
 }
 
 // ─── Region layout assignment ────────────────────────────────────────────────
-// Assigns each node to a presentation region and a layer index within the
-// directional architecture flow.
+// Assigns each node to a presentation region.
+// The layout profile determines the spatial grammar.
 //
 // LOCK: REGION_LAYOUT != LINEAR_PIPELINE
 // LOCK: DIRECTIONAL != ONE_STRAIGHT_LINE
+// LOCK: DIFFERENT_CUSTOMER_STORY MAY_REQUIRE DIFFERENT_PRESENTATION_LAYOUT
 
 export interface PresentationNodePosition {
   id: string;
@@ -163,47 +203,56 @@ export interface PresentationNodePosition {
   y: number;
 }
 
-// Directional layer ordering (left to right)
-const REGION_LAYER: Record<RegionId, number> = {
-  'source-deployment': 0,
-  'access-authority': 1,
-  'ai-execution': 2,
-  'action-surface': 3,
-  'state-consequence': 4,
-  'evidence-assurance': 5,
-};
+// System Architecture: 5-column top row + semantic zoom area + assurance bottom
+// Action→Consequence: 7 horizontal layers with effect boundary between layer 5 and 6
+// Access Authority: identity/access/policy/provider_iam focused
+// Evidence Assurance: evidence/ai_execution/action focused
 
-export function getRegionLayer(region: RegionId): number {
-  return REGION_LAYER[region] ?? 0;
+export function getRegionLayer(region: RegionId, profile: LayoutProfile = 'SYSTEM_ARCHITECTURE'): number {
+  if (profile === 'ACTION_CONSEQUENCE') {
+    // Horizontal layers: top to bottom
+    const layerMap: Record<RegionId, number> = {
+      'source-deployment': 0, // Layer 1: input/context
+      'access-authority': 1, // Layer 2-3: instruction authority + agent authority
+      'ai-execution': 2, // Layer 3: agent core
+      'action-surface': 3, // Layer 4-5: action construction + mediation
+      'state-consequence': 5, // Layer 6: execution/consequence (AFTER effect boundary)
+      'evidence-assurance': 6, // Layer 7: assurance
+      'unclassified-infrastructure': 0,
+    };
+    return layerMap[region] ?? 0;
+  }
+  // System Architecture: left to right columns
+  const layerMap: Record<RegionId, number> = {
+    'source-deployment': 0,
+    'access-authority': 1,
+    'ai-execution': 2,
+    'action-surface': 3,
+    'state-consequence': 4,
+    'evidence-assurance': 5,
+    'unclassified-infrastructure': 2, // neutral — place near center
+  };
+  return layerMap[region] ?? 0;
 }
 
-/**
- * Two-stage region-aware layout:
- *   Stage 1: classify each node into a presentation region
- *   Stage 2: layout nodes within their region (Dagre subgraph)
- *   Stage 3: place regions in directional architecture order
- *   Stage 4: route edges across regions
- *
- * This returns region assignments + layer indices that can be used
- * to constrain Dagre or any other layout engine.
- */
-export function assignRegionLayout(nodes: TopologyNode[]): Map<string, { region: RegionId; layer: number }> {
+export function assignRegionLayout(nodes: TopologyNode[], profile: LayoutProfile = 'SYSTEM_ARCHITECTURE'): Map<string, { region: RegionId; layer: number }> {
   const assignments = new Map<string, { region: RegionId; layer: number }>();
   for (const node of nodes) {
     const region = classifyNodeRegion(node);
-    const layer = getRegionLayer(region);
+    const layer = getRegionLayer(region, profile);
     assignments.set(node.id, { region, layer });
   }
   return assignments;
 }
 
 // ─── Effect commit boundary detection ────────────────────────────────────────
-// In Action → Consequence lens, detect whether a consequence/effect boundary
-// should be rendered between pre-effect nodes and effect/consequence nodes.
+// In Action→Consequence layout, detect whether a consequence/effect boundary
+// should be rendered HORIZONTALLY between pre-effect nodes and effect/consequence nodes.
 //
 // LOCK: EFFECT_BOUNDARY != VULNERABILITY_BOUNDARY
 // LOCK: EFFECT_BOUNDARY != RUNTIME_OBSERVATION
 // LOCK: PRESENTATION_BOUNDARY != NEW_GRAPH_TRUTH
+// LOCK: HTML_EFFECT_BOUNDARY_DIRECTION = HORIZONTAL
 
 export function shouldRenderEffectBoundary(
   nodes: TopologyNode[],
@@ -213,7 +262,6 @@ export function shouldRenderEffectBoundary(
   if (lens !== 'action_consequence') return false;
   const hasConsequence = nodes.some((n) => n.kind === 'consequence');
   const hasPreEffect = nodes.some((n) => n.kind === 'action' || n.kind === 'entrypoint' || n.kind === 'ai_execution');
-  // Only render boundary if there are edges connecting pre-effect to consequence
   const hasEdgeToConsequence = edges.some((e) => {
     const source = nodes.find((n) => n.id === e.source);
     const target = nodes.find((n) => n.id === e.target);
@@ -221,4 +269,24 @@ export function shouldRenderEffectBoundary(
            (target && target.kind === 'consequence');
   });
   return hasConsequence && hasPreEffect && hasEdgeToConsequence;
+}
+
+// ─── Dagre center → ReactFlow top-left conversion ────────────────────────────
+// LOCK: DAGRE_CENTER != REACTFLOW_TOP_LEFT
+// LOCK: MIXED_NODE_ORIGIN != VALID_GEOMETRY
+//
+// Dagre returns center coordinates. ReactFlow uses top-left by default.
+// We use nodeOrigin={[0.5, 0.5]} so ReactFlow also uses center coordinates.
+// This function is exported for testing the contract.
+
+export const NODE_ORIGIN: [number, number] = [0.5, 0.5]; // center origin
+
+/**
+ * Convert Dagre center coordinates to ReactFlow position.
+ * With nodeOrigin=[0.5, 0.5], positions are center-based, so no conversion needed.
+ * This function exists to make the coordinate contract explicit and testable.
+ */
+export function dagreToReactFlowPosition(x: number, y: number): { x: number; y: number } {
+  // With nodeOrigin=[0.5, 0.5], positions are center-based
+  return { x, y };
 }

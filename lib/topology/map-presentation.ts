@@ -49,6 +49,13 @@ export const MAP_THEME = {
   inspectorRadius: 20,
   canvasHeight: 720,
   inspectorWidth: 360,
+  // HTML reference shadows
+  canvasShadow: '0 18px 56px rgba(15,18,24,.06), 0 2px 8px rgba(15,18,24,.035)',
+  inspectorShadow: '0 22px 70px rgba(0,0,0,.15)',
+  nodeShadow: '0 4px 14px rgba(12,14,18,.04)',
+  nodeHoverShadow: '0 10px 24px rgba(12,14,18,.08)',
+  // HTML reference canvas min width
+  canvasMinWidth: 1760,
 } as const;
 
 // ─── NODE DOMAIN: domain-first color mapping (light enterprise grammar) ──────
@@ -263,6 +270,11 @@ export const ARCHITECTURE_REGIONS: Record<string, { label: string; kinds: string
     label: 'Evidence / Assurance',
     kinds: ['evidence'],
     tint: '#eef6f0',
+  },
+  'unclassified-infrastructure': {
+    label: 'Connected Infrastructure',
+    kinds: [],
+    tint: '#f4f5f7',
   },
 };
 
