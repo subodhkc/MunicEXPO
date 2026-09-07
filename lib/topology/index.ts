@@ -33,3 +33,31 @@ export {
 } from './types';
 
 export { stableNodeId, stableEdgeId, s } from './stable-ids';
+
+export type {
+  LayoutProfile,
+  RegionId,
+  ActionPresentationStage,
+  RegionOrientation,
+  PresentationRegionDescriptor,
+  PresentationNodePosition,
+} from './map-presentation-helpers';
+
+export {
+  lensToLayoutProfile,
+  classifyNodeRegion,
+  filterByLens,
+  filterByZoom,
+  computeNeighborhood,
+  assignRegionLayout,
+  assignActionStages,
+  mapNodeToActionStage,
+  buildPresentationRegions,
+  getEffectBoundaryRow,
+  shouldRenderEffectBoundary,
+  getRegionLayer,
+  NODE_ORIGIN,
+  dagreToReactFlowPosition,
+  ACTION_PRESENTATION_STAGES,
+  ACTION_STAGE_LABELS,
+} from './map-presentation-helpers';
