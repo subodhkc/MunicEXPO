@@ -52,11 +52,11 @@ export type MapLens = 'overview' | 'system' | 'action_consequence' | 'access_aut
 export const SUPPORTED_MAP_LENSES: MapLens[] = ['overview', 'system', 'action_consequence', 'access_authority', 'evidence_coverage'];
 
 export const LENS_LABELS: Record<MapLens, string> = {
-  overview: 'Overview',
+  overview: 'Full architecture',
   system: 'System Map',
   action_consequence: 'Action → Consequence',
-  access_authority: 'Access & Authority',
-  evidence_coverage: 'Evidence & Coverage',
+  access_authority: 'Authority & Bounds',
+  evidence_coverage: 'Evidence & Proof',
 };
 
 // ─── Semantic Zoom ───────────────────────────────────────────────────────────
