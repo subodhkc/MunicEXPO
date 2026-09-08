@@ -29,6 +29,7 @@ import {
   U6_RECEIPT_SCHEMA_VERSION_G3,
   U6_REPORT_SCHEMA_VERSION,
   U6_REPORT_SCHEMA_VERSION_G3,
+  U6_REPORT_SCHEMA_VERSION_PX,
   BuildIdentity,
   DeploymentIdentity,
   U6Package,
@@ -37,6 +38,7 @@ import {
   EvaluatedScopeBinding,
   EvaluatedScopeSnapshot,
   EvaluatedScopeAssetSnapshot,
+  ActionProofReportSection,
 } from './u6-types';
 import { resolvePublicProfileLabel } from './u6-public-profile-label';
 import { PRODUCER_IDS } from '@/lib/engine-registry/producer-registry';
@@ -62,6 +64,14 @@ export interface PackageBuildContext {
   // The snapshot's assetSnapshots contain frozen provider + canonicalLocator
   // + identityStateAtEvaluation used by the compatibility predicate.
   evaluatedScopeSnapshot?: EvaluatedScopeSnapshot;
+  /**
+   * PX-FINAL: additive "Action Proof & Evidence Frontier" report section.
+   * When provided, report schema upgrades to 1.2.0 and the section is committed
+   * into semanticReportDigest. Receipt/bundle/verification semantics unchanged.
+   * LOCK: ACTION_PROOF_REPORT_SECTION != U5_DECISION_INPUT
+   * LOCK: NEW_REPORT_SECTION != SILENT_HASH_SEMANTIC_CHANGE
+   */
+  actionProof?: ActionProofReportSection;
 }
 
 export function buildAssuranceVerificationPackage(
@@ -75,8 +85,13 @@ export function buildAssuranceVerificationPackage(
   // G3-R1: When scope binding is provided, use G3 schema versions (1.1.0).
   // Legacy packages (no scope binding) use 1.0.0 and remain verifiable under 1.0.0.
   const hasScopeBinding = !!context.evaluatedScopeBinding;
+  // PX-FINAL: actionProof presence upgrades the report schema to 1.2.0
+  // (additive section committed into semanticReportDigest).
+  const hasActionProof = !!context.actionProof;
   const receiptSchemaVersion = hasScopeBinding ? U6_RECEIPT_SCHEMA_VERSION_G3 : U6_RECEIPT_SCHEMA_VERSION;
-  const reportSchemaVersion = hasScopeBinding ? U6_REPORT_SCHEMA_VERSION_G3 : U6_REPORT_SCHEMA_VERSION;
+  const reportSchemaVersion = hasActionProof
+    ? U6_REPORT_SCHEMA_VERSION_PX
+    : (hasScopeBinding ? U6_REPORT_SCHEMA_VERSION_G3 : U6_REPORT_SCHEMA_VERSION);
   const verificationSchemaVersion = context.verificationSchemaVersion ??
     (hasScopeBinding ? U6_VERIFICATION_SCHEMA_VERSION_G3 : U6_VERIFICATION_SCHEMA_VERSION);
 
@@ -85,7 +100,7 @@ export function buildAssuranceVerificationPackage(
 
   // 2. Unified Assurance Report Core
   const synthetic = context.syntheticClassification ?? resolveSyntheticClassification(evaluation, v1_1);
-  const report = buildUnifiedAssuranceReport(evaluation, bundle, buildIdentity, projectedEvidence, synthetic, context.authoritySourceLabel);
+  const report = buildUnifiedAssuranceReport(evaluation, bundle, buildIdentity, projectedEvidence, synthetic, context.authoritySourceLabel, context.actionProof);
 
   // G3-R1: Override report version if scope binding present.
   // CRITICAL: The report digest was computed inside buildUnifiedAssuranceReport
@@ -100,7 +115,9 @@ export function buildAssuranceVerificationPackage(
   // because computeReportDigest includes decisionReceipt.receiptVersion in its
   // payload, and reportReceiptSummaryValid checks that the report's embedded
   // receipt version matches the actual receipt's version.
-  if (hasScopeBinding) {
+  // Recompute the digest whenever the post-build version/section differs from
+  // the 1.0.0 base content (scope binding OR the PX action proof section).
+  if (hasScopeBinding || hasActionProof) {
     report.reportVersion = reportSchemaVersion;
     report.decisionReceipt.receiptVersion = receiptSchemaVersion;
     report.reportDigest = computeReportDigest(report);

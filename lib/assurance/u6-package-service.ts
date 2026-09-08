@@ -8,6 +8,7 @@
 
 import { nanoid } from 'nanoid';
 import { prisma } from '@/lib/prisma';
+import { buildActionProofReportSection } from './u6-action-proof-section';
 import { normalizeSelectedEnginesResult } from '@/lib/audit-orchestrator/selected-engines-normalizer';
 import { buildAssuranceVerificationPackage, computePackageDigest, verifyAssurancePackage } from './u6-package';
 import {
@@ -170,10 +171,16 @@ export async function buildPackageFromEvaluation(
     };
   }
 
+  // PX-FINAL: Action Proof & Evidence Frontier — historical basis only.
+  // Bound to the exact evaluated source scan via orchestratorRunId →
+  // staticScanId. Never falls back to a current/latest scan.
+  const actionProof = await buildActionProofReportSection(evaluation);
+
   const packageCandidate = buildAssuranceVerificationPackage({
     evaluation,
     projectedEvidence,
     buildIdentity: undefined,
+    actionProof,
     authoritySourceLabel: resolveAuthoritySourceLabel(v1_1),
     operatingEnvelopeApprovedAt: v1_1.operatingEnvelopeApprovedAt ? v1_1.operatingEnvelopeApprovedAt.toISOString() : undefined,
     approvalReference: v1_1.operatingEnvelopeApprovalReference ?? undefined,

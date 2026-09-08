@@ -48,6 +48,11 @@ import { prisma } from '@/lib/prisma';
 import { verifyAISystemOrgBinding } from '@/lib/org-context';
 import { listConnectedAssets } from '@/lib/ai-inventory/connected-assets';
 import { readApplicationAuthorizationForSystem } from '@/lib/ai-security/application-authorization-read';
+import {
+  validatePersistedSnapshot,
+  type PersistedOperationCoverageIntelligence,
+} from '@/lib/ai-security/operation-coverage-read';
+import { buildActionProofTraceProjection } from '@/lib/ai-inventory/action-proof-trace';
 import { getCurrentEffectiveGrant } from '@/lib/iam-grant/effective-grant-observation';
 import { buildSystemActionAuthorityReadModel } from '@/lib/ai-inventory/system-action-authority';
 import { resolveSystemEvidence } from '@/lib/ai-inventory/system-evidence-resolver';
@@ -310,6 +315,12 @@ export async function buildTopologyProjection(
 
   let mapAvailability: NodeAvailability = 'AVAILABLE';
   let scanProvenance: TopologyProjectionResult['scanProvenance'];
+  /**
+   * Whether ActionProofTrace references were resolved from the SAME scan this
+   * map is projected from. 'NOT_AVAILABLE' means no valid operation-coverage
+   * snapshot exists for this exact scanId — never a different scan's traces.
+   */
+  let actionProofBasis: 'SAME_SCAN' | 'NOT_AVAILABLE' = 'NOT_AVAILABLE';
 
   if (ac1Read.status === 'NO_CURRENT_ACCEPTED_SOURCE') {
     mapAvailability = 'SOURCE_GAP';
@@ -345,6 +356,85 @@ export async function buildTopologyProjection(
     const { snapshot } = ac1Read;
     for (const lim of snapshot.extractionLimitations) {
       limitations.push(lim);
+    }
+
+    // ─── PY-K3 seam population: ActionProofTrace references ──────────────
+    // Exact canonical join only: a trace's SINK consequence target carries the
+    // canonical sinkId from the SAME persisted operation-coverage snapshot.
+    // The snapshot is loaded by ac1Read.scanId, so cross-scan composition is
+    // structurally impossible — CURRENT_MAP_SCAN_A + TRACE_SCAN_B != PROOF_JOIN.
+    //
+    // LOCK: MAP_NODE_NAME != TRACE_IDENTITY
+    // LOCK: actionProofTraceIds is a lookup reference, never an edge.
+    // LOCK: MAP_EDGE != PROOF_EDGE
+    const traceIdsBySinkId = new Map<string, string[]>();
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const opCovScan = await (prisma as any).ai_security_scans.findFirst({
+        where: { scanId: ac1Read.scanId, organizationId },
+        select: { scanId: true, operationCoverageIntelligence: true },
+      });
+      if (opCovScan?.operationCoverageIntelligence != null) {
+        const raw = typeof opCovScan.operationCoverageIntelligence === 'string'
+          ? JSON.parse(opCovScan.operationCoverageIntelligence)
+          : opCovScan.operationCoverageIntelligence;
+        const opCovData = raw as PersistedOperationCoverageIntelligence;
+        if (
+          !validatePersistedSnapshot(opCovData) &&
+          opCovData.authorityPlaneInvariants?.LIKELY_PROMOTES_CANONICAL_AUTHORITY !== true
+        ) {
+          const traceProjection = buildActionProofTraceProjection({
+            scanId: ac1Read.scanId,
+            toolCandidates: opCovData.toolCandidates || [],
+            toolRegistrationRelations: opCovData.toolRegistrationRelations,
+            pythonToolModelExposureRelations: opCovData.pythonToolModelExposureRelations,
+            pythonToolDispatchRelations: opCovData.pythonToolDispatchRelations,
+            toolImplementationRelations: opCovData.toolImplementationRelations,
+            handlerOperationRelations: opCovData.handlerOperationRelations,
+            handlerOperationCoverage: opCovData.handlerOperationCoverage,
+            operationArgumentProvenanceRelations: opCovData.operationArgumentProvenanceRelations,
+            argumentProvenanceCoverage: opCovData.argumentProvenanceCoverage,
+            actionContextBindingRelations: opCovData.actionContextBindingRelations,
+            actionContextBindingCoverage: opCovData.actionContextBindingCoverage,
+            actionConfirmationMediationRelations: opCovData.actionConfirmationMediationRelations,
+            pythonToolExposureCoverage: opCovData.pythonToolExposureCoverage,
+            extractionCompletion: opCovData.extractionCompletion,
+            extractionLimitations: opCovData.extractionLimitations,
+          });
+          actionProofBasis = 'SAME_SCAN';
+          for (const t of traceProjection.traces) {
+            const ct = t.consequenceTarget;
+            if (ct && ct.targetKind === 'SINK' && ct.targetId) {
+              const list = traceIdsBySinkId.get(ct.targetId) ?? [];
+              list.push(t.id);
+              traceIdsBySinkId.set(ct.targetId, list);
+            }
+          }
+          // PX-FINAL-R: coverage limitation truth — map trace references are
+          // populated only for exact SINK-backed consequence identities.
+          // PROVIDER_NATIVE_OPERATION traces have no equally strong canonical
+          // AC-1 sinkId join, so they remain available in Repository
+          // Intelligence without a map reference. NO heuristic join.
+          // LOCK: PROVIDER_NATIVE_OPERATION_ID != AC1_SINK_ID
+          // LOCK: NO_EXACT_PROVIDER_MAP_JOIN => NO_MAP_TRACE_REFERENCE
+          // LOCK: TRACE_EXISTS != MAP_REFERENCE_EXISTS
+          // LOCK: MAP_REFERENCE_ABSENT != TRACE_ABSENT
+          // LOCK: MAP_TRACE_COVERAGE_PARTIAL != ANALYSIS_INCOMPLETE
+          const hasUnlinkedProviderNative = traceProjection.traces.some(
+            (t) => t.consequenceTarget?.targetKind === 'PROVIDER_NATIVE_OPERATION',
+          );
+          if (hasUnlinkedProviderNative) {
+            limitations.push(
+              'Action Proof map references currently cover exact SINK-backed consequence identities. ' +
+              'Provider-native operation traces remain available in Repository Intelligence but are not ' +
+              'map-linked without an exact canonical map identity.',
+            );
+          }
+        }
+      }
+    } catch {
+      // Action proof references are additive; absence degrades gracefully.
+      limitations.push('Action proof trace references could not be resolved for this scan');
     }
 
     // Build exact capability join map (Part 1: retire string-only join)
@@ -475,6 +565,11 @@ export async function buildTopologyProjection(
           // effect ONLY attached when exact join exists
           effect: exactJoin?.effect,
           effectLabel: exactJoin ? (EFFECT_LABELS[exactJoin.effect] || exactJoin.effect) : undefined,
+          // PY-K3: exact same-scan canonical sinkId join only.
+          // LOCK: MAP_NODE_NAME != TRACE_IDENTITY
+          actionProofTraceIds: fact.sinkId && traceIdsBySinkId.get(fact.sinkId)?.length
+            ? traceIdsBySinkId.get(fact.sinkId)
+            : undefined,
         };
         actionOccurrenceNodes.set(actionNodeId, actionNode);
         nodes.push(actionNode);
@@ -660,6 +755,10 @@ export async function buildTopologyProjection(
             limitations: [],
             effect: exactJoin.effect,
             effectLabel,
+            // Same exact same-scan sinkId join as the action node.
+            actionProofTraceIds: fact.sinkId && traceIdsBySinkId.get(fact.sinkId)?.length
+              ? traceIdsBySinkId.get(fact.sinkId)
+              : undefined,
           });
           const actionToConsequenceEdge = stableEdgeId(actionNodeId, consequenceNodeId, 'produces');
           edges.push({
@@ -923,6 +1022,7 @@ export async function buildTopologyProjection(
     providerIam,
     currentPolicy,
     evaluatedBasis,
+    actionProofBasis,
     lenses: SUPPORTED_MAP_LENSES,
     zoomLevels: SUPPORTED_SEMANTIC_ZOOM_LEVELS,
   };

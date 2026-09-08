@@ -20,6 +20,13 @@ export const U6_BUNDLE_SCHEMA_VERSION_G3 = '1.0.0' as const; // bundle semantics
 export const U6_RECEIPT_SCHEMA_VERSION_G3 = '1.1.0' as const;
 export const U6_VERIFICATION_SCHEMA_VERSION_G3 = '1.1.0' as const;
 
+// PX-FINAL: report schema when the additive Action Proof & Evidence Frontier
+// section is present. Receipt/bundle/verification semantics are unchanged —
+// ACTION_PROOF_TRACE != DECISION_RECEIPT and the section is not a U5 input.
+// Packages issued before this section existed verify under their own stored
+// schema versions; the section is simply absent from their reportJson.
+export const U6_REPORT_SCHEMA_VERSION_PX = '1.2.0' as const;
+
 /**
  * G3-R1: Evaluated Scope binding committed into the canonical Decision Receipt.
  * This structure is included in computeReceiptHash() for schema 1.1.0+ packages.
@@ -286,6 +293,77 @@ export interface UnifiedAssuranceReport {
   decisionReceipt: DecisionReceiptSummary;
   reportDigest: string;
   syntheticClassification: 'NONE' | 'SYNTHETIC_REFERENCE' | 'UNKNOWN';
+  /**
+   * PX-FINAL: Action Proof & Evidence Frontier — bounded HISTORICAL source
+   * proof for the exact repository scan this evaluation consumed.
+   *
+   * LOCKS:
+   *   CURRENT_REPOSITORY_TRACE != EVALUATED_REPOSITORY_TRACE — the section is
+   *     only ever built from the evaluation's own bound source scan, never
+   *     from the latest/current scan.
+   *   NO_HISTORICAL_BINDING => availability NOT_AVAILABLE (never a current
+   *     trace fallback).
+   *   ACTION_PROOF_REPORT_SECTION != U5_DECISION_INPUT
+   *   TRACE_COUNT != RISK_SCORE
+   */
+  actionProof?: ActionProofReportSection;
+}
+
+/**
+ * Action Proof & Evidence Frontier report section.
+ *
+ * availability:
+ *   ESTABLISHED    — the evaluation's exact bound source scan carried an
+ *                    operation-coverage snapshot and traces were projected
+ *                    from THAT scan only.
+ *   NOT_AVAILABLE  — the exact evaluated-scan binding was not captured or the
+ *                    bound scan's snapshot is missing/invalid. The current
+ *                    scan is NEVER substituted.
+ */
+export interface ActionProofReportSection {
+  availability: 'ESTABLISHED' | 'NOT_AVAILABLE';
+  unavailableReason?:
+    | 'EVALUATED_SCAN_BINDING_NOT_CAPTURED'
+    | 'EVALUATED_SCAN_HAS_NO_OPERATION_COVERAGE'
+    | 'EVALUATED_SNAPSHOT_INVALID'
+    | 'SECTION_BUILD_FAILED';
+  /** Exact evaluated source scan (audit_orchestrator_runs.staticScanId) */
+  scanId?: string;
+  commitSha?: string | null;
+  /** Counts only — no aggregate score. TRACE_COUNT != RISK_SCORE */
+  summary?: {
+    totalTraces: number;
+    uniqueToolCount: number;
+    establishedConsequencePaths: number;
+    conditionalDispatchTraces: number;
+    tracesWithExactResource: number;
+    contextPartialOrUnknown: number;
+    confirmationEnforced: number;
+    confirmationDeclaredOnly: number;
+    confirmationNotRequiredDeclared: number;
+    unresolvedFrontiers: number;
+  };
+  /** Bounded trace summaries (presentation-limited, not a raw dump) */
+  traces?: Array<{
+    traceId: string;
+    toolName?: string;
+    framework: string;
+    sourceLocation: string;
+    consequence?: string;
+    resourceTarget?: string;
+    /** Ordered stage key → epistemic state */
+    stageStates: Record<string, string>;
+    proofFrontierStage: string;
+    proofFrontierReason: string;
+    confirmationState?: string;
+    contextState?: string;
+    scopeLimitations: string[];
+  }>;
+  /** Truncation truth — never implies exhaustive display */
+  tracesShown?: number;
+  totalTraces?: number;
+  /** Source coverage/scope limitations carried from the bound scan */
+  coverageLimitations?: string[];
 }
 
 export interface ReportProfileSection {
