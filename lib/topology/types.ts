@@ -210,6 +210,17 @@ export interface TopologyNode {
   assetConnectionState?: string;
   /** Scan/run provenance for detail zoom */
   scanId?: string;
+  /**
+   * PY-K3 seam (REFERENCE ONLY): canonical ActionProofTrace IDs for the same
+   * scan that this node may be inspected against. Never populated by the
+   * current projector — reserved for the final product convergence wave.
+   * The trace lives in the Repository Intelligence read model
+   * (lib/ai-inventory/action-proof-trace.ts); this field is a lookup key only.
+   *
+   * LOCK: TOPOLOGY_NODE != ACTION_PROOF_TRACE
+   * LOCK: MAP_EDGE != PROOF_EDGE
+   */
+  actionProofTraceIds?: string[];
   /** Sample-only inspector context (never set on production nodes) */
   sampleContext?: SampleNodeContext;
 }
