@@ -22,6 +22,7 @@ import { CONTROL_CLAIM_CATALOG } from './claim-catalog';
 import type { DecisionEvidenceProjection } from '@/lib/decision-pipeline/evidence-projection';
 import {
   U6_REPORT_SCHEMA_VERSION,
+  U6_REPORT_SCHEMA_VERSION_PX,
   U6_BUNDLE_SCHEMA_VERSION,
   U6_RECEIPT_SCHEMA_VERSION,
   BuildIdentity,
@@ -40,6 +41,7 @@ import {
   EvaluatedScopeBinding,
   PackageVerificationResult,
   PublicVerificationResult,
+  ActionProofReportSection,
 } from './u6-types';
 
 export type { BuildIdentity, U6Package } from './u6-types';
@@ -66,6 +68,7 @@ export function buildUnifiedAssuranceReport(
   projectedEvidence: DecisionEvidenceProjection[] = [],
   syntheticClass: 'NONE' | 'SYNTHETIC_REFERENCE' | 'UNKNOWN' = resolveSyntheticClassification(evaluation as AssuranceEvaluationV1_1),
   authoritySourceLabel?: string,
+  actionProof?: ActionProofReportSection,
 ): UnifiedAssuranceReport {
   const v1_1 = evaluation as AssuranceEvaluationV1_1;
 
@@ -75,7 +78,8 @@ export function buildUnifiedAssuranceReport(
   const limitations = buildLimitations(evaluation, projectedEvidence, v1_1.planeAvailability ?? [], buildIdentity);
 
   const report: UnifiedAssuranceReport = {
-    reportVersion: U6_REPORT_SCHEMA_VERSION,
+    // PX-FINAL: 1.2.0 when the additive Action Proof section is present.
+    reportVersion: actionProof ? U6_REPORT_SCHEMA_VERSION_PX : U6_REPORT_SCHEMA_VERSION,
     reportId: `${evaluation.id}:report`,
     assuranceEvaluationId: evaluation.id,
     organizationId: evaluation.organizationId,
@@ -118,6 +122,10 @@ export function buildUnifiedAssuranceReport(
     },
     reportDigest: '',
     syntheticClassification: syntheticClass,
+    // PX-FINAL: additive Action Proof & Evidence Frontier section. Present on
+    // new reports only — absent on previously persisted reportJson, which keeps
+    // old packages verifying under their original digest semantics.
+    ...(actionProof ? { actionProof } : {}),
   };
 
   report.reportDigest = computeReportDigest(report);
@@ -364,6 +372,10 @@ export function computeReportDigest(report: UnifiedAssuranceReport): string {
       receiptId: report.decisionReceipt.receiptId,
     },
     syntheticClassification: report.syntheticClassification,
+    // PX-FINAL: additive — included only when the section exists on the report.
+    // Absent on legacy persisted reports, so old digests remain stable.
+    // LOCK: NEW_REPORT_SECTION != SILENT_HASH_SEMANTIC_CHANGE
+    ...(report.actionProof ? { actionProof: report.actionProof } : {}),
   };
   return hashTextContent(canonicalSerialize(payload));
 }

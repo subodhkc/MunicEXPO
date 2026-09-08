@@ -211,13 +211,16 @@ export interface TopologyNode {
   /** Scan/run provenance for detail zoom */
   scanId?: string;
   /**
-   * PY-K3 seam (REFERENCE ONLY): canonical ActionProofTrace IDs for the same
-   * scan that this node may be inspected against. Never populated by the
-   * current projector — reserved for the final product convergence wave.
+   * PY-K3/PX-FINAL: canonical ActionProofTrace IDs for the SAME scan this map
+   * is projected from. Populated only by exact canonical identity (shared
+   * persisted sinkId from the same operation-coverage snapshot) — never by
+   * name, label, file proximity, or similarity.
    * The trace lives in the Repository Intelligence read model
    * (lib/ai-inventory/action-proof-trace.ts); this field is a lookup key only.
    *
    * LOCK: TOPOLOGY_NODE != ACTION_PROOF_TRACE
+   * LOCK: MAP_NODE_NAME != TRACE_IDENTITY
+   * LOCK: CURRENT_MAP_SCAN_A + TRACE_SCAN_B != PROOF_JOIN
    * LOCK: MAP_EDGE != PROOF_EDGE
    */
   actionProofTraceIds?: string[];
@@ -304,6 +307,14 @@ export interface TopologyProjectionResult {
     evaluationSnapshotAt: string | null;
     disposition: string | null;
   };
+  /**
+   * Whether node actionProofTraceIds were resolved from the SAME scan as this
+   * map's source. 'NOT_AVAILABLE' means no valid operation-coverage snapshot
+   * exists for this exact scanId — never a different scan's traces.
+   *
+   * LOCK: CURRENT_MAP_SCAN_A + TRACE_SCAN_B != PROOF_JOIN
+   */
+  actionProofBasis?: 'SAME_SCAN' | 'NOT_AVAILABLE';
   lenses: MapLens[];
   zoomLevels: SemanticZoom[];
 }
