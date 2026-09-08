@@ -410,6 +410,26 @@ export async function buildTopologyProjection(
               traceIdsBySinkId.set(ct.targetId, list);
             }
           }
+          // PX-FINAL-R: coverage limitation truth — map trace references are
+          // populated only for exact SINK-backed consequence identities.
+          // PROVIDER_NATIVE_OPERATION traces have no equally strong canonical
+          // AC-1 sinkId join, so they remain available in Repository
+          // Intelligence without a map reference. NO heuristic join.
+          // LOCK: PROVIDER_NATIVE_OPERATION_ID != AC1_SINK_ID
+          // LOCK: NO_EXACT_PROVIDER_MAP_JOIN => NO_MAP_TRACE_REFERENCE
+          // LOCK: TRACE_EXISTS != MAP_REFERENCE_EXISTS
+          // LOCK: MAP_REFERENCE_ABSENT != TRACE_ABSENT
+          // LOCK: MAP_TRACE_COVERAGE_PARTIAL != ANALYSIS_INCOMPLETE
+          const hasUnlinkedProviderNative = traceProjection.traces.some(
+            (t) => t.consequenceTarget?.targetKind === 'PROVIDER_NATIVE_OPERATION',
+          );
+          if (hasUnlinkedProviderNative) {
+            limitations.push(
+              'Action Proof map references currently cover exact SINK-backed consequence identities. ' +
+              'Provider-native operation traces remain available in Repository Intelligence but are not ' +
+              'map-linked without an exact canonical map identity.',
+            );
+          }
         }
       }
     } catch {
