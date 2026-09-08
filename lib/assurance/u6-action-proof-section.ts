@@ -86,16 +86,47 @@ export async function buildActionProofReportSection(
     // legitimate evaluated-scan reference. Never the latest/current scan.
     const run = await prisma.audit_orchestrator_runs.findUnique({
       where: { id: evaluation.orchestratorRunId },
-      select: { staticScanId: true, organizationId: true },
+      select: { staticScanId: true, organizationId: true, aiSystemId: true },
     });
     if (!run?.staticScanId) {
       return unavailable('EVALUATED_SCAN_BINDING_NOT_CAPTURED');
     }
 
+    // PX-IDENTITY: ORCHESTRATOR_RUN_ID_MATCH != EVALUATED_SYSTEM_IDENTITY_PROOF.
+    // The bound run must share the evaluation's organization AND AI system
+    // identity; otherwise this is a cross-identity historical join and the
+    // section fails closed rather than composing another system's trace.
+    //   SAME_ORGANIZATION != SAME_AI_SYSTEM
+    //   CROSS_SYSTEM_HISTORICAL_JOIN = INVALID
+    if (
+      run.organizationId !== evaluation.organizationId ||
+      run.aiSystemId !== evaluation.aiSystemId
+    ) {
+      return {
+        availability: 'NOT_AVAILABLE',
+        unavailableReason: 'EVALUATED_RUN_IDENTITY_MISMATCH',
+      };
+    }
+
     const scan = await (prisma as any).ai_security_scans.findFirst({
       where: { scanId: run.staticScanId, organizationId: run.organizationId },
-      select: { scanId: true, commitSha: true, operationCoverageIntelligence: true },
+      select: { scanId: true, commitSha: true, aiSystemId: true, operationCoverageIntelligence: true },
     });
+    // PX-IDENTITY: STATIC_SCAN_ID_MATCH != EVALUATED_SYSTEM_IDENTITY_PROOF.
+    // A bound scan carrying an explicit AI-system binding that differs from
+    // the run's aiSystemId is a cross-system historical join. Historical
+    // scans with scan.aiSystemId == null preserve legacy uncertainty (no
+    // fabricated equality), but a present value must not contradict it.
+    //   REPOSITORY_URL_MATCH != AI_SYSTEM_IDENTITY
+    //   COMMIT_SHA_MATCH != AI_SYSTEM_IDENTITY
+    if (scan && scan.aiSystemId != null && scan.aiSystemId !== run.aiSystemId) {
+      return {
+        availability: 'NOT_AVAILABLE',
+        unavailableReason: 'EVALUATED_SCAN_IDENTITY_MISMATCH',
+        scanId: run.staticScanId,
+        commitSha: scan.commitSha ?? null,
+      };
+    }
     if (!scan || scan.operationCoverageIntelligence == null) {
       // The evaluated scan predates operation-coverage persistence (or has no
       // snapshot). This is a historical-basis gap — never filled by current data.

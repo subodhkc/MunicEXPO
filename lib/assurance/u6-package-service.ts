@@ -114,6 +114,48 @@ export async function loadExactRunEvidence(evaluation: AssuranceEvaluation): Pro
     throw new Error('ORCHESTRATOR_RUN_NOT_FOUND');
   }
 
+  // PX-IDENTITY: evaluated-system identity continuity. An orchestratorRunId
+  // match alone is NOT evaluated-system identity proof. The bound run must
+  // carry the SAME organization and AI system identity as the evaluation;
+  // anything else is a cross-identity historical join and fails closed.
+  // LOCKS:
+  //   ORCHESTRATOR_RUN_ID_MATCH != EVALUATED_SYSTEM_IDENTITY_PROOF
+  //   SAME_ORGANIZATION != SAME_AI_SYSTEM
+  //   CROSS_SYSTEM_HISTORICAL_JOIN = INVALID
+  if (
+    run.organizationId !== evaluation.organizationId ||
+    run.aiSystemId !== evaluation.aiSystemId
+  ) {
+    throw new Error(
+      `EVALUATED_RUN_IDENTITY_MISMATCH: orchestrator run ${run.id} does not share the evaluation's organizationId/aiSystemId`,
+    );
+  }
+
+  // PX-IDENTITY: run→scan identity continuity for the bound static scan.
+  // STATIC_SCAN_ID_MATCH != EVALUATED_SYSTEM_IDENTITY_PROOF. When the bound
+  // scan carries an explicit ai_systems binding (scan.aiSystemId != null) it
+  // MUST equal run.aiSystemId; a differing value is a cross-system join.
+  // Historical scans with scan.aiSystemId == null preserve legacy uncertainty —
+  // we never fabricate equality, but a bound scan cannot contradict it either.
+  // scan.organizationId is nullable on legacy rows; when present it must equal
+  // run.organizationId (NO_CROSS_ORGANIZATION_COMPOSITION).
+  if (run.staticScanId) {
+    const boundScan = await (prisma as any).ai_security_scans.findFirst({
+      where: { scanId: run.staticScanId },
+      select: { organizationId: true, aiSystemId: true },
+    });
+    if (boundScan) {
+      if (
+        (boundScan.organizationId != null && boundScan.organizationId !== run.organizationId) ||
+        (boundScan.aiSystemId != null && boundScan.aiSystemId !== run.aiSystemId)
+      ) {
+        throw new Error(
+          `EVALUATED_SCAN_IDENTITY_MISMATCH: bound static scan ${run.staticScanId} does not share the orchestrator run's organizationId/aiSystemId`,
+        );
+      }
+    }
+  }
+
   // Gate 4A Phase B: Inspect selectedEngines parse state.
   // INVALID must NOT become ordinary empty participation.
   // MALFORMED_SELECTED_ENGINES_AS_CLEAN_EMPTY_PATHS = 0 in the REAL package consumer.
