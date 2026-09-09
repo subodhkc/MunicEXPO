@@ -3,6 +3,13 @@
  */
 
 export { buildTopologyProjection } from './topology-projector';
+export {
+  buildConstellationProjection,
+  filterByScale,
+  filterByLens,
+  inferConstellationRole,
+  isConstellationFrontierAvailability,
+} from './constellation-presentation-projection';
 
 export type {
   TopologyProjectionResult,
@@ -15,6 +22,14 @@ export type {
   SemanticZoom,
   PlaneStatusDisplay,
   SampleNodeContext,
+  ConstellationScale,
+  ConstellationLens,
+  ConstellationNodeRole,
+  ConstellationNode,
+  ConstellationEdge,
+  ConstellationCombo,
+  ConstellationFrontier,
+  ConstellationProjection,
 } from './types';
 
 export {
@@ -30,9 +45,15 @@ export {
   SUBTYPE_LABELS,
   PLANE_STATUS_LABELS,
   EFFECT_LABELS,
+  SUPPORTED_CONSTELLATION_SCALES,
+  SUPPORTED_CONSTELLATION_LENSES,
+  CONSTELLATION_SCALE_LABELS,
+  CONSTELLATION_LENS_LABELS,
 } from './types';
 
 export { stableNodeId, stableEdgeId, s } from './stable-ids';
+export { buildAssuranceVisualSnapshot } from './assurance-visual-snapshot';
+export type { AssuranceVisualSnapshot } from './assurance-visual-snapshot';
 
 export type {
   LayoutProfile,
@@ -46,7 +67,6 @@ export type {
 export {
   lensToLayoutProfile,
   classifyNodeRegion,
-  filterByLens,
   filterByZoom,
   computeNeighborhood,
   assignRegionLayout,
