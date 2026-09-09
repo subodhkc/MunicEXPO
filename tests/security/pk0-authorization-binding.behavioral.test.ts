@@ -58,9 +58,11 @@ async function makeConsumedAuthorization() {
   if ('error' in minted) throw new Error('fixture authorization could not be minted');
 
   const created = db.scan_authorizations.create.mock.calls.at(-1)?.[0].data;
+  const startedAt = new Date(created.createdAt.getTime() + 1000);
   return {
     ...created,
-    usedAt: new Date(),
+    usedAt: startedAt,
+    executionStartedAt: startedAt,
     executionStatus: 'running',
     scan_consents: { revokedAt: null },
   };
@@ -141,5 +143,60 @@ describe('PK-0 callback authorization binding', () => {
       branch: BRANCH,
       commitSha: COMMIT,
     })).valid).toBe(false);
+  });
+
+  it('accepts a long-running callback after the authorization TTL has elapsed', async () => {
+    const authorization = await makeConsumedAuthorization();
+    const now = new Date();
+    // TTL expired 15 minutes ago, but execution started 5 minutes before expiry.
+    authorization.expiresAt = new Date(now.getTime() - 15 * 60 * 1000);
+    authorization.executionStartedAt = new Date(authorization.expiresAt.getTime() - 5 * 60 * 1000);
+    authorization.usedAt = authorization.executionStartedAt;
+    db.scan_authorizations.findUnique.mockResolvedValue(authorization);
+
+    const result = await validateAuthorizationBinding({
+      authorizationId: authorization.authorizationId,
+      scanId: SCAN_ID,
+      repositoryUrl: REPOSITORY,
+      branch: BRANCH,
+      commitSha: COMMIT,
+    });
+
+    expect(result.valid).toBe(true);
+  });
+
+  it('rejects an authorization that started after expiry', async () => {
+    const authorization = await makeConsumedAuthorization();
+    authorization.executionStartedAt = new Date(authorization.expiresAt.getTime() + 60 * 1000);
+    db.scan_authorizations.findUnique.mockResolvedValue(authorization);
+
+    const result = await validateAuthorizationBinding({
+      authorizationId: authorization.authorizationId,
+      scanId: SCAN_ID,
+      repositoryUrl: REPOSITORY,
+      branch: BRANCH,
+      commitSha: COMMIT,
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.reason).toBe('AUTHORIZATION_STARTED_AFTER_EXPIRY');
+  });
+
+  it('rejects an unconsumed authorization during callback', async () => {
+    const authorization = await makeConsumedAuthorization();
+    authorization.usedAt = null;
+    authorization.executionStartedAt = null;
+    db.scan_authorizations.findUnique.mockResolvedValue(authorization);
+
+    const result = await validateAuthorizationBinding({
+      authorizationId: authorization.authorizationId,
+      scanId: SCAN_ID,
+      repositoryUrl: REPOSITORY,
+      branch: BRANCH,
+      commitSha: COMMIT,
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.reason).toBe('AUTHORIZATION_NOT_CONSUMED');
   });
 });
