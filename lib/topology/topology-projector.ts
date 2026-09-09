@@ -375,57 +375,63 @@ export async function buildTopologyProjection(
           ? JSON.parse(opCovScan.operationCoverageIntelligence)
           : opCovScan.operationCoverageIntelligence;
         const parsed = raw as PersistedOperationCoverageIntelligence;
+        const validationError = validatePersistedSnapshot(parsed);
         if (
-          !validatePersistedSnapshot(parsed) &&
+          !validationError &&
           parsed.authorityPlaneInvariants?.LIKELY_PROMOTES_CANONICAL_AUTHORITY !== true
         ) {
-          opCovData = parsed;
-          const traceProjection = buildActionProofTraceProjection({
-            scanId: ac1Read.scanId,
-            toolCandidates: opCovData.toolCandidates || [],
-            toolRegistrationRelations: opCovData.toolRegistrationRelations,
-            pythonToolModelExposureRelations: opCovData.pythonToolModelExposureRelations,
-            pythonToolDispatchRelations: opCovData.pythonToolDispatchRelations,
-            toolImplementationRelations: opCovData.toolImplementationRelations,
-            handlerOperationRelations: opCovData.handlerOperationRelations,
-            handlerOperationCoverage: opCovData.handlerOperationCoverage,
-            operationArgumentProvenanceRelations: opCovData.operationArgumentProvenanceRelations,
-            argumentProvenanceCoverage: opCovData.argumentProvenanceCoverage,
-            actionContextBindingRelations: opCovData.actionContextBindingRelations,
-            actionContextBindingCoverage: opCovData.actionContextBindingCoverage,
-            actionConfirmationMediationRelations: opCovData.actionConfirmationMediationRelations,
-            pythonToolExposureCoverage: opCovData.pythonToolExposureCoverage,
-            extractionCompletion: opCovData.extractionCompletion,
-            extractionLimitations: opCovData.extractionLimitations,
-          });
-          actionProofBasis = 'SAME_SCAN';
-          for (const t of traceProjection.traces) {
-            const ct = t.consequenceTarget;
-            if (ct && ct.targetKind === 'SINK' && ct.targetId) {
-              const list = traceIdsBySinkId.get(ct.targetId) ?? [];
-              list.push(t.id);
-              traceIdsBySinkId.set(ct.targetId, list);
+          if (parsed.scanId === ac1Read.scanId) {
+            opCovData = parsed;
+            const traceProjection = buildActionProofTraceProjection({
+              scanId: ac1Read.scanId,
+              toolCandidates: opCovData.toolCandidates || [],
+              toolRegistrationRelations: opCovData.toolRegistrationRelations,
+              pythonToolModelExposureRelations: opCovData.pythonToolModelExposureRelations,
+              pythonToolDispatchRelations: opCovData.pythonToolDispatchRelations,
+              toolImplementationRelations: opCovData.toolImplementationRelations,
+              handlerOperationRelations: opCovData.handlerOperationRelations,
+              handlerOperationCoverage: opCovData.handlerOperationCoverage,
+              operationArgumentProvenanceRelations: opCovData.operationArgumentProvenanceRelations,
+              argumentProvenanceCoverage: opCovData.argumentProvenanceCoverage,
+              actionContextBindingRelations: opCovData.actionContextBindingRelations,
+              actionContextBindingCoverage: opCovData.actionContextBindingCoverage,
+              actionConfirmationMediationRelations: opCovData.actionConfirmationMediationRelations,
+              pythonToolExposureCoverage: opCovData.pythonToolExposureCoverage,
+              extractionCompletion: opCovData.extractionCompletion,
+              extractionLimitations: opCovData.extractionLimitations,
+            });
+            actionProofBasis = 'SAME_SCAN';
+            for (const t of traceProjection.traces) {
+              const ct = t.consequenceTarget;
+              if (ct && ct.targetKind === 'SINK' && ct.targetId) {
+                const list = traceIdsBySinkId.get(ct.targetId) ?? [];
+                list.push(t.id);
+                traceIdsBySinkId.set(ct.targetId, list);
+              }
             }
-          }
-          // PX-FINAL-R: coverage limitation truth — map trace references are
-          // populated only for exact SINK-backed consequence identities.
-          // PROVIDER_NATIVE_OPERATION traces have no equally strong canonical
-          // AC-1 sinkId join, so they remain available in Repository
-          // Intelligence without a map reference. NO heuristic join.
-          // LOCK: PROVIDER_NATIVE_OPERATION_ID != AC1_SINK_ID
-          // LOCK: NO_EXACT_PROVIDER_MAP_JOIN => NO_MAP_TRACE_REFERENCE
-          // LOCK: TRACE_EXISTS != MAP_REFERENCE_EXISTS
-          // LOCK: MAP_REFERENCE_ABSENT != TRACE_ABSENT
-          // LOCK: MAP_TRACE_COVERAGE_PARTIAL != ANALYSIS_INCOMPLETE
-          const hasUnlinkedProviderNative = traceProjection.traces.some(
-            (t) => t.consequenceTarget?.targetKind === 'PROVIDER_NATIVE_OPERATION',
-          );
-          if (hasUnlinkedProviderNative) {
-            limitations.push(
-              'Action Proof map references currently cover exact SINK-backed consequence identities. ' +
-              'Provider-native operation traces remain available in Repository Intelligence but are not ' +
-              'map-linked without an exact canonical map identity.',
+            // PX-FINAL-R: coverage limitation truth — map trace references are
+            // populated only for exact SINK-backed consequence identities.
+            // PROVIDER_NATIVE_OPERATION traces have no equally strong canonical
+            // AC-1 sinkId join, so they remain available in Repository
+            // Intelligence without a map reference. NO heuristic join.
+            // LOCK: PROVIDER_NATIVE_OPERATION_ID != AC1_SINK_ID
+            // LOCK: NO_EXACT_PROVIDER_MAP_JOIN => NO_MAP_TRACE_REFERENCE
+            // LOCK: TRACE_EXISTS != MAP_REFERENCE_EXISTS
+            // LOCK: MAP_REFERENCE_ABSENT != TRACE_ABSENT
+            // LOCK: MAP_TRACE_COVERAGE_PARTIAL != ANALYSIS_INCOMPLETE
+            const hasUnlinkedProviderNative = traceProjection.traces.some(
+              (t) => t.consequenceTarget?.targetKind === 'PROVIDER_NATIVE_OPERATION',
             );
+            if (hasUnlinkedProviderNative) {
+              limitations.push(
+                'Action Proof map references currently cover exact SINK-backed consequence identities. ' +
+                'Provider-native operation traces remain available in Repository Intelligence but are not ' +
+                'map-linked without an exact canonical map identity.',
+              );
+            }
+          } else {
+            actionProofBasis = 'NOT_AVAILABLE';
+            limitations.push('Operation-coverage snapshot scan identity does not match the current accepted scan.');
           }
         }
       }
@@ -808,8 +814,8 @@ export async function buildTopologyProjection(
   // Source-backed projection of agent/tool/handler/resource/service/hub/
   // persistence/deferred/evaluation/credential topology from the SAME scan.
   // No React-side name joins; all IDs are stable semantic hashes.
-  if (opCovData) {
-    const ari = buildAriTopologyProjection(opCovData, opCovData.scanId, aiSystemNodeId);
+  if (opCovData && ac1Read.status !== 'NO_CURRENT_ACCEPTED_SOURCE') {
+    const ari = buildAriTopologyProjection(opCovData, ac1Read.scanId, aiSystemNodeId);
     for (const n of ari.nodes) nodes.push(n);
     for (const e of ari.edges) {
       edges.push(e);

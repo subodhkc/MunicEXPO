@@ -21,6 +21,8 @@ import type { TopologyNode, TopologyEdge, NodeAvailability } from './types';
 import { stableNodeId, stableEdgeId, s } from './stable-ids';
 import {
   buildAgentReachabilityProjection,
+  resourceChannelKey,
+  weakest,
   type AgentReachabilityProjection,
   type AgentResourcePath,
   type PotentialChannelGroup,
@@ -79,20 +81,6 @@ function locationString(loc: { file?: string; line?: number } | undefined | null
   return loc.line ? `${loc.file}:${loc.line}` : loc.file;
 }
 
-function resourceChannelKey(r: AriResourceIdentity): string | null {
-  if (r.resolution === 'UNRESOLVED' || !r.key) return null;
-  const scopeParts: string[] = [];
-  if (r.scope?.provider) scopeParts.push(`provider=${r.scope.provider}`);
-  if (r.scope?.cloudAccountOrProject) scopeParts.push(`account=${r.scope.cloudAccountOrProject}`);
-  if (r.scope?.region) scopeParts.push(`region=${r.scope.region}`);
-  if (r.scope?.environment) scopeParts.push(`env=${r.scope.environment}`);
-  if (r.scope?.tenant) scopeParts.push(`tenant=${r.scope.tenant}`);
-  if (r.scope?.namespace) scopeParts.push(`ns=${r.scope.namespace}`);
-  if (r.scope?.workload) scopeParts.push(`workload=${r.scope.workload}`);
-  if (r.scope?.partition) scopeParts.push(`partition=${r.scope.partition}`);
-  return `${r.resourceClass}:${scopeParts.join('&')}:${r.key}`;
-}
-
 function resourceLabel(resource: AriResourceIdentity): string {
   const parts: string[] = [resource.resourceClass];
   if (resource.key) parts.push(resource.key);
@@ -103,6 +91,7 @@ function scopeFields(resource: AriResourceIdentity): Partial<TopologyNode> {
   const scope = resource.scope;
   if (!scope) return {};
   return {
+    resourceProvider: scope.provider,
     environment: scope.environment,
     cloudAccountOrProject: scope.cloudAccountOrProject,
     region: scope.region,
@@ -136,6 +125,13 @@ export function buildAriTopologyProjection(
   const edges: TopologyEdge[] = [];
   const limitations: string[] = [];
 
+  // Defensive same-scan guard: never compose operation coverage from a different scan.
+  // LOCK: CURRENT_MAP_SCAN_A + ARI_SCAN_B = NO_COMPOSITION
+  if (data.scanId !== scanId) {
+    limitations.push('Operation-coverage snapshot scan identity does not match the current accepted scan');
+    return { nodes, edges, limitations };
+  }
+
   const reachabilityProjection = buildAgentReachabilityProjection(data);
 
   const nodeById = new Map<string, TopologyNode>();
@@ -156,6 +152,22 @@ export function buildAriTopologyProjection(
 
   const agents = data.agentCandidates || [];
   const agentNameById = new Map(agents.map((a) => [a.id, a.name || a.id]));
+
+  // Pre-compute canonical resource node IDs and handler→resource mapping
+  // for the exact Tool→Handler→Consequence→Resource chain.
+  const resourceNodeIdsByKey = new Map<string, string>();
+  const opToResourceNodeIds = new Map<string, Set<string>>();
+  for (const arp of reachabilityProjection.agentResourcePaths) {
+    const isService = arp.resource.resourceClass === 'EXTERNAL_SERVICE';
+    const kind = isService ? 'service' : 'resource';
+    const nodeId = stableNodeId(kind, [scanId, arp.resourceKey]);
+    resourceNodeIdsByKey.set(arp.resourceKey, nodeId);
+    if (arp.handlerOperationRelationId) {
+      const set = opToResourceNodeIds.get(arp.handlerOperationRelationId) || new Set<string>();
+      set.add(nodeId);
+      opToResourceNodeIds.set(arp.handlerOperationRelationId, set);
+    }
+  }
 
   // ─── Agent definition nodes ───────────────────────────────────────────────
   for (const agent of agents) {
@@ -257,13 +269,56 @@ export function buildAriTopologyProjection(
     }
   }
 
+  // ─── Consequence nodes (Handler → Consequential Operation) ──────────────────
+  // Exact canonical relation only. Consequence node identity = HandlerConsequentialOperationRelation.id.
+  for (const op of data.handlerOperationRelations || []) {
+    const handlerNodeId = stableNodeId('handler', [scanId, op.toolImplementationRelationId]);
+    if (!nodeById.has(handlerNodeId)) continue;
+    const consequenceNodeId = stableNodeId('consequence', [scanId, op.id]);
+    addNode({
+      id: consequenceNodeId,
+      label: op.handlerRef || op.handlerFunctionId || op.id,
+      kind: 'consequence',
+      subType: op.targetKind || 'consequential_operation',
+      subTypeLabel: 'Consequential operation',
+      aiReachable: 'UNKNOWN',
+      availability: stateToAvailability(op.state as AriRelationState),
+      sourceLocation: op.callPath?.[0] ? `${op.callPath[0]}` : undefined,
+      limitations: ['CONSEQUENTIAL_OPERATION != RUNTIME_EFFECT'],
+      scanId,
+      handlerRef: op.handlerRef,
+    });
+    addEdge({
+      id: stableEdgeId(handlerNodeId, consequenceNodeId, 'handles'),
+      source: handlerNodeId,
+      target: consequenceNodeId,
+      label: 'handles',
+      kind: 'handles',
+      joinBasis: 'STRUCTURAL_RELATION',
+      style: stateToStyle(op.state as AriRelationState),
+    });
+    const downstreamResourceIds = opToResourceNodeIds.get(op.id);
+    if (downstreamResourceIds) {
+      for (const resourceNodeId of downstreamResourceIds) {
+        addEdge({
+          id: stableEdgeId(consequenceNodeId, resourceNodeId, 'reaches_resource'),
+          source: consequenceNodeId,
+          target: resourceNodeId,
+          label: 'reaches resource',
+          kind: 'reaches_resource',
+          joinBasis: 'STATIC',
+          style: stateToStyle(op.state as AriRelationState),
+        });
+      }
+    }
+  }
+
   // ─── Resource / Service nodes ─────────────────────────────────────────────
-  const resourceNodeIdsByKey = new Map<string, string>();
+  // resourceNodeIdsByKey is already precomputed for exact consequence mapping.
   for (const arp of reachabilityProjection.agentResourcePaths) {
     const isService = arp.resource.resourceClass === 'EXTERNAL_SERVICE';
     const kind = isService ? 'service' : 'resource';
     const nodeId = stableNodeId(kind, [scanId, arp.resourceKey]);
-    resourceNodeIdsByKey.set(arp.resourceKey, nodeId);
     addNode({
       id: nodeId,
       label: resourceLabel(arp.resource),
@@ -345,13 +400,18 @@ export function buildAriTopologyProjection(
 
   const hubNodeIdsByKey = new Map<string, string>();
   for (const [resourceKey, paths] of resourceToPaths.entries()) {
-    const participantIds = Array.from(new Set(paths.map((p) => p.agentId)));
+    let participantIds = Array.from(new Set(paths.map((p) => p.agentId)));
     if (participantIds.length < 2) continue;
 
-    const hubNodeId = stableNodeId('shared_resource_hub', [scanId, resourceKey]);
-    hubNodeIdsByKey.set(resourceKey, hubNodeId);
+    participantIds.sort((a, b) => a.localeCompare(b));
+    let hubState: AriRelationState = 'ESTABLISHED';
+    for (const p of paths) {
+      hubState = weakest(hubState, p.state);
+    }
     const representative = paths[0];
     const shown = Math.min(participantIds.length, MAX_SHOWN_PARTICIPANTS);
+    const hubNodeId = stableNodeId('shared_resource_hub', [scanId, resourceKey]);
+    hubNodeIdsByKey.set(resourceKey, hubNodeId);
     addNode({
       id: hubNodeId,
       label: `${representative.resource.resourceClass} hub`,
@@ -359,7 +419,7 @@ export function buildAriTopologyProjection(
       subType: 'shared_resource',
       subTypeLabel: 'Shared resource',
       aiReachable: 'UNKNOWN',
-      availability: stateToAvailability(representative.state),
+      availability: stateToAvailability(hubState),
       limitations: [
         'SHARED_SUBSTRATE != COMMUNICATION_CHANNEL',
         'CO_ACCESS != DIRECTIONAL_INFLUENCE',
@@ -376,7 +436,7 @@ export function buildAriTopologyProjection(
       ...scopeFields(representative.resource),
     });
 
-    // Member-of edges for all participants (no directionality claim)
+    // Participant edges (co-access, not team membership)
     for (const pid of participantIds) {
       const agentNodeId = stableNodeId('agent', [scanId, pid]);
       if (nodeById.has(agentNodeId)) {
@@ -384,7 +444,7 @@ export function buildAriTopologyProjection(
           id: stableEdgeId(agentNodeId, hubNodeId, 'member_of'),
           source: agentNodeId,
           target: hubNodeId,
-          label: 'member of',
+          label: 'accesses shared resource',
           kind: 'member_of',
           joinBasis: 'STATIC',
           style: 'dashed',
@@ -393,18 +453,59 @@ export function buildAriTopologyProjection(
     }
   }
 
-  // ─── Potential channel edges (write→read, publish→subscribe) ───────────────
+  // ─── Potential channel edges (write/read or publish/subscribe) ────────────
+  // Writer --potential_channel--> Shared Resource --potential_channel--> Reader
+  // Publisher --potential_channel--> Shared Resource --potential_channel--> Subscriber
+  // No direct Agent→Agent edge. Pairing is evidence-limited, not observed communication.
   for (const group of reachabilityProjection.potentialChannelGroups) {
     const hubNodeId = hubNodeIdsByKey.get(group.resourceKey);
     if (!hubNodeId) continue;
-    const receivers = [...group.readers, ...group.subscribers];
-    for (const receiver of receivers) {
-      const agentNodeId = stableNodeId('agent', [scanId, receiver.agentId]);
-      if (!nodeById.has(agentNodeId)) continue;
+    for (const writer of group.writers) {
+      const writerNodeId = stableNodeId('agent', [scanId, writer.agentId]);
+      if (!nodeById.has(writerNodeId)) continue;
       addEdge({
-        id: stableEdgeId(hubNodeId, agentNodeId, 'potential_channel'),
+        id: stableEdgeId(writerNodeId, hubNodeId, 'potential_channel'),
+        source: writerNodeId,
+        target: hubNodeId,
+        label: 'potential channel',
+        kind: 'potential_channel',
+        joinBasis: 'INFERRED',
+        style: 'dashed',
+      });
+    }
+    for (const reader of group.readers) {
+      const readerNodeId = stableNodeId('agent', [scanId, reader.agentId]);
+      if (!nodeById.has(readerNodeId)) continue;
+      addEdge({
+        id: stableEdgeId(hubNodeId, readerNodeId, 'potential_channel'),
         source: hubNodeId,
-        target: agentNodeId,
+        target: readerNodeId,
+        label: 'potential channel',
+        kind: 'potential_channel',
+        joinBasis: 'INFERRED',
+        style: 'dashed',
+      });
+    }
+    for (const publisher of group.publishers) {
+      const publisherNodeId = stableNodeId('agent', [scanId, publisher.agentId]);
+      if (!nodeById.has(publisherNodeId)) continue;
+      addEdge({
+        id: stableEdgeId(publisherNodeId, hubNodeId, 'potential_channel'),
+        source: publisherNodeId,
+        target: hubNodeId,
+        label: 'potential channel',
+        kind: 'potential_channel',
+        joinBasis: 'INFERRED',
+        style: 'dashed',
+      });
+    }
+    for (const subscriber of group.subscribers) {
+      const subscriberNodeId = stableNodeId('agent', [scanId, subscriber.agentId]);
+      if (!nodeById.has(subscriberNodeId)) continue;
+      addEdge({
+        id: stableEdgeId(hubNodeId, subscriberNodeId, 'potential_channel'),
+        source: hubNodeId,
+        target: subscriberNodeId,
         label: 'potential channel',
         kind: 'potential_channel',
         joinBasis: 'INFERRED',
@@ -471,7 +572,7 @@ export function buildAriTopologyProjection(
       subType: dp.closureState,
       subTypeLabel: `Deferred path (${dp.closureState.toLowerCase()})`,
       aiReachable: 'UNKNOWN',
-      availability: dp.closureState === 'RESOLVED' ? 'AVAILABLE' : 'UNKNOWN',
+      availability: dp.closureState === 'RESOLVED' ? 'AVAILABLE' : 'PARTIAL',
       limitations: dp.limitations,
       scanId,
     });
@@ -494,23 +595,33 @@ export function buildAriTopologyProjection(
     const evalNodeId = stableNodeId('evaluation_surface', [scanId, ei.id]);
     addNode({
       id: evalNodeId,
-      label: ei.surfaceId || 'evaluation surface',
+      label: ei.surfaceId ? `${ei.surfaceId} (${ei.accessType})` : 'evaluation surface',
       kind: 'evaluation_surface',
       subType: ei.exposureKind,
-      subTypeLabel: ei.exposureKind,
+      subTypeLabel: ei.accessType,
       aiReachable: 'UNKNOWN',
       availability: stateToAvailability(ei.state),
       limitations: ['EVALUATION_SURFACE_ACCESS != RUNTIME_MANIPULATION'],
       scanId,
-      surfaceKind: ei.surfaceId,
+      surfaceKind: ei.accessType,
     });
     const agentNodeId = stableNodeId('agent', [scanId, ei.agentId]);
     if (nodeById.has(agentNodeId)) {
+      const edgeLabel = (() => {
+        switch (ei.accessType) {
+          case 'INVOKABLE': return 'can invoke';
+          case 'READABLE': return 'can read';
+          case 'WRITABLE': return 'can write';
+          case 'MUTABLE': return 'can mutate';
+          case 'INTERRUPTIBLE': return 'can interrupt';
+          default: return 'evaluation exposure';
+        }
+      })();
       addEdge({
         id: stableEdgeId(agentNodeId, evalNodeId, 'evaluates'),
         source: agentNodeId,
         target: evalNodeId,
-        label: 'evaluates',
+        label: edgeLabel,
         kind: 'evaluates',
         joinBasis: 'STATIC',
         style: stateToStyle(ei.state),
@@ -536,7 +647,8 @@ export function buildAriTopologyProjection(
       scanId,
       credentialReference: cc.credentialReference,
     });
-    const usedByNodeId = stableNodeId('agent', [scanId, cc.usedBySubjectId]);
+    const userKind = cc.usedBySubjectKind.toLowerCase();
+    const usedByNodeId = stableNodeId(userKind, [scanId, cc.usedBySubjectId]);
     if (nodeById.has(usedByNodeId)) {
       // Dotted because a credential reference is evidence, not an authority grant
       addEdge({

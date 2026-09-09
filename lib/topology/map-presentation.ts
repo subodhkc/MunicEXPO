@@ -211,6 +211,13 @@ export const NODE_DOMAIN: Record<string, {
     border: '#c5d6f0',
     eyebrow: '#3b71c8',
   },
+  workload: {
+    accent: '#4f535b',
+    label: 'Workload',
+    surface: '#f4f5f7',
+    border: '#e5e6ea',
+    eyebrow: '#4f535b',
+  },
 };
 
 export function getNodeDomain(kind: string): { accent: string; label: string; surface: string; border: string; eyebrow: string } {
@@ -314,11 +321,11 @@ export const RELATIONSHIP_LEGEND: { color: string; label: string }[] = [
   { color: '#9388ea', label: 'implements' },
   { color: '#7062d9', label: 'handles' },
   { color: '#4f535b', label: 'reaches resource' },
-  { color: '#a86a19', label: 'member of' },
+  { color: '#a86a19', label: 'accesses shared resource' },
   { color: '#a86a19', label: 'potential channel' },
   { color: '#397f78', label: 'has persistence' },
   { color: '#91949b', label: 'deferred to' },
-  { color: '#b54040', label: 'evaluates' },
+  { color: '#b54040', label: 'evaluation exposure' },
   { color: '#3b71c8', label: 'credential reference' },
   { color: '#91949b', label: 'unknown / not AI-reachable' },
 ];

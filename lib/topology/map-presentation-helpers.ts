@@ -134,6 +134,7 @@ export function filterByLens(
       visibleKinds.add('deferred');
       visibleKinds.add('evaluation_surface');
       visibleKinds.add('credential_reference');
+      visibleKinds.add('workload');
       break;
     case 'action_consequence':
       // Expanded: seed nodes + graph-relevant supporting neighbors
@@ -162,6 +163,7 @@ export function filterByLens(
       visibleKinds.add('deferred');
       visibleKinds.add('evaluation_surface');
       visibleKinds.add('credential_reference');
+      visibleKinds.add('workload');
       break;
     case 'evidence_coverage':
       visibleKinds.add('ai_execution');
@@ -184,6 +186,7 @@ export function filterByLens(
       visibleKinds.add('deferred');
       visibleKinds.add('evaluation_surface');
       visibleKinds.add('credential_reference');
+      visibleKinds.add('workload');
       break;
   }
   const filteredNodes = nodes.filter((n) => visibleKinds.has(n.kind));
@@ -213,7 +216,7 @@ function filterActionLensByGraphRelevance(
     'identity', 'application_access', 'policy', 'provider_iam',
     'connected_asset', 'evidence', 'agent', 'tool', 'handler', 'resource',
     'service', 'shared_resource_hub', 'persistence', 'deferred',
-    'evaluation_surface', 'credential_reference',
+    'evaluation_surface', 'credential_reference', 'workload',
   ]);
 
   // Step 1: seed nodes are always visible

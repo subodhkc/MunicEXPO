@@ -32,7 +32,8 @@ export type TopologyNodeKind =
   | 'persistence'
   | 'deferred'
   | 'evaluation_surface'
-  | 'credential_reference';
+  | 'credential_reference'
+  | 'workload';
 
 // ─── Customer-Friendly Plane Aliases ─────────────────────────────────────────
 // Primary customer language for the five planes.
@@ -221,6 +222,7 @@ export interface TopologyNode {
   /** ARI node metadata */
   resourceKey?: string;
   resourceClass?: string;
+  resourceProvider?: string;
   serviceKey?: string;
   environment?: string;
   cloudAccountOrProject?: string;
