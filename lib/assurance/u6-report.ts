@@ -23,6 +23,7 @@ import type { DecisionEvidenceProjection } from '@/lib/decision-pipeline/evidenc
 import {
   U6_REPORT_SCHEMA_VERSION,
   U6_REPORT_SCHEMA_VERSION_PX,
+  U6_REPORT_SCHEMA_VERSION_ARI,
   U6_BUNDLE_SCHEMA_VERSION,
   U6_RECEIPT_SCHEMA_VERSION,
   BuildIdentity,
@@ -42,6 +43,8 @@ import {
   PackageVerificationResult,
   PublicVerificationResult,
   ActionProofReportSection,
+  AgentReachabilityReportSection,
+  EvaluationIntegrityReportSection,
 } from './u6-types';
 
 export type { BuildIdentity, U6Package } from './u6-types';
@@ -69,6 +72,8 @@ export function buildUnifiedAssuranceReport(
   syntheticClass: 'NONE' | 'SYNTHETIC_REFERENCE' | 'UNKNOWN' = resolveSyntheticClassification(evaluation as AssuranceEvaluationV1_1),
   authoritySourceLabel?: string,
   actionProof?: ActionProofReportSection,
+  agentReachability?: AgentReachabilityReportSection,
+  evaluationIntegrity?: EvaluationIntegrityReportSection,
 ): UnifiedAssuranceReport {
   const v1_1 = evaluation as AssuranceEvaluationV1_1;
 
@@ -77,9 +82,14 @@ export function buildUnifiedAssuranceReport(
   const evidenceCoverage = buildProducerCoverageFromEvidence(projectedEvidence);
   const limitations = buildLimitations(evaluation, projectedEvidence, v1_1.planeAvailability ?? [], buildIdentity);
 
+  const hasAriReportSection = !!(agentReachability || evaluationIntegrity);
+  const hasActionProof = !!actionProof;
   const report: UnifiedAssuranceReport = {
-    // PX-FINAL: 1.2.0 when the additive Action Proof section is present.
-    reportVersion: actionProof ? U6_REPORT_SCHEMA_VERSION_PX : U6_REPORT_SCHEMA_VERSION,
+    // ARI-P0 / PX-FINAL: additive report section versioning.
+    // ARI sections -> 1.3.0; ActionProof only -> 1.2.0; no additive sections -> 1.0.0.
+    reportVersion: hasAriReportSection
+      ? U6_REPORT_SCHEMA_VERSION_ARI
+      : (hasActionProof ? U6_REPORT_SCHEMA_VERSION_PX : U6_REPORT_SCHEMA_VERSION),
     reportId: `${evaluation.id}:report`,
     assuranceEvaluationId: evaluation.id,
     organizationId: evaluation.organizationId,
@@ -122,10 +132,12 @@ export function buildUnifiedAssuranceReport(
     },
     reportDigest: '',
     syntheticClassification: syntheticClass,
-    // PX-FINAL: additive Action Proof & Evidence Frontier section. Present on
-    // new reports only — absent on previously persisted reportJson, which keeps
-    // old packages verifying under their original digest semantics.
+    // PX-FINAL / ARI-P0: additive report sections. Present on new reports only —
+    // absent on previously persisted reportJson, which keeps old packages verifying
+    // under their original digest semantics.
     ...(actionProof ? { actionProof } : {}),
+    ...(agentReachability ? { agentReachability } : {}),
+    ...(evaluationIntegrity ? { evaluationIntegrity } : {}),
   };
 
   report.reportDigest = computeReportDigest(report);
@@ -376,6 +388,11 @@ export function computeReportDigest(report: UnifiedAssuranceReport): string {
     // Absent on legacy persisted reports, so old digests remain stable.
     // LOCK: NEW_REPORT_SECTION != SILENT_HASH_SEMANTIC_CHANGE
     ...(report.actionProof ? { actionProof: report.actionProof } : {}),
+    // ARI-P0: additive historical Agent Reachability and Evaluation Integrity sections.
+    // LOCK: ARI_REPORT_CONTENT_CHANGE => REPORT_DIGEST_CHANGE
+    // LOCK: EI_REPORT_CONTENT_CHANGE => REPORT_DIGEST_CHANGE
+    ...(report.agentReachability ? { agentReachability: report.agentReachability } : {}),
+    ...(report.evaluationIntegrity ? { evaluationIntegrity: report.evaluationIntegrity } : {}),
   };
   return hashTextContent(canonicalSerialize(payload));
 }

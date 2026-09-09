@@ -30,6 +30,7 @@ import {
   U6_REPORT_SCHEMA_VERSION,
   U6_REPORT_SCHEMA_VERSION_G3,
   U6_REPORT_SCHEMA_VERSION_PX,
+  U6_REPORT_SCHEMA_VERSION_ARI,
   BuildIdentity,
   DeploymentIdentity,
   U6Package,
@@ -39,6 +40,8 @@ import {
   EvaluatedScopeSnapshot,
   EvaluatedScopeAssetSnapshot,
   ActionProofReportSection,
+  AgentReachabilityReportSection,
+  EvaluationIntegrityReportSection,
 } from './u6-types';
 import { resolvePublicProfileLabel } from './u6-public-profile-label';
 import { PRODUCER_IDS } from '@/lib/engine-registry/producer-registry';
@@ -72,6 +75,16 @@ export interface PackageBuildContext {
    * LOCK: NEW_REPORT_SECTION != SILENT_HASH_SEMANTIC_CHANGE
    */
   actionProof?: ActionProofReportSection;
+  /**
+   * ARI-P0: additive historical Agent Reachability report section.
+   * Committed into semanticReportDigest when present. Not a U5 decision input.
+   */
+  agentReachability?: AgentReachabilityReportSection;
+  /**
+   * ARI-P0: additive historical Evaluation Integrity exposure report section.
+   * Committed into semanticReportDigest when present. Not a U5 decision input.
+   */
+  evaluationIntegrity?: EvaluationIntegrityReportSection;
 }
 
 export function buildAssuranceVerificationPackage(
@@ -85,13 +98,17 @@ export function buildAssuranceVerificationPackage(
   // G3-R1: When scope binding is provided, use G3 schema versions (1.1.0).
   // Legacy packages (no scope binding) use 1.0.0 and remain verifiable under 1.0.0.
   const hasScopeBinding = !!context.evaluatedScopeBinding;
-  // PX-FINAL: actionProof presence upgrades the report schema to 1.2.0
-  // (additive section committed into semanticReportDigest).
+  // ARI-P0: additive Agent Reachability / Evaluation Integrity sections upgrade
+  // the report schema to 1.3.0. PX Action Proof alone remains 1.2.0. Receipt/bundle/
+  // verification semantics are unchanged.
+  const hasAriReportSection = !!(context.agentReachability || context.evaluationIntegrity);
   const hasActionProof = !!context.actionProof;
   const receiptSchemaVersion = hasScopeBinding ? U6_RECEIPT_SCHEMA_VERSION_G3 : U6_RECEIPT_SCHEMA_VERSION;
-  const reportSchemaVersion = hasActionProof
-    ? U6_REPORT_SCHEMA_VERSION_PX
-    : (hasScopeBinding ? U6_REPORT_SCHEMA_VERSION_G3 : U6_REPORT_SCHEMA_VERSION);
+  const reportSchemaVersion = hasAriReportSection
+    ? U6_REPORT_SCHEMA_VERSION_ARI
+    : (hasActionProof
+        ? U6_REPORT_SCHEMA_VERSION_PX
+        : (hasScopeBinding ? U6_REPORT_SCHEMA_VERSION_G3 : U6_REPORT_SCHEMA_VERSION));
   const verificationSchemaVersion = context.verificationSchemaVersion ??
     (hasScopeBinding ? U6_VERIFICATION_SCHEMA_VERSION_G3 : U6_VERIFICATION_SCHEMA_VERSION);
 
@@ -100,7 +117,17 @@ export function buildAssuranceVerificationPackage(
 
   // 2. Unified Assurance Report Core
   const synthetic = context.syntheticClassification ?? resolveSyntheticClassification(evaluation, v1_1);
-  const report = buildUnifiedAssuranceReport(evaluation, bundle, buildIdentity, projectedEvidence, synthetic, context.authoritySourceLabel, context.actionProof);
+  const report = buildUnifiedAssuranceReport(
+    evaluation,
+    bundle,
+    buildIdentity,
+    projectedEvidence,
+    synthetic,
+    context.authoritySourceLabel,
+    context.actionProof,
+    context.agentReachability,
+    context.evaluationIntegrity,
+  );
 
   // G3-R1: Override report version if scope binding present.
   // CRITICAL: The report digest was computed inside buildUnifiedAssuranceReport
@@ -116,8 +143,8 @@ export function buildAssuranceVerificationPackage(
   // payload, and reportReceiptSummaryValid checks that the report's embedded
   // receipt version matches the actual receipt's version.
   // Recompute the digest whenever the post-build version/section differs from
-  // the 1.0.0 base content (scope binding OR the PX action proof section).
-  if (hasScopeBinding || hasActionProof) {
+  // the 1.0.0 base content (scope binding OR any additive report section).
+  if (hasScopeBinding || hasAriReportSection || hasActionProof) {
     report.reportVersion = reportSchemaVersion;
     report.decisionReceipt.receiptVersion = receiptSchemaVersion;
     report.reportDigest = computeReportDigest(report);

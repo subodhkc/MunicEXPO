@@ -124,6 +124,17 @@ export function filterByLens(
       visibleKinds.add('consequence');
       visibleKinds.add('evidence');
       visibleKinds.add('entrypoint');
+      visibleKinds.add('agent');
+      visibleKinds.add('tool');
+      visibleKinds.add('handler');
+      visibleKinds.add('resource');
+      visibleKinds.add('service');
+      visibleKinds.add('shared_resource_hub');
+      visibleKinds.add('persistence');
+      visibleKinds.add('deferred');
+      visibleKinds.add('evaluation_surface');
+      visibleKinds.add('credential_reference');
+      visibleKinds.add('workload');
       break;
     case 'action_consequence':
       // Expanded: seed nodes + graph-relevant supporting neighbors
@@ -142,6 +153,17 @@ export function filterByLens(
       visibleKinds.add('connected_asset');
       visibleKinds.add('consequence');
       visibleKinds.add('evidence');
+      visibleKinds.add('agent');
+      visibleKinds.add('tool');
+      visibleKinds.add('handler');
+      visibleKinds.add('resource');
+      visibleKinds.add('service');
+      visibleKinds.add('shared_resource_hub');
+      visibleKinds.add('persistence');
+      visibleKinds.add('deferred');
+      visibleKinds.add('evaluation_surface');
+      visibleKinds.add('credential_reference');
+      visibleKinds.add('workload');
       break;
     case 'evidence_coverage':
       visibleKinds.add('ai_execution');
@@ -154,6 +176,17 @@ export function filterByLens(
       visibleKinds.add('identity');
       visibleKinds.add('application_access');
       visibleKinds.add('entrypoint');
+      visibleKinds.add('agent');
+      visibleKinds.add('tool');
+      visibleKinds.add('handler');
+      visibleKinds.add('resource');
+      visibleKinds.add('service');
+      visibleKinds.add('shared_resource_hub');
+      visibleKinds.add('persistence');
+      visibleKinds.add('deferred');
+      visibleKinds.add('evaluation_surface');
+      visibleKinds.add('credential_reference');
+      visibleKinds.add('workload');
       break;
   }
   const filteredNodes = nodes.filter((n) => visibleKinds.has(n.kind));
@@ -178,10 +211,12 @@ function filterActionLensByGraphRelevance(
   nodes: TopologyNode[],
   edges: TopologyEdge[],
 ): { nodes: TopologyNode[]; edges: TopologyEdge[] } {
-  const seedKinds = new Set(['ai_execution', 'entrypoint', 'action', 'consequence']);
+  const seedKinds = new Set(['ai_execution', 'entrypoint', 'action', 'consequence', 'agent', 'tool', 'handler', 'resource', 'service', 'shared_resource_hub']);
   const supportingKinds = new Set([
     'identity', 'application_access', 'policy', 'provider_iam',
-    'connected_asset', 'evidence',
+    'connected_asset', 'evidence', 'agent', 'tool', 'handler', 'resource',
+    'service', 'shared_resource_hub', 'persistence', 'deferred',
+    'evaluation_surface', 'credential_reference', 'workload',
   ]);
 
   // Step 1: seed nodes are always visible

@@ -9,6 +9,8 @@
 import { nanoid } from 'nanoid';
 import { prisma } from '@/lib/prisma';
 import { buildActionProofReportSection } from './u6-action-proof-section';
+import { buildAgentReachabilityReportSection } from './u6-agent-reachability-section';
+import { buildEvaluationIntegrityReportSection } from './u6-evaluation-integrity-section';
 import { normalizeSelectedEnginesResult } from '@/lib/audit-orchestrator/selected-engines-normalizer';
 import { buildAssuranceVerificationPackage, computePackageDigest, verifyAssurancePackage } from './u6-package';
 import {
@@ -218,11 +220,17 @@ export async function buildPackageFromEvaluation(
   // staticScanId. Never falls back to a current/latest scan.
   const actionProof = await buildActionProofReportSection(evaluation);
 
+  // ARI-P0: Agent Reachability + Evaluation Integrity — historical basis only.
+  const agentReachability = await buildAgentReachabilityReportSection(evaluation);
+  const evaluationIntegrity = await buildEvaluationIntegrityReportSection(evaluation);
+
   const packageCandidate = buildAssuranceVerificationPackage({
     evaluation,
     projectedEvidence,
     buildIdentity: undefined,
     actionProof,
+    agentReachability,
+    evaluationIntegrity,
     authoritySourceLabel: resolveAuthoritySourceLabel(v1_1),
     operatingEnvelopeApprovedAt: v1_1.operatingEnvelopeApprovedAt ? v1_1.operatingEnvelopeApprovedAt.toISOString() : undefined,
     approvalReference: v1_1.operatingEnvelopeApprovalReference ?? undefined,

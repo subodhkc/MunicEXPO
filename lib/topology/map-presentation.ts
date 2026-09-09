@@ -141,6 +141,83 @@ export const NODE_DOMAIN: Record<string, {
     border: '#c0e0dc',
     eyebrow: '#397f78',
   },
+  agent: {
+    accent: '#7062d9',
+    label: 'Agent',
+    surface: '#f3effc',
+    border: '#d4c9f0',
+    eyebrow: '#7062d9',
+  },
+  tool: {
+    accent: '#9388ea',
+    label: 'Tool',
+    surface: '#f3effc',
+    border: '#d4c9f0',
+    eyebrow: '#7062d9',
+  },
+  handler: {
+    accent: '#7062d9',
+    label: 'Handler',
+    surface: '#f3effc',
+    border: '#d4c9f0',
+    eyebrow: '#7062d9',
+  },
+  resource: {
+    accent: '#4f535b',
+    label: 'Resource',
+    surface: '#f4f5f7',
+    border: '#e5e6ea',
+    eyebrow: '#4f535b',
+  },
+  service: {
+    accent: '#4f535b',
+    label: 'Service',
+    surface: '#f4f5f7',
+    border: '#e5e6ea',
+    eyebrow: '#4f535b',
+  },
+  shared_resource_hub: {
+    accent: '#a86a19',
+    label: 'Shared Resource Hub',
+    surface: '#fdf6ec',
+    border: '#f0d9b8',
+    eyebrow: '#a86a19',
+  },
+  persistence: {
+    accent: '#397f78',
+    label: 'Persistence',
+    surface: '#eef6f5',
+    border: '#c0e0dc',
+    eyebrow: '#397f78',
+  },
+  deferred: {
+    accent: '#91949b',
+    label: 'Deferred',
+    surface: '#f4f5f7',
+    border: '#e5e6ea',
+    eyebrow: '#91949b',
+  },
+  evaluation_surface: {
+    accent: '#b54040',
+    label: 'Evaluation Surface',
+    surface: '#fcf0f0',
+    border: '#f0c5c5',
+    eyebrow: '#b54040',
+  },
+  credential_reference: {
+    accent: '#3b71c8',
+    label: 'Credential Reference',
+    surface: '#f0f4fc',
+    border: '#c5d6f0',
+    eyebrow: '#3b71c8',
+  },
+  workload: {
+    accent: '#4f535b',
+    label: 'Workload',
+    surface: '#f4f5f7',
+    border: '#e5e6ea',
+    eyebrow: '#4f535b',
+  },
 };
 
 export function getNodeDomain(kind: string): { accent: string; label: string; surface: string; border: string; eyebrow: string } {
@@ -164,6 +241,16 @@ export const EDGE_COLORS: Record<string, string> = {
   evidenced_by: '#2f7757',
   scoped_by: '#3b71c8',
   governed_by: '#397f78',
+  uses_tool: '#7062d9',
+  implements: '#9388ea',
+  handles: '#7062d9',
+  reaches_resource: '#4f535b',
+  member_of: '#a86a19',
+  potential_channel: '#a86a19',
+  has_persistence: '#397f78',
+  deferred_to: '#91949b',
+  evaluates: '#b54040',
+  credential_reference: '#3b71c8',
 };
 
 export function getEdgeColor(kind: string): string {
@@ -230,6 +317,16 @@ export const RELATIONSHIP_LEGEND: { color: string; label: string }[] = [
   { color: '#4f535b', label: 'connected to' },
   { color: '#3b71c8', label: 'uses credential' },
   { color: '#397f78', label: 'governed by' },
+  { color: '#7062d9', label: 'uses tool' },
+  { color: '#9388ea', label: 'implements' },
+  { color: '#7062d9', label: 'handles' },
+  { color: '#4f535b', label: 'reaches resource' },
+  { color: '#a86a19', label: 'accesses shared resource' },
+  { color: '#a86a19', label: 'potential channel' },
+  { color: '#397f78', label: 'has persistence' },
+  { color: '#91949b', label: 'deferred to' },
+  { color: '#b54040', label: 'evaluation exposure' },
+  { color: '#3b71c8', label: 'credential reference' },
   { color: '#91949b', label: 'unknown / not AI-reachable' },
 ];
 
@@ -248,12 +345,12 @@ export const ARCHITECTURE_REGIONS: Record<string, { label: string; kinds: string
   },
   'access-authority': {
     label: 'Identity / Access / Authority',
-    kinds: ['identity', 'application_access', 'policy', 'provider_iam'],
+    kinds: ['identity', 'application_access', 'policy', 'provider_iam', 'credential_reference'],
     tint: '#f0f4fc',
   },
   'ai-execution': {
     label: 'AI / Model / Agent / Tool',
-    kinds: ['ai_execution'],
+    kinds: ['ai_execution', 'agent', 'tool', 'handler'],
     tint: '#f3effc',
   },
   'action-surface': {
@@ -263,7 +360,7 @@ export const ARCHITECTURE_REGIONS: Record<string, { label: string; kinds: string
   },
   'state-consequence': {
     label: 'State / Data / External Effect',
-    kinds: ['consequence'],
+    kinds: ['consequence', 'resource', 'service', 'shared_resource_hub', 'persistence', 'deferred', 'evaluation_surface'],
     tint: '#fcf0f0',
   },
   'evidence-assurance': {

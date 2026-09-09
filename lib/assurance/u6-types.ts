@@ -27,6 +27,11 @@ export const U6_VERIFICATION_SCHEMA_VERSION_G3 = '1.1.0' as const;
 // schema versions; the section is simply absent from their reportJson.
 export const U6_REPORT_SCHEMA_VERSION_PX = '1.2.0' as const;
 
+// ARI-P0: report schema when the additive Agent Reachability and/or Evaluation
+// Integrity report sections are present. Receipt/bundle/verification semantics
+// are unchanged. Legacy 1.2.0 ActionProof-only packages remain verifiable.
+export const U6_REPORT_SCHEMA_VERSION_ARI = '1.3.0' as const;
+
 /**
  * G3-R1: Evaluated Scope binding committed into the canonical Decision Receipt.
  * This structure is included in computeReceiptHash() for schema 1.1.0+ packages.
@@ -307,6 +312,16 @@ export interface UnifiedAssuranceReport {
    *   TRACE_COUNT != RISK_SCORE
    */
   actionProof?: ActionProofReportSection;
+  /**
+   * ARI-P0: additive Agent Reachability section for the evaluated scan.
+   * Historical read projection only; not a current scan or assurance disposition.
+   */
+  agentReachability?: AgentReachabilityReportSection;
+  /**
+   * ARI-P0: additive Evaluation Integrity exposure section for the evaluated scan.
+   * Historical read projection only; not a runtime observation or disposition.
+   */
+  evaluationIntegrity?: EvaluationIntegrityReportSection;
 }
 
 /**
@@ -366,6 +381,215 @@ export interface ActionProofReportSection {
   totalTraces?: number;
   /** Source coverage/scope limitations carried from the bound scan */
   coverageLimitations?: string[];
+}
+
+/**
+ * Agent Reachability report section.
+ *
+ * HISTORICAL read projection of the evaluated scan's ARI topology, bounded
+ * for report embedding. This is not a runtime observation, not a current scan,
+ * and not an assurance disposition.
+ */
+export interface AgentReachabilityReportSection {
+  availability: 'ESTABLISHED' | 'PARTIAL' | 'NOT_AVAILABLE';
+  unavailableReason?:
+    | 'EVALUATED_SCAN_BINDING_NOT_CAPTURED'
+    | 'EVALUATED_RUN_IDENTITY_MISMATCH'
+    | 'EVALUATED_SCAN_IDENTITY_MISMATCH'
+    | 'EVALUATED_SCAN_HAS_NO_OPERATION_COVERAGE'
+    | 'ARI_NOT_PRESENT_IN_SNAPSHOT'
+    | 'ARI_NOT_ANALYZED'
+    | 'EVALUATED_SNAPSHOT_INVALID'
+    | 'AUTHORITY_PROMOTION_INVARIANT_VIOLATED'
+    | 'SECTION_BUILD_FAILED';
+  /** Exact evaluated source scan (audit_orchestrator_runs.staticScanId) */
+  scanId?: string;
+  commitSha?: string | null;
+  summary?: {
+    agentCount: number;
+    relationshipCount: number;
+    potentialChannelCount: number;
+    sharedResourceHubCount: number;
+    credentialChainCount: number;
+    deferredPathCount: number;
+    persistenceCreationCount: number;
+    evaluationIntegrityExposureCount: number;
+    frontierCount: number;
+    coverageFamilyCount: number;
+  };
+  /** Bounded agent inventory summaries */
+  agents?: Array<{
+    agentId: string;
+    displayName: string;
+    framework?: string;
+    sourceLocation: string;
+    candidateState: string;
+    declaredToolReferences: string[];
+    reachableResourceKeys: string[];
+    limitations: string[];
+  }>;
+  /** Bounded agent relationship summaries */
+  relationships?: Array<{
+    id: string;
+    kind: string;
+    fromAgentId: string;
+    toAgentId?: string;
+    toToolId?: string;
+    toExternalRef?: string;
+    state: string;
+    statement: string;
+    limitations: string[];
+  }>;
+  /** Bounded potential channel summaries */
+  potentialChannels?: Array<{
+    id: string;
+    resourceKey: string;
+    resourceClass?: string;
+    state: string;
+    writers: string[];
+    readers: string[];
+    publishers: string[];
+    subscribers: string[];
+    statement: string;
+    limitations: string[];
+  }>;
+  /** Bounded frontier summaries */
+  frontiers?: Array<{
+    id: string;
+    dimension: string;
+    reason: string;
+  }>;
+  /** Bounded shared resource hub summaries */
+  sharedResourceHubs?: Array<{
+    resourceKey: string;
+    resourceClass?: string;
+    environment?: string;
+    partition?: string;
+    tenant?: string;
+    namespace?: string;
+    resourceKeyName?: string;
+    state: string;
+    participantAgentIds: string[];
+    accessTypes: string[];
+    statement: string;
+    limitations: string[];
+  }>;
+  /** Bounded tool capability stage summaries */
+  toolCapabilities?: Array<{
+    agentId: string;
+    toolId: string;
+    toolName: string;
+    sourceLocation: string;
+    stages: Array<{
+      kind: string;
+      state: string;
+      canonicalId?: string | null;
+      sourceRelationIds?: string[];
+      limitations: string[];
+    }>;
+    limitations: string[];
+  }>;
+  /** Bounded credential chain summaries */
+  credentialChains?: Array<{
+    id: string;
+    credentialReference: string;
+    usedBy: string;
+    statement: string;
+    limitations: string[];
+  }>;
+  /** Bounded deferred path summaries */
+  deferredPaths?: Array<{
+    id: string;
+    sourceAgentName: string;
+    publishResourceKey: string;
+    closureState: string;
+    consumerNames?: string[];
+    handlerRefs?: string[];
+    statement: string;
+    limitations: string[];
+  }>;
+  /** Bounded persistence creation summaries */
+  persistenceCreation?: Array<{
+    id: string;
+    agentName: string;
+    mechanismKind: string;
+    state: string;
+    statement: string;
+    futureExecutionStatement: string;
+    limitations: string[];
+  }>;
+  /** Coverage family states from the bound scan */
+  coverage?: Array<{
+    family: string;
+    state: string;
+    limitations: string[];
+  }>;
+  coverageLimitations?: string[];
+  /** Truncation truth */
+  agentsShown?: number;
+  totalAgents?: number;
+  relationshipsShown?: number;
+  totalRelationships?: number;
+  potentialChannelsShown?: number;
+  totalPotentialChannels?: number;
+  sharedResourceHubsShown?: number;
+  totalSharedResourceHubs?: number;
+  toolCapabilitiesShown?: number;
+  totalToolCapabilities?: number;
+  credentialChainsShown?: number;
+  totalCredentialChains?: number;
+  deferredPathsShown?: number;
+  totalDeferredPaths?: number;
+  persistenceCreationShown?: number;
+  totalPersistenceCreation?: number;
+  frontiersShown?: number;
+  totalFrontiers?: number;
+}
+
+/**
+ * Evaluation Integrity exposure report section.
+ *
+ * HISTORICAL summary of source-discovered evaluation surfaces and access
+ * relations for the evaluated scan. Not a runtime observation or disposition.
+ */
+export interface EvaluationIntegrityReportSection {
+  availability: 'ESTABLISHED' | 'PARTIAL' | 'NOT_AVAILABLE';
+  unavailableReason?:
+    | 'EVALUATED_SCAN_BINDING_NOT_CAPTURED'
+    | 'EVALUATED_RUN_IDENTITY_MISMATCH'
+    | 'EVALUATED_SCAN_IDENTITY_MISMATCH'
+    | 'EVALUATED_SCAN_HAS_NO_OPERATION_COVERAGE'
+    | 'ARI_NOT_PRESENT_IN_SNAPSHOT'
+    | 'ARI_NOT_ANALYZED'
+    | 'EVALUATED_SNAPSHOT_INVALID'
+    | 'AUTHORITY_PROMOTION_INVARIANT_VIOLATED'
+    | 'SECTION_BUILD_FAILED';
+  scanId?: string;
+  commitSha?: string | null;
+  summary?: {
+    exposureCount: number;
+    surfaceCount: number;
+    accessRelationCount: number;
+    coverageFamilyCount: number;
+  };
+  /** Bounded exposure summaries */
+  exposures?: Array<{
+    id: string;
+    agentName: string;
+    surfaceKind: string;
+    accessType: string;
+    state: string;
+    statement: string;
+    limitations: string[];
+  }>;
+  coverage?: Array<{
+    family: string;
+    state: string;
+    limitations: string[];
+  }>;
+  coverageLimitations?: string[];
+  exposuresShown?: number;
+  totalExposures?: number;
 }
 
 export interface ReportProfileSection {
