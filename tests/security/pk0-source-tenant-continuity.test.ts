@@ -75,9 +75,11 @@ describe('PK0 Source & Tenant Continuity', () => {
 
   it('does not expose private static proof through the unauthenticated route', () => {
     const route = read('app/api/proof/ai-security/static/[scanId]/route.ts');
+    const page = read('app/proof/ai-security/static/[scanId]/page.tsx');
     expect(route).toContain('requireOrganizationAccess');
     expect(route).toContain("'Cache-Control': 'private, no-store'");
     expect(route).not.toContain('Public, unauthenticated');
+    expect(page).toContain('Authentication required to view this private scan proof.');
   });
 
   it('keeps public OAuth credentials out of the worker request path', () => {
