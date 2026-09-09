@@ -1544,7 +1544,7 @@ export const SAMPLE_SCENARIO = {
   title: 'Action to Consequence',
   subtitle:
     'Trace what AI can do, how authority and controls narrow it, what was actually evaluated, and exactly where the evidence ends.',
-  bannerLabel: 'Synthetic high-action demo',
+  bannerLabel: 'Sample environment · illustrative data',
   coreReveal: 'Permission can be valid while delegation of the consequential choice remains unproven.',
   secondaryReveal: 'Permission is not delegation.',
   scenarioName: 'Northstar Commerce Operations Copilot',
