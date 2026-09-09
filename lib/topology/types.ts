@@ -384,33 +384,22 @@ export const CONSTELLATION_SCALE_LABELS: Record<ConstellationScale, string> = {
   action_path: 'Action Path',
 };
 
-export type ConstellationLens =
-  | 'architecture'
-  | 'context_influence'
-  | 'actions_effects'
-  | 'authority_bounds'
-  | 'exposure_paths'
-  | 'evidence_proof'
-  | 'change_drift';
+export type ConstellationLens = 'overview' | 'influence' | 'action_paths' | 'authority' | 'proof';
 
 export const SUPPORTED_CONSTELLATION_LENSES: ConstellationLens[] = [
-  'architecture',
-  'context_influence',
-  'actions_effects',
-  'authority_bounds',
-  'exposure_paths',
-  'evidence_proof',
-  'change_drift',
+  'overview',
+  'influence',
+  'action_paths',
+  'authority',
+  'proof',
 ];
 
 export const CONSTELLATION_LENS_LABELS: Record<ConstellationLens, string> = {
-  architecture: 'Architecture',
-  context_influence: 'Context & Influence',
-  actions_effects: 'Actions & Effects',
-  authority_bounds: 'Authority & Bounds',
-  exposure_paths: 'Exposure Paths',
-  evidence_proof: 'Evidence & Proof',
-  change_drift: 'Change / Drift',
+  overview: 'Overview',
+  influence: 'Influence',
+  action_paths: 'Action Paths',
+  authority: 'Authority',
+  proof: 'Proof',
 };
 
 export type ConstellationNodeRole =
@@ -473,9 +462,9 @@ export interface ConstellationNode {
   /** Participant agent ids and access types for shared resource hubs. */
   participantAgentIds?: string[];
   accessTypes?: string[];
-  /** Reachability metrics from the AgentReachabilityReadModel, when available. */
-  directReach?: number;
-  transitiveReach?: number;
+  /** Reachability identity-class counts from the AgentReachabilityReadModel, when exact scan identity matches. */
+  reachableResources?: number;
+  reachableServices?: number;
   /** Optional path ordering for action_path scale. */
   pathIndex?: number;
 }
@@ -519,8 +508,8 @@ export interface ConstellationCombo {
   collapsed: boolean;
   participantAgentIds?: string[];
   accessTypes?: string[];
-  directReach?: number;
-  transitiveReach?: number;
+  reachableResources?: number;
+  reachableServices?: number;
 }
 
 export interface ConstellationFrontier {
@@ -547,5 +536,7 @@ export interface ConstellationProjection {
   edges: ConstellationEdge[];
   combos: ConstellationCombo[];
   frontiers: ConstellationFrontier[];
+  /** Product capability frontiers; not claims about this system's analyzed evidence. */
+  productFrontiers: ConstellationFrontier[];
   limitations: string[];
 }

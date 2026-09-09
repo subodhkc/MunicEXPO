@@ -120,17 +120,7 @@ export function inferConstellationRole(node: TopologyNode): ConstellationNodeRol
       return 'external_effect';
     case 'connected_asset':
       if (subType.includes('MODEL_ENDPOINT')) return 'model';
-      if (subType.includes('MCP_TOOL_PACKAGE') || subType.includes('TOOL_SERVER')) return 'capability_gateway';
-      if (subType.includes('TOOL_SCHEMA_DESCRIPTION')) return 'instruction_source';
-      if (
-        subType.includes('RAG_KNOWLEDGE_BASE') ||
-        subType.includes('KNOWLEDGE_BASE') ||
-        subType.includes('TOOL_API_OUTPUT') ||
-        subType.includes('PEER_AGENT_MCP') ||
-        subType.includes('RUNTIME_OVERRIDE') ||
-        subType.includes('PROVIDER_SDK')
-      )
-        return 'context_source';
+      if (subType.includes('TOOL_SERVER')) return 'capability_gateway';
       if (subType.includes('POLICY_SOURCE')) return 'policy_authority';
       if (subType.includes('PROVIDER_CREDENTIAL') || subType.includes('SECRETS_CREDENTIALS')) return 'credential';
       if (subType.includes('INTERFACE_SPECIFICATION')) return 'api';
@@ -166,16 +156,49 @@ function frontierReason(node: TopologyNode): string {
   return availabilityLabel;
 }
 
+export interface ConstellationSourceIdentity {
+  organizationId: string;
+  aiSystemId: string;
+  scanId: string;
+  commitSha: string | null;
+}
+
+export function reconcileReachabilityIdentity(
+  projection: TopologyProjectionResult,
+  reachability?: AgentReachabilityReadModel | null,
+): { compatible: boolean; limitation?: string } {
+  if (!reachability) return { compatible: false };
+  if (!projection.organizationId || !projection.aiSystemId || !projection.scanId || !reachability.scanId) {
+    return {
+      compatible: false,
+      limitation: 'Agent Reachability enrichment omitted because exact source-scan identity could not be reconciled.',
+    };
+  }
+  if (projection.scanId !== reachability.scanId) {
+    return {
+      compatible: false,
+      limitation: 'Agent Reachability enrichment omitted because exact source-scan identity could not be reconciled.',
+    };
+  }
+  if (projection.scanProvenance?.commitSha && reachability.commitSha && projection.scanProvenance.commitSha !== reachability.commitSha) {
+    return {
+      compatible: false,
+      limitation: 'Agent Reachability enrichment omitted because exact source-scan identity could not be reconciled.',
+    };
+  }
+  return { compatible: true };
+}
+
 function reachabilityMetricsForAgent(
   node: TopologyNode,
   reachability?: AgentReachabilityReadModel | null,
-): { directReach?: number; transitiveReach?: number } {
+): { reachableResources?: number; reachableServices?: number } {
   if (!reachability) return {};
   const agent = reachability.agents.items.find((a) => a.id === node.id);
   if (!agent) return {};
   return {
-    directReach: agent.reachableResourceKeys.length,
-    transitiveReach: agent.reachableServiceIds.length,
+    reachableResources: agent.reachableResourceKeys.length,
+    reachableServices: agent.reachableServiceIds.length,
   };
 }
 
@@ -203,6 +226,14 @@ export function buildConstellationProjection(
   const edges: ConstellationEdge[] = [];
   const combos: ConstellationCombo[] = [];
   const frontiers: ConstellationFrontier[] = [];
+  const productFrontiers: ConstellationFrontier[] = UX3_PRODUCER_FRONTIER_REASONS.map((reason, index) => ({
+    id: `ux3-producer-gap:${projection.aiSystemId}:${index}`,
+    reason,
+  }));
+  const identity = reconcileReachabilityIdentity(projection, reachability);
+  const enrichment = identity.compatible ? reachability : null;
+  const limitations = [...projection.limitations];
+  if (identity.limitation) limitations.push(identity.limitation);
 
   const systemComboId = `constellation:combo:ai_system:${projection.aiSystemId}`;
 
@@ -238,7 +269,7 @@ export function buildConstellationProjection(
 
   for (const agentNode of agentNodes) {
     const agentComboId = `constellation:combo:agent:${agentNode.id}`;
-    const metrics = reachabilityMetricsForAgent(agentNode, reachability);
+    const metrics = reachabilityMetricsForAgent(agentNode, enrichment);
     const combo: ConstellationCombo = {
       id: agentComboId,
       label: agentNode.label,
@@ -336,8 +367,8 @@ export function buildConstellationProjection(
       }
     }
 
-    const metrics = node.kind === 'agent' ? reachabilityMetricsForAgent(node, reachability) : {};
-    const hubAccess = node.kind === 'shared_resource_hub' ? sharedHubAccess(node, reachability) : {};
+    const metrics = node.kind === 'agent' ? reachabilityMetricsForAgent(node, enrichment) : {};
+    const hubAccess = node.kind === 'shared_resource_hub' ? sharedHubAccess(node, enrichment) : {};
 
     const cNode: ConstellationNode = {
       id: node.id,
@@ -387,42 +418,41 @@ export function buildConstellationProjection(
     // relation id on the combo for collapse metadata.
     const sourceCombo = nodes.find((n) => n.id === edge.source)?.combo;
     const targetCombo = nodes.find((n) => n.id === edge.target)?.combo;
-    if (sourceCombo && sourceCombo === targetCombo && agentComboByNodeId.has(sourceCombo.split(':').pop() ?? '')) {
-      const combo = combos.find((c) => c.id === sourceCombo);
-      if (combo) combo.relationIds.push(edge.id);
+    if (sourceCombo && sourceCombo === targetCombo) {
+      const combo = combos.find((candidate) => candidate.id === sourceCombo);
+      if (combo?.role === 'agent' && !combo.relationIds.includes(edge.id)) combo.relationIds.push(edge.id);
     }
   }
 
-  // Finalize combo counts and labels.
+  // Finalize combo identity/count metadata from unique canonical presentation IDs.
   for (const combo of combos) {
+    combo.children = [...new Set(combo.children)];
+    combo.sourceNodeIds = [...new Set(combo.sourceNodeIds)];
+    combo.relationIds = [...new Set(combo.relationIds)];
     combo.total = combo.children.length;
     combo.count = combo.children.length;
     combo.shown = combo.children.length;
-    if (combo.children.length > 1) {
+    if (combo.children.length > 1 && !/ \(\d+\)$/.test(combo.label)) {
       combo.label = `${combo.label} (${combo.children.length})`;
     }
   }
 
-  // Frontier annotations.
-  if (reachability?.frontiers?.items) {
-    for (const f of reachability.frontiers.items) {
+  // Actual source/evidence frontiers only.
+  projection.limitations.forEach((limitation, index) => {
+    if (/frontier|unknown|not analyzed|not assessed|source gap/i.test(limitation)) {
+      frontiers.push({
+        id: `topology-limitation:${projection.aiSystemId}:${index}`,
+        sourceId: projection.aiSystemId,
+        reason: limitation,
+      });
+    }
+  });
+  if (enrichment?.frontiers?.items) {
+    for (const f of enrichment.frontiers.items) {
       frontiers.push({
         id: f.id,
         dimension: f.dimension,
         reason: f.reason,
-      });
-    }
-  }
-
-  // If the read model has no frontiers, preserve the explicit UX-3 producer
-  // gaps as a single source-truthful annotation set. They are never converted
-  // to graph nodes/edges.
-  if (frontiers.length === 0) {
-    for (let i = 0; i < UX3_PRODUCER_FRONTIER_REASONS.length; i++) {
-      frontiers.push({
-        id: `ux3-producer-gap:${projection.aiSystemId}:${i}`,
-        reason: UX3_PRODUCER_FRONTIER_REASONS[i],
-        sourceId: projection.aiSystemId,
       });
     }
   }
@@ -437,7 +467,8 @@ export function buildConstellationProjection(
     edges,
     combos,
     frontiers,
-    limitations: [...projection.limitations],
+    productFrontiers,
+    limitations,
   };
 }
 
@@ -653,13 +684,11 @@ function filterByScaleInternal(
 }
 
 const LENS_ROLE_FILTERS: Record<ConstellationLens, ConstellationNodeRole[]> = {
-  architecture: [],
-  context_influence: ['ai_system', 'agent', 'model', 'context_source', 'instruction_source', 'evidence', 'frontier', 'authority_context'],
-  actions_effects: ['ai_system', 'agent', 'tool', 'mcp_gateway', 'api', 'capability_gateway', 'handler', 'action_implementation', 'consequence', 'state_resource', 'queue_topic', 'shared_resource_hub', 'external_effect', 'credential', 'temporal_context', 'evaluation_surface', 'frontier', 'unclassified'],
-  authority_bounds: ['ai_system', 'agent', 'authority_context', 'policy_authority', 'credential', 'capability_gateway', 'api', 'frontier'],
-  exposure_paths: ['ai_system', 'agent', 'tool', 'mcp_gateway', 'api', 'capability_gateway', 'handler', 'shared_resource_hub', 'external_effect', 'state_resource', 'queue_topic', 'temporal_context', 'evaluation_surface', 'frontier', 'consequence', 'credential', 'context_source'],
-  evidence_proof: ['ai_system', 'agent', 'evidence', 'evaluation_surface', 'frontier', 'context_source', 'instruction_source', 'state_resource', 'external_effect', 'credential', 'policy_authority', 'authority_context'],
-  change_drift: ['ai_system', 'agent', 'context_source', 'instruction_source', 'tool', 'handler', 'consequence', 'state_resource', 'shared_resource_hub', 'external_effect', 'credential', 'policy_authority', 'evaluation_surface', 'evidence', 'frontier'],
+  overview: [],
+  influence: ['ai_system', 'agent', 'model', 'context_source', 'instruction_source', 'shared_resource_hub', 'state_resource', 'queue_topic', 'authority_context', 'evidence', 'frontier'],
+  action_paths: ['ai_system', 'agent', 'model', 'tool', 'mcp_gateway', 'api', 'capability_gateway', 'handler', 'action_implementation', 'consequence', 'state_resource', 'queue_topic', 'shared_resource_hub', 'external_effect', 'temporal_context', 'evaluation_surface', 'frontier'],
+  authority: ['ai_system', 'agent', 'authority_context', 'policy_authority', 'credential', 'capability_gateway', 'api', 'frontier', 'evidence'],
+  proof: ['ai_system', 'agent', 'evidence', 'evaluation_surface', 'frontier', 'context_source', 'instruction_source', 'state_resource', 'external_effect', 'credential', 'policy_authority', 'authority_context'],
 };
 
 function filterByLensInternal(
@@ -667,7 +696,7 @@ function filterByLensInternal(
   lens: ConstellationLens,
 ): ConstellationProjection {
   const allowed = new Set<ConstellationNodeRole>(LENS_ROLE_FILTERS[lens]);
-  if (lens === 'architecture') {
+  if (lens === 'overview') {
     // Architecture shows every role.
     return { ...projection };
   }

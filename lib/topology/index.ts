@@ -52,6 +52,8 @@ export {
 } from './types';
 
 export { stableNodeId, stableEdgeId, s } from './stable-ids';
+export { buildAssuranceVisualSnapshot } from './assurance-visual-snapshot';
+export type { AssuranceVisualSnapshot } from './assurance-visual-snapshot';
 
 export type {
   LayoutProfile,
