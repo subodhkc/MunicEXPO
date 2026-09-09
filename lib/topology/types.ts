@@ -362,3 +362,190 @@ export interface TopologyProjectionResult {
 
 export const TOPOLOGY_PROJECTION_SCHEMA_VERSION = 'topology-1.0.0' as const;
 export const TOPOLOGY_PROJECTION_VERSION = 'topology-1.0.0' as const;
+
+// ─── UX-3 Constellation / Landscape presentation-only projection ─────────────
+// These types are PRESENTATION-ONLY. They do not change topology truth.
+// Source precedence: HAIEC persisted truth → TopologyProjectionResult →
+// ConstellationProjection → G6 renderer.
+
+export type ConstellationScale = 'landscape' | 'system' | 'agent' | 'action_path';
+
+export const SUPPORTED_CONSTELLATION_SCALES: ConstellationScale[] = [
+  'landscape',
+  'system',
+  'agent',
+  'action_path',
+];
+
+export const CONSTELLATION_SCALE_LABELS: Record<ConstellationScale, string> = {
+  landscape: 'Landscape',
+  system: 'System',
+  agent: 'Agent',
+  action_path: 'Action Path',
+};
+
+export type ConstellationLens =
+  | 'architecture'
+  | 'context_influence'
+  | 'actions_effects'
+  | 'authority_bounds'
+  | 'exposure_paths'
+  | 'evidence_proof'
+  | 'change_drift';
+
+export const SUPPORTED_CONSTELLATION_LENSES: ConstellationLens[] = [
+  'architecture',
+  'context_influence',
+  'actions_effects',
+  'authority_bounds',
+  'exposure_paths',
+  'evidence_proof',
+  'change_drift',
+];
+
+export const CONSTELLATION_LENS_LABELS: Record<ConstellationLens, string> = {
+  architecture: 'Architecture',
+  context_influence: 'Context & Influence',
+  actions_effects: 'Actions & Effects',
+  authority_bounds: 'Authority & Bounds',
+  exposure_paths: 'Exposure Paths',
+  evidence_proof: 'Evidence & Proof',
+  change_drift: 'Change / Drift',
+};
+
+export type ConstellationNodeRole =
+  | 'ai_system'
+  | 'agent'
+  | 'model'
+  | 'tool'
+  | 'mcp_gateway'
+  | 'api'
+  | 'handler'
+  | 'consequence'
+  | 'resource'
+  | 'shared_resource_hub'
+  | 'queue_topic'
+  | 'credential'
+  | 'policy_authority'
+  | 'evaluation_surface'
+  | 'evidence'
+  | 'frontier'
+  | 'context_source'
+  | 'instruction_source'
+  | 'capability_gateway'
+  | 'action_implementation'
+  | 'state_resource'
+  | 'external_effect'
+  | 'authority_context'
+  | 'temporal_context'
+  | 'unclassified';
+
+/**
+ * Presentation node in the UX-3 constellation graph.
+ * `id` is the canonical TopologyNode id for non-combo nodes.
+ * Combos are derived from AI systems and agents and carry the original node id
+ * in `canonicalNodeId`.
+ */
+export interface ConstellationNode {
+  id: string;
+  label: string;
+  role: ConstellationNodeRole;
+  kind: TopologyNodeKind;
+  availability: NodeAvailability;
+  aiReachable: boolean | 'UNKNOWN';
+  /** Provenance string from the source topology (e.g. sourceLocation or scanId). */
+  sourceProvenance?: string;
+  /** Canonical TopologyNode id this presentation node represents. */
+  canonicalNodeId: string;
+  /** Parent combo id, if any. */
+  combo?: string | null;
+  /** True when this node is a frontier marker for an unresolved/partial source. */
+  isFrontier?: boolean;
+  frontierReason?: string;
+  /** If this node represents an aggregation, the source node ids and relation ids. */
+  sourceNodeIds?: string[];
+  relationIds?: string[];
+  count?: number;
+  shown?: number;
+  total?: number;
+  truncated?: boolean;
+  weakestAvailability?: NodeAvailability;
+  /** Participant agent ids and access types for shared resource hubs. */
+  participantAgentIds?: string[];
+  accessTypes?: string[];
+  /** Reachability metrics from the AgentReachabilityReadModel, when available. */
+  directReach?: number;
+  transitiveReach?: number;
+  /** Optional path ordering for action_path scale. */
+  pathIndex?: number;
+}
+
+export interface ConstellationEdge {
+  id: string;
+  source: string;
+  target: string;
+  label: string;
+  kind: TopologyEdgeKind;
+  joinBasis: string;
+  /** Epistemic line style from the topology edge. */
+  style: 'solid' | 'dashed' | 'dotted';
+  /** Canonical TopologyEdge id. */
+  canonicalEdgeId: string;
+  sourceNodeIds?: string[];
+  relationIds?: string[];
+  count?: number;
+  truncated?: boolean;
+  weakestAvailability?: NodeAvailability;
+}
+
+export interface ConstellationCombo {
+  id: string;
+  label: string;
+  role: ConstellationNodeRole;
+  kind: TopologyNodeKind;
+  /** Child node ids (combos or nodes) belonging to this combo. */
+  children: string[];
+  /** Original TopologyNode id this combo represents. */
+  canonicalNodeId: string;
+  /** Parent combo id, if nested. */
+  combo?: string | null;
+  sourceNodeIds: string[];
+  relationIds: string[];
+  count: number;
+  shown: number;
+  total: number;
+  truncated: boolean;
+  weakestAvailability: NodeAvailability;
+  collapsed: boolean;
+  participantAgentIds?: string[];
+  accessTypes?: string[];
+  directReach?: number;
+  transitiveReach?: number;
+}
+
+export interface ConstellationFrontier {
+  id: string;
+  dimension?: string;
+  reason: string;
+  sourceId?: string;
+  sourceRelationIds?: string[];
+  availability?: NodeAvailability;
+}
+
+/**
+ * Presentation-only projection for the UX-3 constellation renderer.
+ * Built deterministically from a TopologyProjectionResult and optional
+ * AgentReachabilityReadModel.
+ */
+export interface ConstellationProjection {
+  projectionSchemaVersion: string;
+  sourceVersion: string;
+  aiSystemId: string;
+  aiSystemName: string;
+  projectionHash: string;
+  nodes: ConstellationNode[];
+  edges: ConstellationEdge[];
+  combos: ConstellationCombo[];
+  frontiers: ConstellationFrontier[];
+  limitations: string[];
+}
