@@ -307,6 +307,16 @@ export interface UnifiedAssuranceReport {
    *   TRACE_COUNT != RISK_SCORE
    */
   actionProof?: ActionProofReportSection;
+  /**
+   * ARI-P0: additive Agent Reachability section for the evaluated scan.
+   * Historical read projection only; not a current scan or assurance disposition.
+   */
+  agentReachability?: AgentReachabilityReportSection;
+  /**
+   * ARI-P0: additive Evaluation Integrity exposure section for the evaluated scan.
+   * Historical read projection only; not a runtime observation or disposition.
+   */
+  evaluationIntegrity?: EvaluationIntegrityReportSection;
 }
 
 /**
@@ -366,6 +376,140 @@ export interface ActionProofReportSection {
   totalTraces?: number;
   /** Source coverage/scope limitations carried from the bound scan */
   coverageLimitations?: string[];
+}
+
+/**
+ * Agent Reachability report section.
+ *
+ * HISTORICAL read projection of the evaluated scan's ARI topology, bounded
+ * for report embedding. This is not a runtime observation, not a current scan,
+ * and not an assurance disposition.
+ */
+export interface AgentReachabilityReportSection {
+  availability: 'ESTABLISHED' | 'NOT_AVAILABLE';
+  unavailableReason?:
+    | 'EVALUATED_SCAN_BINDING_NOT_CAPTURED'
+    | 'EVALUATED_RUN_IDENTITY_MISMATCH'
+    | 'EVALUATED_SCAN_IDENTITY_MISMATCH'
+    | 'EVALUATED_SCAN_HAS_NO_OPERATION_COVERAGE'
+    | 'EVALUATED_SNAPSHOT_INVALID'
+    | 'SECTION_BUILD_FAILED';
+  /** Exact evaluated source scan (audit_orchestrator_runs.staticScanId) */
+  scanId?: string;
+  commitSha?: string | null;
+  summary?: {
+    agentCount: number;
+    relationshipCount: number;
+    potentialChannelCount: number;
+    sharedResourceHubCount: number;
+    credentialChainCount: number;
+    deferredPathCount: number;
+    persistenceCreationCount: number;
+    evaluationIntegrityExposureCount: number;
+    frontierCount: number;
+    coverageFamilyCount: number;
+  };
+  /** Bounded agent inventory summaries */
+  agents?: Array<{
+    agentId: string;
+    displayName: string;
+    framework?: string;
+    sourceLocation: string;
+    candidateState: string;
+    declaredToolReferences: string[];
+    reachableResourceKeys: string[];
+    limitations: string[];
+  }>;
+  /** Bounded agent relationship summaries */
+  relationships?: Array<{
+    id: string;
+    kind: string;
+    fromAgentId: string;
+    toAgentId?: string;
+    toToolId?: string;
+    toExternalRef?: string;
+    state: string;
+    statement: string;
+    limitations: string[];
+  }>;
+  /** Bounded potential channel summaries */
+  potentialChannels?: Array<{
+    id: string;
+    resourceKey: string;
+    resourceClass?: string;
+    state: string;
+    writers: string[];
+    readers: string[];
+    publishers: string[];
+    subscribers: string[];
+    statement: string;
+    limitations: string[];
+  }>;
+  /** Bounded frontier summaries */
+  frontiers?: Array<{
+    id: string;
+    dimension: string;
+    reason: string;
+  }>;
+  /** Coverage family states from the bound scan */
+  coverage?: Array<{
+    family: string;
+    state: string;
+    limitations: string[];
+  }>;
+  coverageLimitations?: string[];
+  /** Truncation truth */
+  agentsShown?: number;
+  relationshipsShown?: number;
+  potentialChannelsShown?: number;
+  frontiersShown?: number;
+  totalAgents?: number;
+  totalRelationships?: number;
+  totalPotentialChannels?: number;
+  totalFrontiers?: number;
+}
+
+/**
+ * Evaluation Integrity exposure report section.
+ *
+ * HISTORICAL summary of source-discovered evaluation surfaces and access
+ * relations for the evaluated scan. Not a runtime observation or disposition.
+ */
+export interface EvaluationIntegrityReportSection {
+  availability: 'ESTABLISHED' | 'NOT_AVAILABLE';
+  unavailableReason?:
+    | 'EVALUATED_SCAN_BINDING_NOT_CAPTURED'
+    | 'EVALUATED_RUN_IDENTITY_MISMATCH'
+    | 'EVALUATED_SCAN_IDENTITY_MISMATCH'
+    | 'EVALUATED_SCAN_HAS_NO_OPERATION_COVERAGE'
+    | 'EVALUATED_SNAPSHOT_INVALID'
+    | 'SECTION_BUILD_FAILED';
+  scanId?: string;
+  commitSha?: string | null;
+  summary?: {
+    exposureCount: number;
+    surfaceCount: number;
+    accessRelationCount: number;
+    coverageFamilyCount: number;
+  };
+  /** Bounded exposure summaries */
+  exposures?: Array<{
+    id: string;
+    agentName: string;
+    surfaceKind: string;
+    accessType: string;
+    state: string;
+    statement: string;
+    limitations: string[];
+  }>;
+  coverage?: Array<{
+    family: string;
+    state: string;
+    limitations: string[];
+  }>;
+  coverageLimitations?: string[];
+  exposuresShown?: number;
+  totalExposures?: number;
 }
 
 export interface ReportProfileSection {

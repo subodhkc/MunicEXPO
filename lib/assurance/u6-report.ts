@@ -42,6 +42,8 @@ import {
   PackageVerificationResult,
   PublicVerificationResult,
   ActionProofReportSection,
+  AgentReachabilityReportSection,
+  EvaluationIntegrityReportSection,
 } from './u6-types';
 
 export type { BuildIdentity, U6Package } from './u6-types';
@@ -69,6 +71,8 @@ export function buildUnifiedAssuranceReport(
   syntheticClass: 'NONE' | 'SYNTHETIC_REFERENCE' | 'UNKNOWN' = resolveSyntheticClassification(evaluation as AssuranceEvaluationV1_1),
   authoritySourceLabel?: string,
   actionProof?: ActionProofReportSection,
+  agentReachability?: AgentReachabilityReportSection,
+  evaluationIntegrity?: EvaluationIntegrityReportSection,
 ): UnifiedAssuranceReport {
   const v1_1 = evaluation as AssuranceEvaluationV1_1;
 
@@ -77,9 +81,10 @@ export function buildUnifiedAssuranceReport(
   const evidenceCoverage = buildProducerCoverageFromEvidence(projectedEvidence);
   const limitations = buildLimitations(evaluation, projectedEvidence, v1_1.planeAvailability ?? [], buildIdentity);
 
+  const hasReportSection12 = !!(actionProof || agentReachability || evaluationIntegrity);
   const report: UnifiedAssuranceReport = {
-    // PX-FINAL: 1.2.0 when the additive Action Proof section is present.
-    reportVersion: actionProof ? U6_REPORT_SCHEMA_VERSION_PX : U6_REPORT_SCHEMA_VERSION,
+    // PX-FINAL / ARI-P0: 1.2.0 when any additive report section is present.
+    reportVersion: hasReportSection12 ? U6_REPORT_SCHEMA_VERSION_PX : U6_REPORT_SCHEMA_VERSION,
     reportId: `${evaluation.id}:report`,
     assuranceEvaluationId: evaluation.id,
     organizationId: evaluation.organizationId,
@@ -122,10 +127,12 @@ export function buildUnifiedAssuranceReport(
     },
     reportDigest: '',
     syntheticClassification: syntheticClass,
-    // PX-FINAL: additive Action Proof & Evidence Frontier section. Present on
-    // new reports only — absent on previously persisted reportJson, which keeps
-    // old packages verifying under their original digest semantics.
+    // PX-FINAL / ARI-P0: additive report sections. Present on new reports only —
+    // absent on previously persisted reportJson, which keeps old packages verifying
+    // under their original digest semantics.
     ...(actionProof ? { actionProof } : {}),
+    ...(agentReachability ? { agentReachability } : {}),
+    ...(evaluationIntegrity ? { evaluationIntegrity } : {}),
   };
 
   report.reportDigest = computeReportDigest(report);
