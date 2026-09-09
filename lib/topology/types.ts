@@ -22,7 +22,17 @@ export type TopologyNodeKind =
   | 'connected_asset'
   | 'provider_iam'
   | 'evidence'
-  | 'policy';
+  | 'policy'
+  | 'agent'
+  | 'tool'
+  | 'handler'
+  | 'resource'
+  | 'service'
+  | 'shared_resource_hub'
+  | 'persistence'
+  | 'deferred'
+  | 'evaluation_surface'
+  | 'credential_reference';
 
 // ─── Customer-Friendly Plane Aliases ─────────────────────────────────────────
 // Primary customer language for the five planes.
@@ -208,6 +218,25 @@ export interface TopologyNode {
   assetProvider?: string;
   assetEnvironment?: string;
   assetConnectionState?: string;
+  /** ARI node metadata */
+  resourceKey?: string;
+  resourceClass?: string;
+  serviceKey?: string;
+  environment?: string;
+  cloudAccountOrProject?: string;
+  region?: string;
+  tenant?: string;
+  namespace?: string;
+  workload?: string;
+  partition?: string;
+  handlerRef?: string;
+  toolName?: string;
+  agentName?: string;
+  mechanismKind?: string;
+  surfaceKind?: string;
+  credentialReference?: string;
+  participantAgentIds?: string[];
+  fanoutMetadata?: { total: number; shown: number; truncated: boolean };
   /** Scan/run provenance for detail zoom */
   scanId?: string;
   /**
@@ -261,7 +290,17 @@ export type TopologyEdgeKind =
   | 'uses_credential'
   | 'evidenced_by'
   | 'scoped_by'
-  | 'governed_by';
+  | 'governed_by'
+  | 'uses_tool'
+  | 'implements'
+  | 'handles'
+  | 'reaches_resource'
+  | 'member_of'
+  | 'potential_channel'
+  | 'has_persistence'
+  | 'deferred_to'
+  | 'evaluates'
+  | 'credential_reference';
 
 // ─── Projection Result ───────────────────────────────────────────────────────
 

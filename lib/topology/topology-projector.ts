@@ -53,6 +53,7 @@ import {
   type PersistedOperationCoverageIntelligence,
 } from '@/lib/ai-security/operation-coverage-read';
 import { buildActionProofTraceProjection } from '@/lib/ai-inventory/action-proof-trace';
+import { buildAriTopologyProjection } from './ari-topology-convergence';
 import { getCurrentEffectiveGrant } from '@/lib/iam-grant/effective-grant-observation';
 import { buildSystemActionAuthorityReadModel } from '@/lib/ai-inventory/system-action-authority';
 import { resolveSystemEvidence } from '@/lib/ai-inventory/system-evidence-resolver';
@@ -62,6 +63,7 @@ import {
   type RelationRef,
   type SourceRef,
   type EvidenceRef,
+  type JoinBasis,
 } from '@/lib/shared-contracts/wave0-contract-freeze';
 import {
   type TopologyProjectionResult,
@@ -321,6 +323,7 @@ export async function buildTopologyProjection(
    * snapshot exists for this exact scanId — never a different scan's traces.
    */
   let actionProofBasis: 'SAME_SCAN' | 'NOT_AVAILABLE' = 'NOT_AVAILABLE';
+  let opCovData: PersistedOperationCoverageIntelligence | null = null;
 
   if (ac1Read.status === 'NO_CURRENT_ACCEPTED_SOURCE') {
     mapAvailability = 'SOURCE_GAP';
@@ -358,15 +361,8 @@ export async function buildTopologyProjection(
       limitations.push(lim);
     }
 
-    // ─── PY-K3 seam population: ActionProofTrace references ──────────────
-    // Exact canonical join only: a trace's SINK consequence target carries the
-    // canonical sinkId from the SAME persisted operation-coverage snapshot.
-    // The snapshot is loaded by ac1Read.scanId, so cross-scan composition is
-    // structurally impossible — CURRENT_MAP_SCAN_A + TRACE_SCAN_B != PROOF_JOIN.
-    //
-    // LOCK: MAP_NODE_NAME != TRACE_IDENTITY
-    // LOCK: actionProofTraceIds is a lookup reference, never an edge.
-    // LOCK: MAP_EDGE != PROOF_EDGE
+    // ─── Operation-coverage snapshot (ActionProof + ARI source) ───────────
+    // Same-scan only. Loaded once and reused for trace references and ARI topology.
     const traceIdsBySinkId = new Map<string, string[]>();
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -378,11 +374,12 @@ export async function buildTopologyProjection(
         const raw = typeof opCovScan.operationCoverageIntelligence === 'string'
           ? JSON.parse(opCovScan.operationCoverageIntelligence)
           : opCovScan.operationCoverageIntelligence;
-        const opCovData = raw as PersistedOperationCoverageIntelligence;
+        const parsed = raw as PersistedOperationCoverageIntelligence;
         if (
-          !validatePersistedSnapshot(opCovData) &&
-          opCovData.authorityPlaneInvariants?.LIKELY_PROMOTES_CANONICAL_AUTHORITY !== true
+          !validatePersistedSnapshot(parsed) &&
+          parsed.authorityPlaneInvariants?.LIKELY_PROMOTES_CANONICAL_AUTHORITY !== true
         ) {
+          opCovData = parsed;
           const traceProjection = buildActionProofTraceProjection({
             scanId: ac1Read.scanId,
             toolCandidates: opCovData.toolCandidates || [],
@@ -805,6 +802,25 @@ export async function buildTopologyProjection(
         }
       }
     }
+  }
+
+  // ─── ARI Topology Convergence ───────────────────────────────────────────
+  // Source-backed projection of agent/tool/handler/resource/service/hub/
+  // persistence/deferred/evaluation/credential topology from the SAME scan.
+  // No React-side name joins; all IDs are stable semantic hashes.
+  if (opCovData) {
+    const ari = buildAriTopologyProjection(opCovData, opCovData.scanId, aiSystemNodeId);
+    for (const n of ari.nodes) nodes.push(n);
+    for (const e of ari.edges) {
+      edges.push(e);
+      relations.push({
+        relationType: e.kind,
+        fromRef: e.source,
+        toRef: e.target,
+        joinBasis: e.joinBasis as JoinBasis,
+      });
+    }
+    for (const l of ari.limitations) limitations.push(l);
   }
 
   // ─── CONNECTED_ASSET_ADAPTER (repair 12: actually project assets) ───────
