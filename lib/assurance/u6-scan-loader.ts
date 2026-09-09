@@ -8,7 +8,9 @@
  *   CURRENT_REPOSITORY_TRACE != EVALUATED_REPOSITORY_TRACE
  *   NO_HISTORICAL_BINDING -> null (never current-trace fallback)
  *   CROSS_SCAN_JOIN = INVALID
- *   EVALUATED_SCAN_IDENTITY_MISMATCH = null
+ *   DATABASE_ROW_SCAN_ID_MATCH != PERSISTED_SNAPSHOT_SCAN_ID_MATCH
+ *   CROSS_ORGANIZATION_COMPOSITION = INVALID
+ *   LIKELY_PROMOTES_CANONICAL_AUTHORITY => NO_U6_ARI_EI_COMPOSITION
  */
 
 import { prisma } from '@/lib/prisma';
@@ -29,7 +31,8 @@ export type EvaluatedScanUnavailableReason =
   | 'EVALUATED_RUN_IDENTITY_MISMATCH'
   | 'EVALUATED_SCAN_IDENTITY_MISMATCH'
   | 'EVALUATED_SCAN_HAS_NO_OPERATION_COVERAGE'
-  | 'EVALUATED_SNAPSHOT_INVALID';
+  | 'EVALUATED_SNAPSHOT_INVALID'
+  | 'AUTHORITY_PROMOTION_INVARIANT_VIOLATED';
 
 export interface EvaluatedScanUnavailable {
   availability: 'NOT_AVAILABLE';
@@ -63,13 +66,23 @@ export async function loadEvaluatedOperationCoverage(
     };
   }
 
+  // Fetch by scanId only. An explicit cross-organization or cross-system row
+  // is an identity mismatch, not a missing-coverage state.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const scan = await (prisma as any).ai_security_scans.findFirst({
-    where: { scanId: run.staticScanId, organizationId: run.organizationId },
-    select: { scanId: true, commitSha: true, aiSystemId: true, operationCoverageIntelligence: true },
+    where: { scanId: run.staticScanId },
+    select: { scanId: true, commitSha: true, organizationId: true, aiSystemId: true, operationCoverageIntelligence: true },
   });
 
-  if (scan && scan.aiSystemId != null && scan.aiSystemId !== run.aiSystemId) {
+  if (!scan) {
+    return {
+      availability: 'NOT_AVAILABLE',
+      unavailableReason: 'EVALUATED_SCAN_HAS_NO_OPERATION_COVERAGE',
+      scanId: run.staticScanId,
+    };
+  }
+
+  if (scan.scanId !== run.staticScanId) {
     return {
       availability: 'NOT_AVAILABLE',
       unavailableReason: 'EVALUATED_SCAN_IDENTITY_MISMATCH',
@@ -78,12 +91,36 @@ export async function loadEvaluatedOperationCoverage(
     };
   }
 
-  if (!scan || scan.operationCoverageIntelligence == null) {
+  if (
+    scan.organizationId != null &&
+    scan.organizationId !== run.organizationId
+  ) {
+    return {
+      availability: 'NOT_AVAILABLE',
+      unavailableReason: 'EVALUATED_SCAN_IDENTITY_MISMATCH',
+      scanId: run.staticScanId,
+      commitSha: scan.commitSha ?? null,
+    };
+  }
+
+  if (
+    scan.aiSystemId != null &&
+    scan.aiSystemId !== run.aiSystemId
+  ) {
+    return {
+      availability: 'NOT_AVAILABLE',
+      unavailableReason: 'EVALUATED_SCAN_IDENTITY_MISMATCH',
+      scanId: run.staticScanId,
+      commitSha: scan.commitSha ?? null,
+    };
+  }
+
+  if (scan.operationCoverageIntelligence == null) {
     return {
       availability: 'NOT_AVAILABLE',
       unavailableReason: 'EVALUATED_SCAN_HAS_NO_OPERATION_COVERAGE',
       scanId: run.staticScanId,
-      commitSha: scan?.commitSha ?? null,
+      commitSha: scan.commitSha ?? null,
     };
   }
 
@@ -96,6 +133,26 @@ export async function loadEvaluatedOperationCoverage(
     return {
       availability: 'NOT_AVAILABLE',
       unavailableReason: 'EVALUATED_SNAPSHOT_INVALID',
+      scanId: run.staticScanId,
+      commitSha: scan.commitSha ?? null,
+    };
+  }
+
+  if (data.scanId !== run.staticScanId) {
+    return {
+      availability: 'NOT_AVAILABLE',
+      unavailableReason: 'EVALUATED_SCAN_IDENTITY_MISMATCH',
+      scanId: run.staticScanId,
+      commitSha: scan.commitSha ?? null,
+    };
+  }
+
+  if (
+    data.authorityPlaneInvariants?.LIKELY_PROMOTES_CANONICAL_AUTHORITY === true
+  ) {
+    return {
+      availability: 'NOT_AVAILABLE',
+      unavailableReason: 'AUTHORITY_PROMOTION_INVARIANT_VIOLATED',
       scanId: run.staticScanId,
       commitSha: scan.commitSha ?? null,
     };
