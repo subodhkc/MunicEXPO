@@ -1,15 +1,19 @@
+/* eslint-disable @typescript-eslint/no-unused-vars -- uniform projection function signatures; unused read-model/data parameters are kept for API consistency and future extension */
+
 /**
  * S6 — Agentic Assurance / Action Assurance customer-facing projection.
  *
  * Builds a bounded, HISTORICAL Action Assurance read-model summary for the
  * exact source scan bound to a completed Assurance evaluation.
  *
- * This is a THIN PROJECTION over the existing ARI-P0 read model and persisted
- * operation coverage intelligence. It does NOT:
+ * This is a THIN PROJECTION over the existing ARI-P0 read model, persisted
+ * operation coverage intelligence, and the exact-run Evidence Core projection.
+ * It does NOT:
  *   - recompute U5 authority
  *   - create new evidence
  *   - create a new graph engine
  *   - create a new report system
+ *   - produce findings or dispositions
  *
  * LOCKS:
  *   CURRENT_REPOSITORY_TRACE != EVALUATED_REPOSITORY_TRACE
@@ -20,13 +24,13 @@
  *   SURFACE_VISIBLE != ANALYZER_COMPLETE
  *   NO_RELATION != SAFE
  *   ANALYZED_EMPTY != NOT_ANALYZED
+ *   ANALYZER_RAN != RELATION_ESTABLISHED
+ *   ANALYSIS_STATE != RESULT_STATE
  *   PRODUCER_FRONTIER != NO_RISK
  *   UNKNOWN != FALSE
  *   STATIC_CONTROL_PRESENT != RUNTIME_CONTROL_TRIGGERED
  *   NOT_RUNTIME_VALIDATED != RUNTIME_SAFE
  */
-
-/* eslint-disable @typescript-eslint/no-unused-vars -- uniform projection function signatures; unused read-model/data parameters are kept for API consistency and future extension */
 
 import type { AssuranceEvaluation } from './types';
 import { loadEvaluatedOperationCoverage, type EvaluatedScanUnavailable } from './u6-scan-loader';
@@ -36,38 +40,91 @@ import {
   type AgentReachabilityReadModel,
   type ReachabilitySourceProvenance,
 } from '@/lib/ai-inventory/agent-reachability-read-model';
-import type { ActionAssuranceReportSection, ActionAssuranceSurface } from './u6-types';
-import type { AriFamilyCoverage } from '@/lib/ai-security/types';
+import {
+  U6_REPORT_SCHEMA_VERSION_S6,
+  type ActionAssuranceReportSection,
+  type ActionAssuranceSurface,
+  type ActionAssuranceSurfaceFacet,
+  type AnalysisCoverageState,
+  type ResultState,
+} from './u6-types';
+import { PRODUCER_IDS } from '@/lib/engine-registry/producer-registry';
+import type { AriFamilyCoverage, AriRelationState } from '@/lib/ai-security/types';
+import type { DecisionEvidenceProjection } from '@/lib/decision-pipeline/evidence-projection';
 
 const MAX_SURFACES = 10;
 const MAX_SURFACE_REFS = 24;
+
+type RelationLike = { id: string; state?: AriRelationState | string };
+type SourceProvenance = { scanId: string; commitSha: string | null };
 
 function truncateReason(reason: string | undefined, max = 120): string {
   const r = reason ?? '';
   return r.length > max ? `${r.slice(0, max)}...` : r;
 }
 
-function familyCoverageState(family: AriFamilyCoverage | undefined, relationCount: number): string {
-  if (!family) return 'NOT_ANALYZED';
-  const state = family.state;
-  const reason = family.reason ?? '';
+function toResultState(state: AriRelationState | string | undefined): ResultState {
+  switch (state) {
+    case 'ESTABLISHED':
+      return 'ESTABLISHED';
+    case 'CONDITIONAL':
+      return 'CONDITIONAL';
+    case 'CANDIDATE':
+      return 'CANDIDATE';
+    case 'UNKNOWN':
+      return 'UNKNOWN';
+    case 'NOT_ANALYZED':
+      return 'NOT_ANALYZED';
+    case 'UNSUPPORTED':
+      return 'UNSUPPORTED';
+    default:
+      return 'UNKNOWN';
+  }
+}
 
+function familyAnalysisState(family: AriFamilyCoverage | undefined): AnalysisCoverageState {
+  const s = family?.state ?? 'NOT_ANALYZED';
+  if (s === 'ANALYZED' || s === 'PARTIAL' || s === 'NOT_ANALYZED' || s === 'UNKNOWN' || s === 'UNSUPPORTED') {
+    return s as AnalysisCoverageState;
+  }
+  return 'UNKNOWN';
+}
+
+function deriveResultFromRelationStates(relations: RelationLike[]): ResultState {
+  const states = relations.map((r) => toResultState(r.state));
+  if (states.every((s) => s === 'ESTABLISHED')) return 'ESTABLISHED';
+  const allEstablishedOrConditional = states.every((s) => s === 'ESTABLISHED' || s === 'CONDITIONAL');
+  if (allEstablishedOrConditional) return states.some((s) => s === 'CONDITIONAL') ? 'CONDITIONAL' : 'ESTABLISHED';
+  if (states.every((s) => s === 'CANDIDATE')) return 'CANDIDATE';
+  return 'PARTIAL';
+}
+
+function familyResultState(family: AriFamilyCoverage | undefined, relations: RelationLike[]): ResultState {
+  const reason = family?.reason ?? '';
   if (reason.includes('PRODUCER_FRONTIER')) {
     return 'PRODUCER_FRONTIER';
   }
 
-  if (state === 'ANALYZED' && relationCount === 0) {
-    const hasAnalyzedEmptyLimitation = family.limitations.some((l) => l.includes('ANALYZED_EMPTY'));
-    if (hasAnalyzedEmptyLimitation) {
-      return 'ANALYZED_EMPTY';
+  const fs = family?.state ?? 'NOT_ANALYZED';
+  if (fs === 'NOT_ANALYZED') return 'NOT_ANALYZED';
+  if (fs === 'UNSUPPORTED') return 'UNSUPPORTED';
+  if (fs === 'UNKNOWN') return 'UNKNOWN';
+
+  if (fs === 'ANALYZED') {
+    if (relations.length === 0) {
+      const limitations = family?.limitations ?? [];
+      const hasAnalyzedEmptyLimitation = limitations.some((l) => l.includes('ANALYZED_EMPTY'));
+      return hasAnalyzedEmptyLimitation || limitations.length === 0 ? 'ANALYZED_EMPTY' : 'UNKNOWN';
     }
+    return deriveResultFromRelationStates(relations);
   }
 
-  if (state === 'NOT_ANALYZED') return 'NOT_ANALYZED';
-  if (state === 'UNSUPPORTED') return 'UNSUPPORTED';
-  if (state === 'UNKNOWN') return 'UNKNOWN';
-  if (state === 'ANALYZED') return 'ESTABLISHED';
-  return state;
+  if (fs === 'PARTIAL') {
+    if (relations.length === 0) return 'UNKNOWN';
+    return deriveResultFromRelationStates(relations);
+  }
+
+  return 'UNKNOWN';
 }
 
 function combineLimitations(base: string[], family: AriFamilyCoverage | undefined, extra: string[] = []): string[] {
@@ -79,67 +136,203 @@ function combineLimitations(base: string[], family: AriFamilyCoverage | undefine
   return Array.from(result);
 }
 
-function refsFromReadModel(readModel: AgentReachabilityReadModel, data: PersistedOperationCoverageIntelligence): string[] {
-  const refs: string[] = [];
-  for (const a of readModel.agents.items) {
-    refs.push(a.id);
+function customerStatus(label: string, analysis: AnalysisCoverageState, result: ResultState): string {
+  const lower = label.toLowerCase();
+  switch (result) {
+    case 'NOT_ANALYZED':
+      return analysis === 'NOT_ANALYZED'
+        ? `This ${lower} dimension was not analyzed for the evaluated snapshot.`
+        : `No qualified ${lower} relation established in the analyzed evidence.`;
+    case 'ANALYZED_EMPTY':
+      return `No qualified ${lower} relations found in the analyzed evidence.`;
+    case 'PRODUCER_FRONTIER':
+      return `Explicit ${lower} producer not currently established; bounded frontier.`;
+    case 'ESTABLISHED':
+      return `Established ${lower} relation(s) found in the analyzed evidence.`;
+    case 'CONDITIONAL':
+      return `Conditional ${lower} relation(s) found; subject to stated limitations.`;
+    case 'CANDIDATE':
+      return `Candidate ${lower} path(s) present; not established as observed.`;
+    case 'PARTIAL':
+      return `Partial ${lower} coverage; some dimensions remain unresolved.`;
+    case 'UNKNOWN':
+      return `${label} coverage is unknown for the evaluated snapshot.`;
+    case 'UNSUPPORTED':
+      return `${label} analysis is not supported for the evaluated snapshot.`;
+    case 'NOT_RUNTIME_VALIDATED':
+      return `No runtime corroboration for the evaluated ${lower} dimension.`;
+    case 'RUNTIME_EVIDENCE_PRESENT':
+      return `Runtime evidence present, but exact action correspondence not established.`;
+    case 'STATIC_WITH_RUNTIME_CORROBORATION':
+      return `Static and runtime evidence correspond for a comparable action identity.`;
+    case 'STATIC_RUNTIME_DIVERGENCE':
+      return `Static and runtime evidence diverge for a comparable action identity.`;
+    default:
+      return `${label} state is not available for the evaluated snapshot.`;
   }
-  for (const r of readModel.relationships.items) {
-    refs.push(r.id);
-  }
-  for (const tc of readModel.agents.items.flatMap((a) => a.toolCapabilities)) {
-    for (const s of tc.stages) {
-      for (const id of s.relationIds) {
-        refs.push(id);
-      }
-    }
-  }
-  for (const r of data.handlerOperationRelations ?? []) {
-    refs.push(r.id);
-  }
-  return Array.from(new Set(refs)).slice(0, MAX_SURFACE_REFS);
 }
+
+function buildFacet(
+  key: string,
+  title: string,
+  family: AriFamilyCoverage | undefined,
+  relations: RelationLike[],
+  baseLimitations: string[] = [],
+  extraLimitations: string[] = [],
+): ActionAssuranceSurfaceFacet {
+  const analysis = familyAnalysisState(family);
+  const result = familyResultState(family, relations);
+  const limitations = combineLimitations(baseLimitations, family, extraLimitations);
+  return {
+    facetKey: key,
+    title,
+    analysisCoverageState: analysis,
+    resultState: result,
+    relationCount: relations.length,
+    relationRefs: relations.map((r) => r.id).slice(0, MAX_SURFACE_REFS),
+    summary: `${title}: analysis ${analysis}, result ${result}, ${relations.length} source relation(s).`,
+    customerStatus: customerStatus(title, analysis, result),
+    limitations,
+  };
+}
+
+function buildSurfaceBase(
+  key: string,
+  title: string,
+  analysis: AnalysisCoverageState,
+  result: ResultState,
+  reason: string,
+  relationCount: number,
+  relationRefs: string[],
+  summary: string,
+  limitations: string[],
+  sourceBasis: string,
+  evidenceRefs: string[] = [],
+): ActionAssuranceSurface {
+  return {
+    surfaceKey: key,
+    title,
+    analysisCoverageState: analysis,
+    resultState: result,
+    coverageReason: reason,
+    relationCount,
+    relationRefs,
+    summary,
+    limitations,
+    evidenceRefs,
+    findingRefs: [],
+    sourceBasis,
+    customerStatus: customerStatus(title, analysis, result),
+  };
+}
+
+function deriveOverallAnalysis(facets: ActionAssuranceSurfaceFacet[]): AnalysisCoverageState {
+  if (facets.length === 0) return 'NOT_ANALYZED';
+  const states = new Set(facets.map((f) => f.analysisCoverageState));
+  if (states.size === 1) {
+    return facets[0].analysisCoverageState;
+  }
+  if (states.has('PARTIAL')) return 'PARTIAL';
+  if (states.has('NOT_ANALYZED') || states.has('UNKNOWN')) return 'PARTIAL';
+  if (states.has('UNSUPPORTED')) return 'PARTIAL';
+  return 'ANALYZED';
+}
+
+function deriveOverallResult(facets: ActionAssuranceSurfaceFacet[]): ResultState {
+  if (facets.length === 0) return 'NOT_ANALYZED';
+  const states = facets.map((f) => f.resultState);
+  if (states.every((s) => s === 'NOT_ANALYZED')) return 'NOT_ANALYZED';
+  if (states.every((s) => s === 'UNKNOWN')) return 'UNKNOWN';
+  if (states.every((s) => s === 'ANALYZED_EMPTY')) return 'ANALYZED_EMPTY';
+  if (states.every((s) => s === 'ESTABLISHED')) return 'ESTABLISHED';
+  if (states.includes('PRODUCER_FRONTIER')) return 'PRODUCER_FRONTIER';
+  if (states.includes('NOT_RUNTIME_VALIDATED')) return 'NOT_RUNTIME_VALIDATED';
+  if (states.includes('CANDIDATE')) return 'CANDIDATE';
+  return 'PARTIAL';
+}
+
+function buildMultiFamilySurface(
+  key: string,
+  title: string,
+  facets: ActionAssuranceSurfaceFacet[],
+  reason: string,
+  sourceBasis: string,
+  evidenceRefs: string[] = [],
+): ActionAssuranceSurface {
+  const analysis = deriveOverallAnalysis(facets);
+  const result = deriveOverallResult(facets);
+  const relationCount = facets.reduce((sum, f) => sum + f.relationCount, 0);
+  const relationRefs = facets.flatMap((f) => f.relationRefs).slice(0, MAX_SURFACE_REFS);
+  const summary = `${title}: ${facets.map((f) => `${f.title} = ${f.resultState}`).join('; ')}.`;
+  const limitations = Array.from(new Set(facets.flatMap((f) => f.limitations)));
+  const base = buildSurfaceBase(
+    key,
+    title,
+    analysis,
+    result,
+    reason,
+    relationCount,
+    relationRefs,
+    summary,
+    limitations,
+    sourceBasis,
+    evidenceRefs,
+  );
+  return { ...base, facets };
+}
+
+// ─── Individual customer-facing surfaces ────────────────────────────────────
 
 function buildAgentCapabilityConstellation(
   readModel: AgentReachabilityReadModel,
-  data: PersistedOperationCoverageIntelligence,
+  _data: PersistedOperationCoverageIntelligence,
 ): ActionAssuranceSurface {
-  const family = data.ariCoverage?.agentTopology;
-  const relationCount =
-    readModel.agents.total +
-    readModel.relationships.total +
-    data.toolCandidates.length +
-    (data.handlerOperationRelations?.length ?? 0);
+  const agents = readModel.agents.items;
+  const relationships = readModel.relationships?.items ?? [];
+  const frontiers = readModel.frontiers.total;
 
-  const capabilities = readModel.agents.items.flatMap((a) => a.toolCapabilities);
-  const establishedStages = capabilities
-    .flatMap((tc) => tc.stages)
-    .filter((s) => s.state === 'ESTABLISHED').length;
+  const analysis: AnalysisCoverageState =
+    readModel.availability === 'NOT_AVAILABLE'
+      ? 'NOT_ANALYZED'
+      : frontiers > 0 || !readModel.coverage.items.every((c) => c.state === 'ANALYZED')
+        ? 'PARTIAL'
+        : 'ANALYZED';
 
-  const state = familyCoverageState(family, relationCount);
-  const summary = `Constellation of ${readModel.agents.total} agent candidate(s) with ${readModel.relationships.total} relationship(s) and ${capabilities.length} tool capability chain(s); ${establishedStages} source-established stage(s).`;
+  const result: ResultState =
+    readModel.availability === 'NOT_AVAILABLE'
+      ? 'NOT_ANALYZED'
+      : frontiers > 0
+        ? 'PARTIAL'
+        : agents.length === 0
+          ? 'ANALYZED_EMPTY'
+          : 'ESTABLISHED';
+
+  const relationCount = relationships.length;
+  const relationRefs = relationships.map((r) => r.id).slice(0, MAX_SURFACE_REFS);
+  const entityCount = agents.length;
+  const entityRefs = agents.map((a) => a.id).slice(0, MAX_SURFACE_REFS);
+
+  const summary = `Agent capability constellation: ${agents.length} agent(s), ${relationships.length} agent relationship(s), ${frontiers} unresolved frontier(s).`;
 
   return {
-    surfaceKey: 'AGENT_CAPABILITY_CONSTELLATION',
-    title: 'Agent Capability Constellation',
-    coverageState: state,
-    coverageReason: family?.reason ?? 'ARI_AGENT_TOPOLOGY_PROJECTION',
-    relationCount,
-    relationRefs: refsFromReadModel(readModel, data),
-    summary,
-    limitations: combineLimitations(
+    ...buildSurfaceBase(
+      'AGENT_CAPABILITY_CONSTELLATION',
+      'Agent Capability Constellation',
+      analysis,
+      result,
+      'ARI_AGENT_TOPOLOGY_PROJECTION',
+      relationCount,
+      relationRefs,
+      summary,
       [
-        'AGENT_CANDIDATE != CANONICAL_RUNTIME_AGENT_IDENTITY',
-        'AGENT_DEFINITION != RUNTIME_INSTANCE',
-        'TOOL_REGISTRATION != TOOL_EXECUTION',
-        'MODEL_VISIBLE != REQUESTED',
-        'HANDLER_BOUND != EXECUTED',
+        'AGENT_CANDIDATE != AGENT_INSTANCE',
+        'TOOL_CAPABILITY != RUNTIME_REACHABLE',
+        'TOPOLOGY_PROJECTION != OBSERVED_EXECUTION',
       ],
-      family,
+      'AgentReachabilityReadModel.agents, relationships, coverage, frontiers',
     ),
-    evidenceRefs: [],
-    sourceBasis: 'AgentReachabilityReadModel.agentCandidates, toolCandidates, handlerOperationRelations',
-    customerStatus: state === 'ESTABLISHED' || state === 'ANALYZED_EMPTY' ? 'Mapped' : 'Partial',
+    entityCount,
+    entityRefs,
   };
 }
 
@@ -147,36 +340,49 @@ function buildReachabilitySharedSubstrate(
   readModel: AgentReachabilityReadModel,
   data: PersistedOperationCoverageIntelligence,
 ): ActionAssuranceSurface {
-  const family = data.ariCoverage?.sharedSubstrates;
-  const hubs = readModel.sharedResourceHubs;
-  const channels = readModel.potentialChannels;
-  const relationCount = hubs.total + channels.total;
+  const hubs = readModel.sharedResourceHubs?.items ?? [];
+  const channels = readModel.potentialChannels?.items ?? [];
+  const resourceAccess = data.resourceAccessRelations ?? [];
+  const persistenceCreation = data.persistenceCreationRelations ?? [];
 
-  const state = familyCoverageState(family, relationCount);
-  const summary = `Reachability shared substrate: ${hubs.total} co-access resource hub(s) and ${channels.total} potential communication channel(s).`;
+  const frontiers = readModel.frontiers.total;
+  const analysis: AnalysisCoverageState =
+    readModel.availability === 'NOT_AVAILABLE' ? 'NOT_ANALYZED' : frontiers > 0 ? 'PARTIAL' : 'ANALYZED';
+  const result: ResultState =
+    readModel.availability === 'NOT_AVAILABLE'
+      ? 'NOT_ANALYZED'
+      : frontiers > 0
+        ? 'PARTIAL'
+        : hubs.length === 0 && resourceAccess.length === 0
+          ? 'ANALYZED_EMPTY'
+          : 'ESTABLISHED';
+
+  const relationCount = resourceAccess.length + persistenceCreation.length;
+  const relationRefs = [...resourceAccess, ...persistenceCreation].map((r) => r.id).slice(0, MAX_SURFACE_REFS);
+  const resourceCount = hubs.length;
+  const resourceRefs = hubs.map((h) => h.resourceKey).slice(0, MAX_SURFACE_REFS);
+
+  const summary = `Reachability and shared substrate: ${hubs.length} shared resource hub(s), ${channels.length} potential channel(s), ${resourceAccess.length} resource access relation(s), ${persistenceCreation.length} persistence creation relation(s).`;
 
   return {
-    surfaceKey: 'REACHABILITY_SHARED_SUBSTRATE',
-    title: 'Reachability Shared Substrate',
-    coverageState: state,
-    coverageReason: family?.reason ?? 'ARI_SHARED_SUBSTRATE_PROJECTION',
-    relationCount,
-    relationRefs: [
-      ...hubs.items.map((h) => h.resourceKey),
-      ...channels.items.map((c) => c.id),
-    ].slice(0, MAX_SURFACE_REFS),
-    summary,
-    limitations: combineLimitations(
+    ...buildSurfaceBase(
+      'REACHABILITY_SHARED_SUBSTRATE',
+      'Reachability & Shared Substrate',
+      analysis,
+      result,
+      'ARI_RESOURCE_ACCESS_AND_SHARED_SUBSTRATE_PROJECTION',
+      relationCount,
+      relationRefs,
+      summary,
       [
-        'SHARED_SUBSTRATE != COMMUNICATION_CHANNEL',
-        'CO_ACCESS != DIRECTIONAL_INFLUENCE',
-        'SAME_RESOURCE != SAME_AUTHORITY',
+        'REACHABLE != ACCESSED',
+        'SHARED_SUBSTRATE != CROSS_AGENT_EXFILTRATION',
+        'POTENTIAL_CHANNEL != ACTUAL_CHANNEL',
       ],
-      family,
+      'AgentReachabilityReadModel.sharedResourceHubs, potentialChannels; PersistedOperationCoverageIntelligence.resourceAccessRelations, persistenceCreationRelations',
     ),
-    evidenceRefs: [],
-    sourceBasis: 'AgentReachabilityReadModel.sharedResourceHubs, potentialChannels',
-    customerStatus: hubs.total > 0 || channels.total > 0 ? 'Co-access present' : 'None established',
+    resourceCount,
+    resourceRefs,
   };
 }
 
@@ -184,70 +390,82 @@ function buildMemoryContextIntegrity(
   _readModel: AgentReachabilityReadModel,
   data: PersistedOperationCoverageIntelligence,
 ): ActionAssuranceSurface {
-  const family = data.ariCoverage?.modelContextInfluence ?? data.ariCoverage?.memoryLineage;
-  const influence = data.modelContextInfluenceRelations ?? [];
-  const lineage = data.memoryLineageRelations ?? [];
-  const relationCount = influence.length + lineage.length;
+  const memoryAccess = data.memoryAccessRelations ?? [];
+  const memoryLineage = data.memoryLineageRelations ?? [];
+  const modelContext = data.modelContextInfluenceRelations ?? [];
 
-  const state = familyCoverageState(family, relationCount);
-  const summary = `Memory/context influence: ${influence.length} model-context relation(s) and ${lineage.length} memory lineage relation(s).`;
-
-  return {
-    surfaceKey: 'MEMORY_CONTEXT_INTEGRITY',
-    title: 'Memory & Context Integrity',
-    coverageState: state,
-    coverageReason: family?.reason ?? 'ARI_MEMORY_CONTEXT_PROJECTION',
-    relationCount,
-    relationRefs: [
-      ...influence.map((r) => r.id),
-      ...lineage.map((r) => r.id),
-    ].slice(0, MAX_SURFACE_REFS),
-    summary,
-    limitations: combineLimitations(
+  const facets: ActionAssuranceSurfaceFacet[] = [
+    buildFacet(
+      'MEMORY_LINEAGE',
+      'Memory Lineage',
+      data.ariCoverage?.memoryLineage,
+      [...memoryAccess, ...memoryLineage],
       [
-        'MEMORY_ACCESS != AGENT_INFLUENCE',
-        'CONTEXT_REACH != CONSEQUENTIAL_OPERATION',
-        'MODEL_CONTEXT_INFLUENCE != RUNTIME_BEHAVIOR',
+        'MEMORY_ACCESS != DATA_EXFILTRATION',
+        'PERSISTENCE_CREATION != FUTURE_READ',
+        'SYMBOLIC_RESOURCE != EXACT_RESOURCE',
       ],
-      family,
     ),
-    evidenceRefs: [],
-    sourceBasis: 'PersistedOperationCoverageIntelligence.modelContextInfluenceRelations, memoryLineageRelations',
-    customerStatus: relationCount > 0 ? 'Influence paths present' : 'Not established',
-  };
+    buildFacet(
+      'MODEL_CONTEXT_INFLUENCE',
+      'Model Context Influence',
+      data.ariCoverage?.modelContextInfluence,
+      modelContext,
+      [
+        'MODEL_CONTEXT_EXPOSURE != PROMPT_INJECTION',
+        'CONTEXT_INFLUENCE != AUTHORIZED_ACTION',
+      ],
+    ),
+  ];
+
+  return buildMultiFamilySurface(
+    'MEMORY_CONTEXT_INTEGRITY',
+    'Memory & Context Influence',
+    facets,
+    'ARI_MEMORY_AND_MODEL_CONTEXT_PROJECTION',
+    'PersistedOperationCoverageIntelligence.memoryAccessRelations, memoryLineageRelations, modelContextInfluenceRelations',
+  );
 }
 
 function buildDelegatedAuthority(
   _readModel: AgentReachabilityReadModel,
   data: PersistedOperationCoverageIntelligence,
 ): ActionAssuranceSurface {
-  const family = data.ariCoverage?.delegatedAuthority;
   const relations = data.delegatedAuthorityRelations ?? [];
+  const family = data.ariCoverage?.delegatedAuthority;
+  const analysis = familyAnalysisState(family);
+  const result = familyResultState(family, relations);
   const relationCount = relations.length;
+  const relationRefs = relations.map((r) => r.id).slice(0, MAX_SURFACE_REFS);
+  const entityCount = 0;
+  const entityRefs: string[] = [];
 
-  const state = familyCoverageState(family, relationCount);
-  const summary = `Delegated authority: ${relationCount} source-qualified delegation relation(s) found.`;
+  const summary = `Delegated authority: ${relations.length} source-qualified delegation relation(s).`;
+  const limitations = combineLimitations(
+    [
+      'HANDOFF != AUTHORITY_DELEGATED',
+      'AGENT_AS_TOOL != DELEGATION',
+      'PERMISSION != DELEGATION',
+      'DELEGATION_DECLARED != DELEGATION_ACTIVE',
+    ],
+    family,
+  );
 
   return {
-    surfaceKey: 'DELEGATED_AUTHORITY',
-    title: 'Delegated Authority',
-    coverageState: state,
-    coverageReason: family?.reason ?? 'ARI_DELEGATION_PROJECTION',
-    relationCount,
-    relationRefs: relations.map((r) => r.id).slice(0, MAX_SURFACE_REFS),
-    summary,
-    limitations: combineLimitations(
-      [
-        'HANDOFF != AUTHORITY_DELEGATED',
-        'AGENT_AS_TOOL != DELEGATION',
-        'PERMISSION != DELEGATION',
-        'DELEGATION_DECLARED != DELEGATION_ACTIVE',
-      ],
-      family,
+    ...buildSurfaceBase(
+      'DELEGATED_AUTHORITY',
+      'Delegated Authority',
+      analysis,
+      result,
+      family?.reason ?? 'ARI_DELEGATION_PROJECTION',
+      relationCount,
+      relationRefs,
+      summary,
+      limitations,
+      'PersistedOperationCoverageIntelligence.delegatedAuthorityRelations',
     ),
-    evidenceRefs: [],
-    sourceBasis: 'PersistedOperationCoverageIntelligence.delegatedAuthorityRelations',
-    customerStatus: relationCount > 0 ? 'Relations present' : 'No established delegation',
+    entityCount,
+    entityRefs,
   };
 }
 
@@ -255,103 +473,84 @@ function buildApprovalIntegrity(
   _readModel: AgentReachabilityReadModel,
   data: PersistedOperationCoverageIntelligence,
 ): ActionAssuranceSurface {
-  const family = data.ariCoverage?.approvalIntegrity;
   const controls = data.approvalControlRelations ?? [];
   const integrity = data.approvalIntegrityRelations ?? [];
-  const relationCount = controls.length + integrity.length;
 
-  const pathBound = controls.filter((c) => c.controlStage === 'PATH_BOUND').length;
-  const attached = controls.filter((c) => c.controlStage === 'ATTACHED' || c.controlStage === 'DECLARED').length;
-
-  const state = familyCoverageState(family, relationCount);
-  const summary = `Approval integrity: ${controls.length} control relation(s) (${pathBound} path-bound static, ${attached} attached/declared) and ${integrity.length} integrity relation(s).`;
-
-  return {
-    surfaceKey: 'APPROVAL_INTEGRITY',
-    title: 'Approval Integrity',
-    coverageState: state,
-    coverageReason: family?.reason ?? 'ARI_APPROVAL_INTEGRITY_PROJECTION',
-    relationCount,
-    relationRefs: [
-      ...controls.map((r) => r.id),
-      ...integrity.map((r) => r.id),
-    ].slice(0, MAX_SURFACE_REFS),
-    summary,
-    limitations: combineLimitations(
+  const facets: ActionAssuranceSurfaceFacet[] = [
+    buildFacet(
+      'APPROVAL_CONTROL',
+      'Approval Control',
+      data.ariCoverage?.approvalIntegrity,
+      controls,
       [
         'CONTROL_PRESENT != PATH_BOUND',
         'PATH_BOUND != TRIGGERED',
         'TRIGGERED != ACTION_EXECUTED',
-        'UI_CONFIRMATION != SERVER_SIDE_ENFORCEMENT',
       ],
-      family,
     ),
-    evidenceRefs: [],
-    sourceBasis: 'PersistedOperationCoverageIntelligence.approvalControlRelations, approvalIntegrityRelations',
-    customerStatus: pathBound > 0 ? 'Path-bound controls present' : 'Controls not path-bound',
-  };
+    buildFacet(
+      'APPROVAL_INTEGRITY',
+      'Approval Integrity',
+      data.ariCoverage?.approvalIntegrity,
+      integrity,
+      [
+        'UI_CONFIRMATION != SERVER_SIDE_ENFORCEMENT',
+        'CONFIRMATION_DECLARED != CONFIRMATION_ENFORCED',
+      ],
+    ),
+  ];
+
+  return buildMultiFamilySurface(
+    'APPROVAL_INTEGRITY',
+    'Approval Integrity',
+    facets,
+    'ARI_APPROVAL_INTEGRITY_PROJECTION',
+    'PersistedOperationCoverageIntelligence.approvalControlRelations, approvalIntegrityRelations',
+  );
 }
 
 function buildActionCompositionDeferred(
   _readModel: AgentReachabilityReadModel,
   data: PersistedOperationCoverageIntelligence,
 ): ActionAssuranceSurface {
-  const compositionFamily = data.ariCoverage?.actionComposition;
-  const deferredFamily = data.ariCoverage?.deferredExecution;
   const composition = data.actionCompositionRelations ?? [];
   const deferred = data.deferredExecutionRelations ?? [];
 
-  const relationCount = composition.length + deferred.length;
-  const hasCompositionFrontier = (compositionFamily?.reason ?? '').includes('PRODUCER_FRONTIER');
-
-  // Surface state: preserve the composition producer frontier above all else.
-  // If the composition family is a producer frontier, the surface is a frontier
-  // even when some deferred paths are present.
-  let state: string;
-  if (hasCompositionFrontier) {
-    state = 'PRODUCER_FRONTIER';
-  } else if (compositionFamily) {
-    state = familyCoverageState(compositionFamily, composition.length);
-  } else if (deferredFamily) {
-    state = familyCoverageState(deferredFamily, deferred.length);
-  } else {
-    state = 'NOT_ANALYZED';
-  }
-
-  const reason = compositionFamily?.reason ?? deferredFamily?.reason ?? 'ACTION_COMPOSITION_DEFERRED_NOT_ANALYZED';
-  const summary = `Action composition / deferred execution: ${composition.length} composition relation(s), ${deferred.length} deferred execution path(s). Explicit composition source producer not currently established.`;
-
-  return {
-    surfaceKey: 'ACTION_COMPOSITION_DEFERRED_EXECUTION',
-    title: 'Action Composition & Deferred Execution',
-    coverageState: state,
-    coverageReason: truncateReason(reason),
-    relationCount,
-    relationRefs: [
-      ...composition.map((r) => r.id),
-      ...deferred.map((r) => r.id),
-    ].slice(0, MAX_SURFACE_REFS),
-    summary,
-    limitations: combineLimitations(
+  const facets: ActionAssuranceSurfaceFacet[] = [
+    buildFacet(
+      'ACTION_COMPOSITION',
+      'Action Composition',
+      data.ariCoverage?.actionComposition,
+      composition,
       [
         'FUNCTION_CALL != COMPOSITION',
         'TOPOLOGY_ADJACENT != COMPOSED',
         'SAME_NAME != COMPOSITION',
+      ],
+    ),
+    buildFacet(
+      'DEFERRED_EXECUTION',
+      'Deferred Execution',
+      data.ariCoverage?.deferredExecution,
+      deferred,
+      [
         'SCHEDULED != EXECUTED',
         'QUEUE_WRITE != QUEUE_CONSUMED',
         'PERSISTENCE_CREATION != FUTURE_EXECUTION',
         'CANDIDATE_PATH != ESTABLISHED_PATH',
         'STATIC_PATH != OBSERVED_EXECUTION',
-      ],
-      compositionFamily,
-      [
         'ARGUMENT_PRESERVATION_UNKNOWN != ARGUMENT_PRESERVED',
       ],
     ),
-    evidenceRefs: [],
-    sourceBasis: 'PersistedOperationCoverageIntelligence.actionCompositionRelations, deferredExecutionRelations',
-    customerStatus: 'Analysis surface available; composition source producer frontier',
-  };
+  ];
+
+  return buildMultiFamilySurface(
+    'ACTION_COMPOSITION_DEFERRED_EXECUTION',
+    'Action Composition & Deferred Execution',
+    facets,
+    data.ariCoverage?.actionComposition?.reason ?? data.ariCoverage?.deferredExecution?.reason ?? 'ACTION_COMPOSITION_DEFERRED_NOT_ANALYZED',
+    'PersistedOperationCoverageIntelligence.actionCompositionRelations, deferredExecutionRelations',
+  );
 }
 
 function buildReplayRetry(
@@ -359,166 +558,205 @@ function buildReplayRetry(
   data: PersistedOperationCoverageIntelligence,
 ): ActionAssuranceSurface {
   const family = data.ariCoverage?.replay;
-  const replay = data.replayRelations ?? [];
-  const relationCount = replay.length;
+  const relations = data.replayRelations ?? [];
+  const analysis = familyAnalysisState(family);
+  const result = familyResultState(family, relations);
+  const relationCount = relations.length;
+  const relationRefs = relations.map((r) => r.id).slice(0, MAX_SURFACE_REFS);
+  const summary = `Replay, retry, and duplicate effect: ${relationCount} source-qualified replay relation(s).`;
+  const limitations = combineLimitations(
+    [
+      'RETRY_CONFIGURED != RETRY_OCCURRED',
+      'REPLAY_CAPABLE != REPLAY_OBSERVED',
+      'REPEATED_CALL != REPLAY',
+      'SAME_ARGUMENTS != REPLAY',
+      'TEMPORAL_ADJACENCY != REPLAY',
+    ],
+    family,
+  );
 
-  const state = familyCoverageState(family, relationCount);
-  const summary = `Replay / retry / duplicate effect: ${relationCount} source-qualified replay relation(s).`;
-
-  return {
-    surfaceKey: 'REPLAY_RETRY_DUPLICATE_EFFECT',
-    title: 'Replay, Retry & Duplicate Effect',
-    coverageState: state,
-    coverageReason: family?.reason ?? 'ARI_REPLAY_PROJECTION',
+  return buildSurfaceBase(
+    'REPLAY_RETRY_DUPLICATE_EFFECT',
+    'Replay, Retry & Duplicate Effect',
+    analysis,
+    result,
+    family?.reason ?? 'ARI_REPLAY_PROJECTION',
     relationCount,
-    relationRefs: replay.map((r) => r.id).slice(0, MAX_SURFACE_REFS),
+    relationRefs,
     summary,
-    limitations: combineLimitations(
-      [
-        'RETRY_CONFIGURED != RETRY_OCCURRED',
-        'REPLAY_CAPABLE != REPLAY_OBSERVED',
-        'REPEATED_CALL != REPLAY',
-        'SAME_ARGUMENTS != REPLAY',
-        'TEMPORAL_ADJACENCY != REPLAY',
-      ],
-      family,
-    ),
-    evidenceRefs: [],
-    sourceBasis: 'PersistedOperationCoverageIntelligence.replayRelations',
-    customerStatus: 'Replay producer frontier; no replay occurrence claimed',
-  };
+    limitations,
+    'PersistedOperationCoverageIntelligence.replayRelations',
+  );
 }
 
 function buildEnforcementCoverage(
   _readModel: AgentReachabilityReadModel,
   data: PersistedOperationCoverageIntelligence,
 ): ActionAssuranceSurface {
-  const controls = data.approvalControlRelations ?? [];
   const confirmations = data.actionConfirmationMediationRelations ?? [];
-  const relationCount = controls.length + confirmations.length;
+  const controls = data.approvalControlRelations ?? [];
 
-  const stageCounts: Record<string, number> = {
-    PATH_BOUND: 0,
-    ATTACHED: 0,
-    DECLARED: 0,
-    UNKNOWN: 0,
-  };
+  const facets: ActionAssuranceSurfaceFacet[] = [
+    buildFacet(
+      'CONFIRMATION_MEDIATION',
+      'Confirmation Mediation',
+      data.ariCoverage?.approvalIntegrity,
+      confirmations,
+      [
+        'CONFIRMATION_MEDIATED != ACTION_EXECUTED',
+        'MEDIATION_DECLARED != RUNTIME_ENFORCED',
+      ],
+    ),
+    buildFacet(
+      'APPROVAL_CONTROL',
+      'Approval Control',
+      data.ariCoverage?.approvalIntegrity,
+      controls,
+      [
+        'CONTROL_PRESENT != PATH_BOUND',
+        'PATH_BOUND != TRIGGERED',
+        'TRIGGERED != ACTION_EXECUTED',
+        'UI_CONFIRMATION != SERVER_SIDE_ENFORCEMENT',
+      ],
+    ),
+  ];
 
-  for (const c of controls) {
-    const stage = c.controlStage ?? 'UNKNOWN';
-    stageCounts[stage] = (stageCounts[stage] ?? 0) + 1;
-  }
+  const pathBound = controls.filter((c) => c.controlStage === 'PATH_BOUND').length;
 
-  let state: string;
-  if (confirmations.length === 0 && controls.length === 0) {
-    state = 'NOT_ANALYZED';
-  } else if (stageCounts.PATH_BOUND > 0) {
-    state = 'PARTIAL';
-  } else if (stageCounts.ATTACHED > 0 || stageCounts.DECLARED > 0) {
-    state = 'PARTIAL';
-  } else {
-    state = 'UNKNOWN';
-  }
+  const surface = buildMultiFamilySurface(
+    'ENFORCEMENT_COVERAGE',
+    'Enforcement Coverage',
+    facets,
+    'ARI_CONFIRMATION_MEDIATION_PROJECTION',
+    'PersistedOperationCoverageIntelligence.actionConfirmationMediationRelations, approvalControlRelations',
+  );
 
-  const summary = `Enforcement coverage: ${confirmations.length} confirmation mediation relation(s), ${controls.length} approval control relation(s) (${stageCounts.PATH_BOUND} path-bound static, ${stageCounts.ATTACHED} attached, ${stageCounts.DECLARED} declared, ${stageCounts.UNKNOWN} unknown).`;
+  // Static path-bound controls are not runtime enforcement. Cap the surface
+  // result at PARTIAL when any path-bound controls are present, and surface
+  // the path-bound count in the customer-facing status.
+  const resultState = pathBound > 0 && (surface.resultState === 'ESTABLISHED' || surface.resultState === 'CONDITIONAL')
+    ? 'PARTIAL'
+    : surface.resultState;
 
-  return {
-    surfaceKey: 'ENFORCEMENT_COVERAGE',
-    title: 'Enforcement Coverage',
-    coverageState: state,
-    coverageReason: 'ARI_CONFIRMATION_MEDIATION_PROJECTION',
-    relationCount,
-    relationRefs: [
-      ...confirmations.map((r) => r.id),
-      ...controls.map((r) => r.id),
-    ].slice(0, MAX_SURFACE_REFS),
-    summary,
-    limitations: [
-      'STATIC_CONTROL_PRESENT != RUNTIME_CONTROL_TRIGGERED',
-      'PATH_BOUND != OBSERVED_ENFORCEMENT',
-      'UI_CONFIRMATION != SERVER_SIDE_ENFORCEMENT',
-      'CONTROL_PRESENT != PATH_BOUND',
-      'TRIGGERED != ACTION_EXECUTED',
-    ],
-    evidenceRefs: [],
-    sourceBasis: 'PersistedOperationCoverageIntelligence.actionConfirmationMediationRelations, approvalControlRelations',
-    customerStatus: stageCounts.PATH_BOUND > 0 ? 'Path-bound static controls present' : 'No path-bound static enforcement established',
-  };
+  const customerStatus = pathBound > 0
+    ? `Path-bound static controls present (${pathBound}); confirmation/approval mediation is not runtime enforcement.`
+    : surface.customerStatus;
+
+  return { ...surface, resultState, customerStatus };
 }
 
 function buildEvidenceSufficiencyUncertainty(
   readModel: AgentReachabilityReadModel,
-  data: PersistedOperationCoverageIntelligence,
+  _data: PersistedOperationCoverageIntelligence,
+  projectedEvidence: DecisionEvidenceProjection[],
 ): ActionAssuranceSurface {
-  const coverage = readModel.coverage;
-  const frontiers = readModel.frontiers;
+  const analyzerFamilies = readModel.coverage.items;
+  const allAnalyzed = analyzerFamilies.every((c) => c.state === 'ANALYZED');
+  const anyNotAnalyzed = analyzerFamilies.some((c) => c.state === 'NOT_ANALYZED' || c.state === 'UNKNOWN');
 
-  const allAnalyzed = coverage.items.every((c) => c.state === 'ANALYZED');
-  const state = frontiers.total > 0 || !allAnalyzed ? 'PARTIAL' : 'ESTABLISHED';
-  const reason = frontiers.total > 0
-    ? 'FRONTIERS_REMAIN_IN_EVALUATED_SCOPE'
-    : allAnalyzed
-      ? 'ALL_COVERAGE_FAMILIES_ANALYZED'
-      : 'PARTIAL_ANALYZER_COVERAGE';
+  const analysis: AnalysisCoverageState =
+    readModel.availability === 'NOT_AVAILABLE'
+      ? 'NOT_ANALYZED'
+      : !allAnalyzed || anyNotAnalyzed
+        ? 'PARTIAL'
+        : projectedEvidence.length === 0
+          ? 'NOT_ANALYZED'
+          : 'ANALYZED';
 
-  const summary = `Evidence sufficiency: ${coverage.total} coverage family(ies), ${frontiers.total} unresolved frontier(s).`;
+  const result: ResultState = projectedEvidence.length === 0 ? 'NOT_ANALYZED' : 'PARTIAL';
+
+  const evidenceCount = projectedEvidence.length;
+  const evidenceRefs = projectedEvidence.map((e) => e.evidenceId).slice(0, MAX_SURFACE_REFS);
+  const frontierCount = readModel.frontiers.total;
+
+  const summary = `Evidence sufficiency and uncertainty: ${evidenceCount} exact-run Evidence Core projection(s), ${analyzerFamilies.length} analyzer coverage family(ies), ${frontierCount} unresolved frontier(s).`;
+
+  const limitations = [
+    'SURFACE_IMPLEMENTED != EVIDENCE_COMPLETE',
+    'SURFACE_VISIBLE != ANALYZER_COMPLETE',
+    'UNKNOWN != ZERO',
+    'PRODUCER_FRONTIER != ANALYSIS_FAILURE',
+    'ALL_ANALYZERS_RAN != SUFFICIENT_EVIDENCE',
+    'ZERO_FRONTIERS != SUFFICIENT_EVIDENCE',
+    'ARI_ANALYSIS_COVERAGE != EVIDENCE_SUFFICIENCY',
+  ];
 
   return {
-    surfaceKey: 'EVIDENCE_SUFFICIENCY_UNCERTAINTY',
-    title: 'Evidence Sufficiency & Uncertainty',
-    coverageState: state,
-    coverageReason: reason,
-    relationCount: frontiers.total,
-    relationRefs: frontiers.items.map((f) => f.id).slice(0, MAX_SURFACE_REFS),
-    summary,
-    limitations: [
-      'SURFACE_IMPLEMENTED != EVIDENCE_COMPLETE',
-      'SURFACE_VISIBLE != ANALYZER_COMPLETE',
-      'UNKNOWN != ZERO',
-      'PRODUCER_FRONTIER != ANALYSIS_FAILURE',
-    ],
-    evidenceRefs: [],
-    sourceBasis: 'AgentReachabilityReadModel.coverage, frontiers',
-    customerStatus: state === 'ESTABLISHED' ? 'Coverage established' : 'Evidence incomplete or partial',
+    ...buildSurfaceBase(
+      'EVIDENCE_SUFFICIENCY_UNCERTAINTY',
+      'Evidence Sufficiency & Uncertainty',
+      analysis,
+      result,
+      'EXACT_RUN_EVIDENCE_AND_ANALYZER_COVERAGE_PROJECTION',
+      0,
+      [],
+      summary,
+      limitations,
+      'AgentReachabilityReadModel.coverage, frontiers; exact-run DecisionEvidenceProjection',
+      evidenceRefs,
+    ),
+    evidenceCount,
   };
 }
 
 function buildRuntimeValidatedDifferential(
   _readModel: AgentReachabilityReadModel,
-  data: PersistedOperationCoverageIntelligence,
+  _data: PersistedOperationCoverageIntelligence,
+  projectedEvidence: DecisionEvidenceProjection[],
 ): ActionAssuranceSurface {
-  // Runtime evidence is not part of the static operation coverage snapshot.
-  // The S6 scope explicitly does not create or require runtime evidence.
-  const runtimeCorroborations: unknown[] = [];
-  const relationCount = runtimeCorroborations.length;
+  const runtimeEvidence = projectedEvidence.filter((e) => e.producerId === PRODUCER_IDS.SAAS_RUNTIME);
+  const staticEvidence = projectedEvidence.filter((e) => e.producerId === PRODUCER_IDS.SAAS_STATIC);
 
-  const state = relationCount === 0 ? 'NOT_RUNTIME_VALIDATED' : 'STATIC_ONLY';
-  const summary = `Runtime-validated differential: ${relationCount} runtime corroboration(s). Static source evidence has no runtime corroboration.`;
+  const analysis: AnalysisCoverageState = runtimeEvidence.length === 0 ? 'NOT_ANALYZED' : 'ANALYZED';
+
+  let result: ResultState = 'NOT_RUNTIME_VALIDATED';
+  if (runtimeEvidence.length > 0) {
+    // HAIEC has no canonical cross-plane action comparator in this projection;
+    // we deliberately stop at "runtime evidence present, not correlated".
+    result = 'RUNTIME_EVIDENCE_PRESENT';
+  }
+
+  const evidenceCount = runtimeEvidence.length;
+  const evidenceRefs = runtimeEvidence.map((e) => e.evidenceId).slice(0, MAX_SURFACE_REFS);
+
+  const summary = `Runtime-validated differential: ${runtimeEvidence.length} runtime evidence projection(s), ${staticEvidence.length} static evidence projection(s). Exact static/runtime action correspondence not established by the available producers.`;
+
+  const limitations = [
+    'STATIC_PATH != RUNTIME_OCCURRENCE',
+    'NOT_RUNTIME_VALIDATED != RUNTIME_SAFE',
+    'NO_RUNTIME_EVIDENCE != NO_OBSERVED_EFFECT',
+    'RUNTIME_EVIDENCE_PRESENT != ACTION_OBSERVED',
+    'GENERIC_RUNTIME_TRACE != OBSERVED_CAPABILITY',
+    'RUNTIME_TEST_EXECUTED != STATIC_RELATION_CONFIRMED',
+    'EXACT_CROSS_PLANE_COMPARATOR_NOT_AVAILABLE',
+  ];
 
   return {
-    surfaceKey: 'RUNTIME_VALIDATED_DIFFERENTIAL',
-    title: 'Runtime-Validated Differential',
-    coverageState: state,
-    coverageReason: relationCount === 0
-      ? 'RUNTIME_EVIDENCE_NOT_INCLUDED_IN_EVALUATED_SCOPE'
-      : 'RUNTIME_CORROBORATION_PRESENT',
-    relationCount,
-    relationRefs: [],
-    summary,
-    limitations: [
-      'STATIC_PATH != RUNTIME_OCCURRENCE',
-      'NOT_RUNTIME_VALIDATED != RUNTIME_SAFE',
-      'NO_RUNTIME_EVIDENCE != NO_OBSERVED_EFFECT',
-    ],
-    evidenceRefs: [],
-    sourceBasis: 'No runtime evidence in evaluated static snapshot',
-    customerStatus: 'No runtime corroboration',
+    ...buildSurfaceBase(
+      'RUNTIME_VALIDATED_DIFFERENTIAL',
+      'Runtime-Validated Differential',
+      analysis,
+      result,
+      runtimeEvidence.length === 0
+        ? 'RUNTIME_EVIDENCE_NOT_INCLUDED_IN_EVALUATED_SCOPE'
+        : 'RUNTIME_EVIDENCE_PRESENT_WITHOUT_EXACT_CROSS_PLANE_COMPARATOR',
+      0,
+      [],
+      summary,
+      limitations,
+      'Exact-run DecisionEvidenceProjection filtered by saas-runtime and saas-static producer IDs',
+      evidenceRefs,
+    ),
+    evidenceCount,
   };
 }
+
+// ─── Surface assembly and report builder ────────────────────────────────────
 
 function buildAllSurfaces(
   readModel: AgentReachabilityReadModel,
   data: PersistedOperationCoverageIntelligence,
+  projectedEvidence: DecisionEvidenceProjection[],
 ): ActionAssuranceSurface[] {
   const surfaces: ActionAssuranceSurface[] = [
     buildAgentCapabilityConstellation(readModel, data),
@@ -529,56 +767,59 @@ function buildAllSurfaces(
     buildActionCompositionDeferred(readModel, data),
     buildReplayRetry(readModel, data),
     buildEnforcementCoverage(readModel, data),
-    buildEvidenceSufficiencyUncertainty(readModel, data),
-    buildRuntimeValidatedDifferential(readModel, data),
+    buildEvidenceSufficiencyUncertainty(readModel, data, projectedEvidence),
+    buildRuntimeValidatedDifferential(readModel, data, projectedEvidence),
   ];
-  return surfaces.slice(0, MAX_SURFACES);
-}
 
-function mapAriUnavailableReason(
-  reason: AgentReachabilityReadModel['unavailableReason'],
-): NonNullable<ActionAssuranceReportSection['unavailableReason']> {
-  switch (reason) {
-    case 'ARI_NOT_PRESENT_IN_SNAPSHOT':
-    case 'ARI_NOT_ANALYZED':
-    case 'AUTHORITY_PROMOTION_INVARIANT_VIOLATED':
-      return reason;
-    case 'OPERATION_COVERAGE_NOT_AVAILABLE':
-    case 'SOURCE_GAP':
-      return 'EVALUATED_SCAN_HAS_NO_OPERATION_COVERAGE';
-    case 'UNSUPPORTED_SCHEMA':
-      return 'EVALUATED_SNAPSHOT_INVALID';
-    default:
-      return 'EVALUATED_SCAN_HAS_NO_OPERATION_COVERAGE';
-  }
+  return surfaces.slice(0, MAX_SURFACES);
 }
 
 function buildCoverageSummary(
   readModel: AgentReachabilityReadModel,
-): Array<{ family: string; state: string; limitations: string[] }> {
+): ActionAssuranceReportSection['coverage'] {
   return readModel.coverage.items.map((c) => ({
     family: c.family,
     state: c.state,
-    limitations: c.limitations,
+    limitations: c.limitations.slice(0, 8),
   }));
 }
 
 export function buildActionAssuranceSectionFromReadModel(
   readModel: AgentReachabilityReadModel,
   data: PersistedOperationCoverageIntelligence,
-  provenance: ReachabilitySourceProvenance,
+  provenance: SourceProvenance,
+  projectedEvidence: DecisionEvidenceProjection[] = [],
 ): ActionAssuranceReportSection {
   if (readModel.availability === 'NOT_AVAILABLE') {
     return {
       availability: 'NOT_AVAILABLE',
       unavailableReason: mapAriUnavailableReason(readModel.unavailableReason),
-      scanId: provenance.scanId,
-      commitSha: provenance.commitSha,
+      scanId: readModel.scanId,
+      commitSha: readModel.commitSha,
+      summary: {
+        surfaceCount: 0,
+        agentCount: 0,
+        relationCount: 0,
+        frontierCount: 0,
+        coverageFamilyCount: 0,
+      },
+      surfaces: [],
+      coverage: [],
+      coverageLimitations: [
+        'NO_HISTORICAL_BINDING -> NOT_AVAILABLE',
+        'CURRENT_REPOSITORY_TRACE != EVALUATED_REPOSITORY_TRACE',
+      ],
+      surfacesShown: 0,
+      totalSurfaces: MAX_SURFACES,
     };
   }
 
-  const surfaces = buildAllSurfaces(readModel, data);
-  const coverage = buildCoverageSummary(readModel);
+  const surfaces = buildAllSurfaces(readModel, data, projectedEvidence);
+  const agentCount = readModel.agents.total;
+  const relationCount = surfaces.reduce((sum, s) => sum + (s.relationCount ?? 0), 0);
+  const frontierCount = surfaces.filter(
+    (s) => s.resultState === 'PRODUCER_FRONTIER' || s.resultState === 'PARTIAL' || s.resultState === 'UNKNOWN',
+  ).length;
 
   return {
     availability: readModel.availability,
@@ -586,41 +827,67 @@ export function buildActionAssuranceSectionFromReadModel(
     commitSha: provenance.commitSha,
     summary: {
       surfaceCount: surfaces.length,
-      agentCount: readModel.agents.total,
-      relationCount: readModel.relationships.total,
-      frontierCount: readModel.frontiers.total,
-      coverageFamilyCount: coverage.length,
+      agentCount,
+      relationCount,
+      frontierCount,
+      coverageFamilyCount: readModel.coverage.total,
     },
     surfaces,
-    coverage,
-    coverageLimitations: readModel.coverage.items.flatMap((c) => c.limitations),
+    coverage: buildCoverageSummary(readModel),
+    coverageLimitations: readModel.frontiers.items.map((f) => `${f.dimension}: ${f.reason}`).slice(0, 16),
     surfacesShown: surfaces.length,
-    totalSurfaces: surfaces.length,
+    totalSurfaces: MAX_SURFACES,
   };
 }
 
-/**
- * Build the Agentic Assurance / Action Assurance report section for one evaluation.
- *
- * Always returns a section so the report does not silently omit availability.
- */
+function mapAriUnavailableReason(
+  reason: string | undefined,
+):
+  | 'EVALUATED_SCAN_BINDING_NOT_CAPTURED'
+  | 'EVALUATED_RUN_IDENTITY_MISMATCH'
+  | 'EVALUATED_SCAN_IDENTITY_MISMATCH'
+  | 'EVALUATED_SCAN_HAS_NO_OPERATION_COVERAGE'
+  | 'ARI_NOT_PRESENT_IN_SNAPSHOT'
+  | 'ARI_NOT_ANALYZED'
+  | 'EVALUATED_SNAPSHOT_INVALID'
+  | 'AUTHORITY_PROMOTION_INVARIANT_VIOLATED'
+  | 'SECTION_BUILD_FAILED' {
+  switch (reason) {
+    case 'ARI_NOT_PRESENT_IN_SNAPSHOT':
+    case 'ARI_NOT_ANALYZED':
+    case 'EVALUATED_SCAN_HAS_NO_OPERATION_COVERAGE':
+    case 'EVALUATED_SCAN_BINDING_NOT_CAPTURED':
+    case 'EVALUATED_RUN_IDENTITY_MISMATCH':
+    case 'EVALUATED_SCAN_IDENTITY_MISMATCH':
+    case 'EVALUATED_SNAPSHOT_INVALID':
+    case 'AUTHORITY_PROMOTION_INVARIANT_VIOLATED':
+      return reason;
+    default:
+      return 'SECTION_BUILD_FAILED';
+  }
+}
+
 export async function buildActionAssuranceReportSection(
   evaluation: AssuranceEvaluation,
+  projectedEvidence?: DecisionEvidenceProjection[],
 ): Promise<ActionAssuranceReportSection> {
-  const unavailable = (reason: NonNullable<ActionAssuranceReportSection['unavailableReason']>): ActionAssuranceReportSection => ({
-    availability: 'NOT_AVAILABLE',
-    unavailableReason: reason,
-  });
+  function unavailable(reason: 'SECTION_BUILD_FAILED'): ActionAssuranceReportSection {
+    return {
+      availability: 'NOT_AVAILABLE',
+      unavailableReason: reason,
+      scanId: undefined,
+      commitSha: null,
+    };
+  }
 
   try {
     const result = await loadEvaluatedOperationCoverage(evaluation);
-    if ('availability' in result) {
-      const r = result as EvaluatedScanUnavailable;
+    if (!('data' in result)) {
       return {
         availability: 'NOT_AVAILABLE',
-        unavailableReason: r.unavailableReason,
-        scanId: r.scanId,
-        commitSha: r.commitSha,
+        unavailableReason: mapAriUnavailableReason(result.unavailableReason),
+        scanId: result.scanId,
+        commitSha: result.commitSha ?? null,
       };
     }
 
@@ -641,7 +908,7 @@ export async function buildActionAssuranceReportSection(
     return buildActionAssuranceSectionFromReadModel(readModel, result.data, {
       scanId: result.scanId,
       commitSha: result.commitSha,
-    });
+    }, projectedEvidence ?? []);
   } catch {
     return unavailable('SECTION_BUILD_FAILED');
   }

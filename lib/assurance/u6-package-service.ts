@@ -226,7 +226,7 @@ export async function buildPackageFromEvaluation(
   const evaluationIntegrity = await buildEvaluationIntegrityReportSection(evaluation);
 
   // S6: Agentic Assurance / Action Assurance customer-facing projection — historical basis only.
-  const actionAssurance = await buildActionAssuranceReportSection(evaluation);
+  const actionAssurance = await buildActionAssuranceReportSection(evaluation, projectedEvidence);
 
   const packageCandidate = buildAssuranceVerificationPackage({
     evaluation,

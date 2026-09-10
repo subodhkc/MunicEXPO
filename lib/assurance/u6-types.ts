@@ -601,6 +601,55 @@ export interface EvaluationIntegrityReportSection {
   totalExposures?: number;
 }
 
+// S6: bounded state vocabularies for the Action Assurance customer projection.
+// analysisCoverageState = "did the analyzer run?" / "what coverage did it have?"
+// resultState = "what did the source/evidence establish?"
+// These are distinct dimensions and must never collapse.
+export type AnalysisCoverageState =
+  | 'ANALYZED'
+  | 'PARTIAL'
+  | 'NOT_ANALYZED'
+  | 'UNKNOWN'
+  | 'UNSUPPORTED';
+
+export type ResultState =
+  | 'ESTABLISHED'
+  | 'CONDITIONAL'
+  | 'PARTIAL'
+  | 'CANDIDATE'
+  | 'ANALYZED_EMPTY'
+  | 'PRODUCER_FRONTIER'
+  | 'UNKNOWN'
+  | 'NOT_ANALYZED'
+  | 'UNSUPPORTED'
+  | 'NOT_RUNTIME_VALIDATED'
+  | 'RUNTIME_EVIDENCE_PRESENT'
+  | 'STATIC_WITH_RUNTIME_CORROBORATION'
+  | 'STATIC_RUNTIME_DIVERGENCE';
+
+/**
+ * A sub-dimension of a multi-family S6 surface (e.g. ACTION_COMPOSITION vs
+ * DEFERRED_EXECUTION). Facets keep independent family truths from overwriting
+ * each other in presentation.
+ */
+export interface ActionAssuranceSurfaceFacet {
+  facetKey: string;
+  title: string;
+  analysisCoverageState: AnalysisCoverageState;
+  resultState: ResultState;
+  relationCount: number;
+  relationRefs: string[];
+  entityCount?: number;
+  entityRefs?: string[];
+  resourceCount?: number;
+  resourceRefs?: string[];
+  projectionCount?: number;
+  projectionRefs?: string[];
+  summary: string;
+  customerStatus: string;
+  limitations: string[];
+}
+
 /**
  * S6: Agentic Assurance / Action Assurance customer-facing projection surface.
  *
@@ -610,15 +659,31 @@ export interface EvaluationIntegrityReportSection {
 export interface ActionAssuranceSurface {
   surfaceKey: string;
   title: string;
-  coverageState: string;
+  /** Did the relevant analyzer(s) run and how completely? */
+  analysisCoverageState: AnalysisCoverageState;
+  /** What did the source/evidence establish for this dimension? */
+  resultState: ResultState;
   coverageReason: string;
   relationCount: number;
   relationRefs: string[];
+  entityCount?: number;
+  entityRefs?: string[];
+  resourceCount?: number;
+  resourceRefs?: string[];
+  projectionCount?: number;
+  projectionRefs?: string[];
   summary: string;
   limitations: string[];
+  /** Canonical Evidence Core evidence IDs that support this surface. */
   evidenceRefs: string[];
+  evidenceCount?: number;
+  /** Canonical finding IDs only when an exact mapping exists. */
+  findingRefs: string[];
+  findingCount?: number;
   sourceBasis: string;
   customerStatus: string;
+  /** For multi-family surfaces: independent per-family truth. */
+  facets?: ActionAssuranceSurfaceFacet[];
 }
 
 /**
