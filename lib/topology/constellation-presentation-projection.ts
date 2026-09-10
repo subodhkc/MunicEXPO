@@ -252,6 +252,7 @@ export function buildConstellationProjection(
     total: 1,
     truncated: false,
     weakestAvailability: 'AVAILABLE',
+    evidenceStatus: 'AVAILABLE',
     collapsed: false,
     participantAgentIds: [],
     accessTypes: [],
@@ -285,6 +286,7 @@ export function buildConstellationProjection(
       total: 1,
       truncated: false,
       weakestAvailability: agentNode.availability,
+      evidenceStatus: agentNode.availability,
       collapsed: false,
       ...metrics,
     };
@@ -382,6 +384,7 @@ export function buildConstellationProjection(
       combo: comboId,
       isFrontier: frontier,
       frontierReason: frontier ? frontierReason(node) : undefined,
+      evidenceStatus: node.availability,
       ...metrics,
       ...hubAccess,
     };
@@ -398,6 +401,7 @@ export function buildConstellationProjection(
         combo.shown += 1;
         combo.total += 1;
         combo.weakestAvailability = weakestAvailability(combo.weakestAvailability, cNode.availability);
+        combo.evidenceStatus = combo.weakestAvailability;
       }
     }
   }

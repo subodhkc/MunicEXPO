@@ -58,6 +58,68 @@ export const MAP_THEME = {
   canvasMinWidth: 1760,
 } as const;
 
+// ─── EVIDENCE STATUS PRESENTATION ────────────────────────────────────────────
+// Presentation-only secondary status treatment for the Constellation
+// evidence-status layer. These are NOT topology truth. They show how much
+// evidence is available for a node without changing the node's role/domain
+// color, shape, or base surface.
+//
+// Secondary-visual grammar (never risk red for uncertainty):
+//   AVAILABLE    → normal solid role presentation (no status override)
+//   PARTIAL      → restrained amber secondary treatment
+//   UNKNOWN      → neutral slate dashed treatment
+//   SOURCE_GAP   → muted/hollow slate treatment
+//   UNAVAILABLE  → muted neutral treatment
+//
+// LOCKS:
+//   UNKNOWN != DANGER        SOURCE_GAP != DANGER     UNAVAILABLE != DANGER
+//   PARTIAL != SEVERITY      EVIDENCE_STATUS != RISK_SCORE
+
+export const EVIDENCE_STATUS_LABELS: Record<string, string> = {
+  AVAILABLE: 'Established',
+  PARTIAL: 'Partially established',
+  UNKNOWN: 'Not established',
+  SOURCE_GAP: 'Evidence source missing',
+  UNAVAILABLE: 'Not available in this evaluation',
+};
+
+export const EVIDENCE_STATUS_COLORS: Record<string, string> = {
+  AVAILABLE: '#2f7757',
+  PARTIAL: '#a86a19',
+  UNKNOWN: '#91949b',
+  SOURCE_GAP: '#91949b',
+  UNAVAILABLE: '#91949b',
+};
+
+export const EVIDENCE_STATUS_DASH: Record<string, number[] | undefined> = {
+  AVAILABLE: undefined,
+  PARTIAL: [3, 3],
+  UNKNOWN: [4, 4],
+  SOURCE_GAP: [1, 4],
+  UNAVAILABLE: [1, 4],
+};
+
+// ─── EVIDENCE REASON PRESENTATION ────────────────────────────────────────────
+// STATE = what HAIEC can establish; REASON = why it cannot fully establish it.
+// Reasons come from existing structured limitation/status data only. When no
+// structured reason exists, the reason fails closed to REASON_NOT_ESTABLISHED.
+
+export const EVIDENCE_REASON_LABELS: Record<string, string> = {
+  ANALYSIS_LIMITATION: 'Analysis gap',
+  ANALYSIS_INCOMPLETE: 'Analysis incomplete',
+  UNSUPPORTED_ANALYSIS: 'Not supported by current analysis',
+  SOURCE_EVIDENCE_MISSING: 'Evidence not present in source',
+  SOURCE_NOT_CONNECTED: 'Evidence source not connected',
+  RUNTIME_EVIDENCE_REQUIRED: 'Runtime evidence needed',
+  PROVIDER_EVIDENCE_REQUIRED: 'Provider evidence needed',
+  AMBIGUOUS_SOURCE: 'Exact binding not established',
+  PENDING_HUMAN_REVIEW: 'Review needed',
+  NOT_EVALUATED: 'Not evaluated',
+  NO_QUALIFYING_EVIDENCE: 'No qualifying evidence found',
+  NOT_APPLICABLE: 'Not applicable',
+  REASON_NOT_ESTABLISHED: 'Reason not established',
+};
+
 // ─── NODE DOMAIN: domain-first color mapping (light enterprise grammar) ──────
 // Color means DOMAIN first. Light tinted surfaces with domain accent borders.
 // LOCK: COLOR = DOMAIN_FIRST
