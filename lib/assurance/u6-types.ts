@@ -6,6 +6,7 @@
  */
 
 import { AssuranceDisposition, ClaimState, CapabilityComparisonRecord, CapabilityFact, PlaneAvailability, ProfileVerdict } from './types';
+import type { FindingRef } from '@/lib/evidence/evidence-contract';
 
 export const U6_REPORT_SCHEMA_VERSION = '1.0.0' as const;
 export const U6_BUNDLE_SCHEMA_VERSION = '1.0.0' as const;
@@ -31,6 +32,10 @@ export const U6_REPORT_SCHEMA_VERSION_PX = '1.2.0' as const;
 // Integrity report sections are present. Receipt/bundle/verification semantics
 // are unchanged. Legacy 1.2.0 ActionProof-only packages remain verifiable.
 export const U6_REPORT_SCHEMA_VERSION_ARI = '1.3.0' as const;
+
+// S6: additive Action Assurance / Agentic Assurance customer-facing projection section.
+// Packages with this section use report schema 1.4.0; receipt/bundle/verification semantics unchanged.
+export const U6_REPORT_SCHEMA_VERSION_S6 = '1.4.0' as const;
 
 /**
  * G3-R1: Evaluated Scope binding committed into the canonical Decision Receipt.
@@ -322,6 +327,11 @@ export interface UnifiedAssuranceReport {
    * Historical read projection only; not a runtime observation or disposition.
    */
   evaluationIntegrity?: EvaluationIntegrityReportSection;
+  /**
+   * S6: additive Action Assurance / Agentic Assurance customer-facing projection.
+   * Historical read projection only; not a U5 decision input.
+   */
+  actionAssurance?: ActionAssuranceReportSection;
 }
 
 /**
@@ -590,6 +600,154 @@ export interface EvaluationIntegrityReportSection {
   coverageLimitations?: string[];
   exposuresShown?: number;
   totalExposures?: number;
+}
+
+// S6: bounded state vocabularies for the Action Assurance customer projection.
+// analysisCoverageState = "did the analyzer run?" / "what coverage did it have?"
+// resultState = "what did the source/evidence establish?"
+// These are distinct dimensions and must never collapse.
+export type AnalysisCoverageState =
+  | 'ANALYZED'
+  | 'PARTIAL'
+  | 'NOT_ANALYZED'
+  | 'UNKNOWN'
+  | 'UNSUPPORTED';
+
+export type ResultState =
+  | 'ESTABLISHED'
+  | 'CONDITIONAL'
+  | 'PARTIAL'
+  | 'CANDIDATE'
+  | 'ANALYZED_EMPTY'
+  | 'PRODUCER_FRONTIER'
+  | 'UNKNOWN'
+  | 'NOT_ANALYZED'
+  | 'UNSUPPORTED'
+  | 'NOT_RUNTIME_VALIDATED'
+  | 'RUNTIME_NOT_SELECTED'
+  | 'RUNTIME_SELECTED_EMPTY'
+  | 'RUNTIME_FAILED'
+  | 'RUNTIME_PARTIAL'
+  | 'RUNTIME_EVIDENCE_PRESENT'
+  | 'STATIC_WITH_RUNTIME_CORROBORATION'
+  | 'STATIC_RUNTIME_DIVERGENCE';
+
+/**
+ * S6: exact-run participation context. A read-only snapshot of which producers
+ * were selected/executed for the bound Assurance evaluation. Used to distinguish
+ * NOT_ANALYZED from ANALYZED_EMPTY and to preserve producer outcome/coverage
+ * semantics without querying arbitrary state.
+ */
+export interface ActionAssuranceRunContext {
+  selectedEngines: string[];
+  staticScanId?: string | null;
+  runtimeTestId?: string | null;
+  wizardAssessmentId?: string | null;
+  regulatoryReportId?: string | null;
+  orchestratorRunId: string;
+  completedAt?: string;
+}
+
+/**
+ * A sub-dimension of a multi-family S6 surface (e.g. ACTION_COMPOSITION vs
+ * DEFERRED_EXECUTION). Facets keep independent family truths from overwriting
+ * each other in presentation.
+ */
+export interface ActionAssuranceSurfaceFacet {
+  facetKey: string;
+  title: string;
+  analysisCoverageState: AnalysisCoverageState;
+  resultState: ResultState;
+  relationCount: number;
+  relationRefs: string[];
+  entityCount?: number;
+  entityRefs?: string[];
+  resourceCount?: number;
+  resourceRefs?: string[];
+  projectionCount?: number;
+  projectionRefs?: string[];
+  summary: string;
+  customerStatus: string;
+  limitations: string[];
+  /** Canonical FindingRefs only when an exact per-facet mapping exists. */
+  findingRefs?: FindingRef[];
+  findingCount?: number;
+}
+
+/**
+ * S6: Agentic Assurance / Action Assurance customer-facing projection surface.
+ *
+ * Each surface is a bounded, semantically stable view over one analytical
+ * dimension. The customerStatus is a display label, not a disposition.
+ */
+export interface ActionAssuranceSurface {
+  surfaceKey: string;
+  title: string;
+  /** Did the relevant analyzer(s) run and how completely? */
+  analysisCoverageState: AnalysisCoverageState;
+  /** What did the source/evidence establish for this dimension? */
+  resultState: ResultState;
+  coverageReason: string;
+  relationCount: number;
+  relationRefs: string[];
+  entityCount?: number;
+  entityRefs?: string[];
+  resourceCount?: number;
+  resourceRefs?: string[];
+  projectionCount?: number;
+  projectionRefs?: string[];
+  summary: string;
+  limitations: string[];
+  /** Canonical Evidence Core evidence IDs that support this surface. */
+  evidenceRefs: string[];
+  evidenceCount?: number;
+  /** Canonical FindingRefs only when an exact mapping exists. */
+  findingRefs: FindingRef[];
+  findingCount?: number;
+  sourceBasis: string;
+  customerStatus: string;
+  /** For multi-family surfaces: independent per-family truth. */
+  facets?: ActionAssuranceSurfaceFacet[];
+}
+
+/**
+ * S6: Agentic Assurance / Action Assurance report section.
+ *
+ * HISTORICAL read projection of the evaluated scan's customer-facing assurance
+ * surfaces. Not a runtime observation, not an assurance disposition, and not a
+ * replacement for U5 or Evidence Core.
+ */
+export interface ActionAssuranceReportSection {
+  availability: 'ESTABLISHED' | 'PARTIAL' | 'NOT_AVAILABLE';
+  unavailableReason?:
+    | 'EVALUATED_SCAN_BINDING_NOT_CAPTURED'
+    | 'EVALUATED_RUN_IDENTITY_MISMATCH'
+    | 'EVALUATED_SCAN_IDENTITY_MISMATCH'
+    | 'EVALUATED_SCAN_HAS_NO_OPERATION_COVERAGE'
+    | 'ARI_NOT_PRESENT_IN_SNAPSHOT'
+    | 'ARI_NOT_ANALYZED'
+    | 'EVALUATED_SNAPSHOT_INVALID'
+    | 'AUTHORITY_PROMOTION_INVARIANT_VIOLATED'
+    | 'SECTION_BUILD_FAILED';
+  scanId?: string;
+  commitSha?: string | null;
+  summary?: {
+    surfaceCount: number;
+    agentCount: number;
+    relationCount: number;
+    frontierCount: number;
+    coverageFamilyCount: number;
+  };
+  /** Bounded assurance surface summaries */
+  surfaces?: ActionAssuranceSurface[];
+  coverage?: Array<{
+    family: string;
+    state: string;
+    limitations: string[];
+  }>;
+  coverageLimitations?: string[];
+  surfacesShown?: number;
+  totalSurfaces?: number;
 }
 
 export interface ReportProfileSection {

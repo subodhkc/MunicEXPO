@@ -24,6 +24,7 @@ import {
   U6_REPORT_SCHEMA_VERSION,
   U6_REPORT_SCHEMA_VERSION_PX,
   U6_REPORT_SCHEMA_VERSION_ARI,
+  U6_REPORT_SCHEMA_VERSION_S6,
   U6_BUNDLE_SCHEMA_VERSION,
   U6_RECEIPT_SCHEMA_VERSION,
   BuildIdentity,
@@ -45,6 +46,7 @@ import {
   ActionProofReportSection,
   AgentReachabilityReportSection,
   EvaluationIntegrityReportSection,
+  ActionAssuranceReportSection,
 } from './u6-types';
 
 export type { BuildIdentity, U6Package } from './u6-types';
@@ -74,6 +76,7 @@ export function buildUnifiedAssuranceReport(
   actionProof?: ActionProofReportSection,
   agentReachability?: AgentReachabilityReportSection,
   evaluationIntegrity?: EvaluationIntegrityReportSection,
+  actionAssurance?: ActionAssuranceReportSection,
 ): UnifiedAssuranceReport {
   const v1_1 = evaluation as AssuranceEvaluationV1_1;
 
@@ -82,14 +85,17 @@ export function buildUnifiedAssuranceReport(
   const evidenceCoverage = buildProducerCoverageFromEvidence(projectedEvidence);
   const limitations = buildLimitations(evaluation, projectedEvidence, v1_1.planeAvailability ?? [], buildIdentity);
 
+  const hasActionAssurance = !!(actionAssurance);
   const hasAriReportSection = !!(agentReachability || evaluationIntegrity);
   const hasActionProof = !!actionProof;
   const report: UnifiedAssuranceReport = {
-    // ARI-P0 / PX-FINAL: additive report section versioning.
-    // ARI sections -> 1.3.0; ActionProof only -> 1.2.0; no additive sections -> 1.0.0.
-    reportVersion: hasAriReportSection
-      ? U6_REPORT_SCHEMA_VERSION_ARI
-      : (hasActionProof ? U6_REPORT_SCHEMA_VERSION_PX : U6_REPORT_SCHEMA_VERSION),
+    // S6 / ARI-P0 / PX-FINAL: additive report section versioning.
+    // S6 Action Assurance -> 1.4.0; ARI -> 1.3.0; PX -> 1.2.0; none -> 1.0.0.
+    reportVersion: hasActionAssurance
+      ? U6_REPORT_SCHEMA_VERSION_S6
+      : (hasAriReportSection
+          ? U6_REPORT_SCHEMA_VERSION_ARI
+          : (hasActionProof ? U6_REPORT_SCHEMA_VERSION_PX : U6_REPORT_SCHEMA_VERSION)),
     reportId: `${evaluation.id}:report`,
     assuranceEvaluationId: evaluation.id,
     organizationId: evaluation.organizationId,
@@ -138,6 +144,7 @@ export function buildUnifiedAssuranceReport(
     ...(actionProof ? { actionProof } : {}),
     ...(agentReachability ? { agentReachability } : {}),
     ...(evaluationIntegrity ? { evaluationIntegrity } : {}),
+    ...(actionAssurance ? { actionAssurance } : {}),
   };
 
   report.reportDigest = computeReportDigest(report);
@@ -393,6 +400,9 @@ export function computeReportDigest(report: UnifiedAssuranceReport): string {
     // LOCK: EI_REPORT_CONTENT_CHANGE => REPORT_DIGEST_CHANGE
     ...(report.agentReachability ? { agentReachability: report.agentReachability } : {}),
     ...(report.evaluationIntegrity ? { evaluationIntegrity: report.evaluationIntegrity } : {}),
+    // S6: additive Action Assurance customer-facing projection section.
+    // LOCK: ACTION_ASSURANCE_REPORT_CONTENT_CHANGE => REPORT_DIGEST_CHANGE
+    ...(report.actionAssurance ? { actionAssurance: report.actionAssurance } : {}),
   };
   return hashTextContent(canonicalSerialize(payload));
 }

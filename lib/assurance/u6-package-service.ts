@@ -11,12 +11,14 @@ import { prisma } from '@/lib/prisma';
 import { buildActionProofReportSection } from './u6-action-proof-section';
 import { buildAgentReachabilityReportSection } from './u6-agent-reachability-section';
 import { buildEvaluationIntegrityReportSection } from './u6-evaluation-integrity-section';
+import { buildActionAssuranceReportSection } from './u6-action-assurance-section';
 import { normalizeSelectedEnginesResult } from '@/lib/audit-orchestrator/selected-engines-normalizer';
 import { buildAssuranceVerificationPackage, computePackageDigest, verifyAssurancePackage } from './u6-package';
 import {
   U6Package,
   PackageVerificationResult,
   PublicVerificationResult,
+  type ActionAssuranceRunContext,
 } from './u6-types';
 import { AssuranceEvaluation, AssuranceEvaluationV1_1 } from './types';
 import { projectEvidenceForRun } from '@/lib/decision-pipeline/evidence-projection';
@@ -96,7 +98,7 @@ export async function loadFullAssuranceEvaluation(evaluationId: string): Promise
 /**
  * Load exact run Evidence from the orchestrator run associated with the evaluation.
  */
-export async function loadExactRunEvidence(evaluation: AssuranceEvaluation): Promise<{ projectedEvidence: any[]; runRecord: any }> {
+export async function loadExactRunEvidence(evaluation: AssuranceEvaluation): Promise<{ projectedEvidence: any[]; runRecord: any; selectedEngines: string[] }> {
   const run = await prisma.audit_orchestrator_runs.findUnique({
     where: { id: evaluation.orchestratorRunId },
     select: {
@@ -179,14 +181,14 @@ export async function loadExactRunEvidence(evaluation: AssuranceEvaluation): Pro
     completedAt: evaluation.evaluationSnapshotAt,
   });
 
-  return { projectedEvidence, runRecord: run };
+  return { projectedEvidence, runRecord: run, selectedEngines };
 }
 
 export async function buildPackageFromEvaluation(
   evaluation: AssuranceEvaluation,
 ): Promise<U6Package> {
   const v1_1 = evaluation as AssuranceEvaluationV1_1;
-  const { projectedEvidence, runRecord } = await loadExactRunEvidence(evaluation);
+  const { projectedEvidence, runRecord, selectedEngines } = await loadExactRunEvidence(evaluation);
 
   // Gate 4A Phase B: Package reconstruction uses canonical snapshot verification.
   // The canonical protection is in projectEvidenceForRun():
@@ -224,6 +226,20 @@ export async function buildPackageFromEvaluation(
   const agentReachability = await buildAgentReachabilityReportSection(evaluation);
   const evaluationIntegrity = await buildEvaluationIntegrityReportSection(evaluation);
 
+  // S6: Agentic Assurance / Action Assurance customer-facing projection — historical basis only.
+  // Pass exact-run participation context so the projection can distinguish
+  // NOT_ANALYZED from ANALYZED_EMPTY and preserve producer outcome semantics.
+  const actionAssuranceRunContext: ActionAssuranceRunContext = {
+    selectedEngines,
+    staticScanId: runRecord.staticScanId,
+    runtimeTestId: runRecord.runtimeTestId,
+    wizardAssessmentId: runRecord.wizardAssessmentId,
+    regulatoryReportId: runRecord.regulatoryReportId,
+    orchestratorRunId: runRecord.id,
+    completedAt: runRecord.completedAt ? runRecord.completedAt.toISOString() : undefined,
+  };
+  const actionAssurance = await buildActionAssuranceReportSection(evaluation, projectedEvidence, actionAssuranceRunContext);
+
   const packageCandidate = buildAssuranceVerificationPackage({
     evaluation,
     projectedEvidence,
@@ -231,6 +247,7 @@ export async function buildPackageFromEvaluation(
     actionProof,
     agentReachability,
     evaluationIntegrity,
+    actionAssurance,
     authoritySourceLabel: resolveAuthoritySourceLabel(v1_1),
     operatingEnvelopeApprovedAt: v1_1.operatingEnvelopeApprovedAt ? v1_1.operatingEnvelopeApprovedAt.toISOString() : undefined,
     approvalReference: v1_1.operatingEnvelopeApprovalReference ?? undefined,

@@ -31,6 +31,7 @@ import {
   U6_REPORT_SCHEMA_VERSION_G3,
   U6_REPORT_SCHEMA_VERSION_PX,
   U6_REPORT_SCHEMA_VERSION_ARI,
+  U6_REPORT_SCHEMA_VERSION_S6,
   BuildIdentity,
   DeploymentIdentity,
   U6Package,
@@ -42,6 +43,7 @@ import {
   ActionProofReportSection,
   AgentReachabilityReportSection,
   EvaluationIntegrityReportSection,
+  ActionAssuranceReportSection,
 } from './u6-types';
 import { resolvePublicProfileLabel } from './u6-public-profile-label';
 import { PRODUCER_IDS } from '@/lib/engine-registry/producer-registry';
@@ -85,6 +87,11 @@ export interface PackageBuildContext {
    * Committed into semanticReportDigest when present. Not a U5 decision input.
    */
   evaluationIntegrity?: EvaluationIntegrityReportSection;
+  /**
+   * S6: additive Action Assurance / Agentic Assurance customer-facing projection section.
+   * Committed into semanticReportDigest when present. Not a U5 decision input.
+   */
+  actionAssurance?: ActionAssuranceReportSection;
 }
 
 export function buildAssuranceVerificationPackage(
@@ -98,17 +105,20 @@ export function buildAssuranceVerificationPackage(
   // G3-R1: When scope binding is provided, use G3 schema versions (1.1.0).
   // Legacy packages (no scope binding) use 1.0.0 and remain verifiable under 1.0.0.
   const hasScopeBinding = !!context.evaluatedScopeBinding;
-  // ARI-P0: additive Agent Reachability / Evaluation Integrity sections upgrade
-  // the report schema to 1.3.0. PX Action Proof alone remains 1.2.0. Receipt/bundle/
-  // verification semantics are unchanged.
+  // S6 / ARI-P0: additive report sections upgrade the report schema.
+  // S6 Action Assurance -> 1.4.0; ARI sections -> 1.3.0; PX -> 1.2.0; no additive -> 1.0.0.
+  // Receipt/bundle/verification semantics are unchanged.
+  const hasActionAssurance = !!(context.actionAssurance);
   const hasAriReportSection = !!(context.agentReachability || context.evaluationIntegrity);
   const hasActionProof = !!context.actionProof;
   const receiptSchemaVersion = hasScopeBinding ? U6_RECEIPT_SCHEMA_VERSION_G3 : U6_RECEIPT_SCHEMA_VERSION;
-  const reportSchemaVersion = hasAriReportSection
-    ? U6_REPORT_SCHEMA_VERSION_ARI
-    : (hasActionProof
-        ? U6_REPORT_SCHEMA_VERSION_PX
-        : (hasScopeBinding ? U6_REPORT_SCHEMA_VERSION_G3 : U6_REPORT_SCHEMA_VERSION));
+  const reportSchemaVersion = hasActionAssurance
+    ? U6_REPORT_SCHEMA_VERSION_S6
+    : (hasAriReportSection
+        ? U6_REPORT_SCHEMA_VERSION_ARI
+        : (hasActionProof
+            ? U6_REPORT_SCHEMA_VERSION_PX
+            : (hasScopeBinding ? U6_REPORT_SCHEMA_VERSION_G3 : U6_REPORT_SCHEMA_VERSION)));
   const verificationSchemaVersion = context.verificationSchemaVersion ??
     (hasScopeBinding ? U6_VERIFICATION_SCHEMA_VERSION_G3 : U6_VERIFICATION_SCHEMA_VERSION);
 
@@ -127,9 +137,11 @@ export function buildAssuranceVerificationPackage(
     context.actionProof,
     context.agentReachability,
     context.evaluationIntegrity,
+    context.actionAssurance,
   );
 
-  // G3-R1: Override report version if scope binding present.
+  // G3-R1 / S6 / ARI-P0 / PX-FINAL: Override report version if scope binding
+  // or any additive report section is present.
   // CRITICAL: The report digest was computed inside buildUnifiedAssuranceReport
   // using the legacy 1.0.0 versions. When G3 scope binding upgrades the schema
   // versions to 1.1.0, the digest MUST be recomputed so that
@@ -144,7 +156,7 @@ export function buildAssuranceVerificationPackage(
   // receipt version matches the actual receipt's version.
   // Recompute the digest whenever the post-build version/section differs from
   // the 1.0.0 base content (scope binding OR any additive report section).
-  if (hasScopeBinding || hasAriReportSection || hasActionProof) {
+  if (hasScopeBinding || hasActionAssurance || hasAriReportSection || hasActionProof) {
     report.reportVersion = reportSchemaVersion;
     report.decisionReceipt.receiptVersion = receiptSchemaVersion;
     report.reportDigest = computeReportDigest(report);
