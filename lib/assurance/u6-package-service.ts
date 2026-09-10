@@ -11,6 +11,7 @@ import { prisma } from '@/lib/prisma';
 import { buildActionProofReportSection } from './u6-action-proof-section';
 import { buildAgentReachabilityReportSection } from './u6-agent-reachability-section';
 import { buildEvaluationIntegrityReportSection } from './u6-evaluation-integrity-section';
+import { buildActionAssuranceReportSection } from './u6-action-assurance-section';
 import { normalizeSelectedEnginesResult } from '@/lib/audit-orchestrator/selected-engines-normalizer';
 import { buildAssuranceVerificationPackage, computePackageDigest, verifyAssurancePackage } from './u6-package';
 import {
@@ -224,6 +225,9 @@ export async function buildPackageFromEvaluation(
   const agentReachability = await buildAgentReachabilityReportSection(evaluation);
   const evaluationIntegrity = await buildEvaluationIntegrityReportSection(evaluation);
 
+  // S6: Agentic Assurance / Action Assurance customer-facing projection — historical basis only.
+  const actionAssurance = await buildActionAssuranceReportSection(evaluation);
+
   const packageCandidate = buildAssuranceVerificationPackage({
     evaluation,
     projectedEvidence,
@@ -231,6 +235,7 @@ export async function buildPackageFromEvaluation(
     actionProof,
     agentReachability,
     evaluationIntegrity,
+    actionAssurance,
     authoritySourceLabel: resolveAuthoritySourceLabel(v1_1),
     operatingEnvelopeApprovedAt: v1_1.operatingEnvelopeApprovedAt ? v1_1.operatingEnvelopeApprovedAt.toISOString() : undefined,
     approvalReference: v1_1.operatingEnvelopeApprovalReference ?? undefined,

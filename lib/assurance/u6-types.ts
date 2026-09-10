@@ -32,6 +32,10 @@ export const U6_REPORT_SCHEMA_VERSION_PX = '1.2.0' as const;
 // are unchanged. Legacy 1.2.0 ActionProof-only packages remain verifiable.
 export const U6_REPORT_SCHEMA_VERSION_ARI = '1.3.0' as const;
 
+// S6: additive Action Assurance / Agentic Assurance customer-facing projection section.
+// Packages with this section use report schema 1.4.0; receipt/bundle/verification semantics unchanged.
+export const U6_REPORT_SCHEMA_VERSION_S6 = '1.4.0' as const;
+
 /**
  * G3-R1: Evaluated Scope binding committed into the canonical Decision Receipt.
  * This structure is included in computeReceiptHash() for schema 1.1.0+ packages.
@@ -322,6 +326,11 @@ export interface UnifiedAssuranceReport {
    * Historical read projection only; not a runtime observation or disposition.
    */
   evaluationIntegrity?: EvaluationIntegrityReportSection;
+  /**
+   * S6: additive Action Assurance / Agentic Assurance customer-facing projection.
+   * Historical read projection only; not a U5 decision input.
+   */
+  actionAssurance?: ActionAssuranceReportSection;
 }
 
 /**
@@ -590,6 +599,66 @@ export interface EvaluationIntegrityReportSection {
   coverageLimitations?: string[];
   exposuresShown?: number;
   totalExposures?: number;
+}
+
+/**
+ * S6: Agentic Assurance / Action Assurance customer-facing projection surface.
+ *
+ * Each surface is a bounded, semantically stable view over one analytical
+ * dimension. The customerStatus is a display label, not a disposition.
+ */
+export interface ActionAssuranceSurface {
+  surfaceKey: string;
+  title: string;
+  coverageState: string;
+  coverageReason: string;
+  relationCount: number;
+  relationRefs: string[];
+  summary: string;
+  limitations: string[];
+  evidenceRefs: string[];
+  sourceBasis: string;
+  customerStatus: string;
+}
+
+/**
+ * S6: Agentic Assurance / Action Assurance report section.
+ *
+ * HISTORICAL read projection of the evaluated scan's customer-facing assurance
+ * surfaces. Not a runtime observation, not an assurance disposition, and not a
+ * replacement for U5 or Evidence Core.
+ */
+export interface ActionAssuranceReportSection {
+  availability: 'ESTABLISHED' | 'PARTIAL' | 'NOT_AVAILABLE';
+  unavailableReason?:
+    | 'EVALUATED_SCAN_BINDING_NOT_CAPTURED'
+    | 'EVALUATED_RUN_IDENTITY_MISMATCH'
+    | 'EVALUATED_SCAN_IDENTITY_MISMATCH'
+    | 'EVALUATED_SCAN_HAS_NO_OPERATION_COVERAGE'
+    | 'ARI_NOT_PRESENT_IN_SNAPSHOT'
+    | 'ARI_NOT_ANALYZED'
+    | 'EVALUATED_SNAPSHOT_INVALID'
+    | 'AUTHORITY_PROMOTION_INVARIANT_VIOLATED'
+    | 'SECTION_BUILD_FAILED';
+  scanId?: string;
+  commitSha?: string | null;
+  summary?: {
+    surfaceCount: number;
+    agentCount: number;
+    relationCount: number;
+    frontierCount: number;
+    coverageFamilyCount: number;
+  };
+  /** Bounded assurance surface summaries */
+  surfaces?: ActionAssuranceSurface[];
+  coverage?: Array<{
+    family: string;
+    state: string;
+    limitations: string[];
+  }>;
+  coverageLimitations?: string[];
+  surfacesShown?: number;
+  totalSurfaces?: number;
 }
 
 export interface ReportProfileSection {
