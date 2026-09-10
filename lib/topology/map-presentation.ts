@@ -58,6 +58,27 @@ export const MAP_THEME = {
   canvasMinWidth: 1760,
 } as const;
 
+// ─── EVIDENCE STATUS PRESENTATION ────────────────────────────────────────────
+// Presentation-only status colors for the Constellation evidence-status layer.
+// These are NOT topology truth. They show how much evidence is available for
+// a node without changing the node's role/domain color.
+
+export const EVIDENCE_STATUS_COLORS: Record<string, string> = {
+  AVAILABLE: '#2f7757',
+  PARTIAL: '#a86a19',
+  UNKNOWN: '#91949b',
+  SOURCE_GAP: '#b54040',
+  UNAVAILABLE: '#b54040',
+};
+
+export const EVIDENCE_STATUS_DASH: Record<string, number[] | undefined> = {
+  AVAILABLE: undefined,
+  PARTIAL: [3, 3],
+  UNKNOWN: [4, 4],
+  SOURCE_GAP: [1, 4],
+  UNAVAILABLE: [1, 4],
+};
+
 // ─── NODE DOMAIN: domain-first color mapping (light enterprise grammar) ──────
 // Color means DOMAIN first. Light tinted surfaces with domain accent borders.
 // LOCK: COLOR = DOMAIN_FIRST

@@ -467,6 +467,8 @@ export interface ConstellationNode {
   reachableServices?: number;
   /** Optional path ordering for action_path scale. */
   pathIndex?: number;
+  /** Presentation-only evidence status for the legend/inspector. */
+  evidenceStatus?: NodeAvailability;
 }
 
 export interface ConstellationEdge {
@@ -510,6 +512,8 @@ export interface ConstellationCombo {
   accessTypes?: string[];
   reachableResources?: number;
   reachableServices?: number;
+  /** Presentation-only evidence status for the legend/inspector. */
+  evidenceStatus?: NodeAvailability;
 }
 
 export interface ConstellationFrontier {
