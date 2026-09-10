@@ -43,12 +43,15 @@ import {
 import {
   U6_REPORT_SCHEMA_VERSION_S6,
   type ActionAssuranceReportSection,
+  type ActionAssuranceRunContext,
   type ActionAssuranceSurface,
   type ActionAssuranceSurfaceFacet,
   type AnalysisCoverageState,
   type ResultState,
 } from './u6-types';
+import type { FindingRef } from '@/lib/evidence/evidence-contract';
 import { PRODUCER_IDS } from '@/lib/engine-registry/producer-registry';
+import { resolveCanonicalProducerId } from '@/lib/engine-registry/producer-id-compatibility';
 import type { AriFamilyCoverage, AriRelationState } from '@/lib/ai-security/types';
 import type { DecisionEvidenceProjection } from '@/lib/decision-pipeline/evidence-projection';
 
@@ -71,15 +74,30 @@ function toResultState(state: AriRelationState | string | undefined): ResultStat
       return 'CONDITIONAL';
     case 'CANDIDATE':
       return 'CANDIDATE';
+    case 'PARTIAL':
+      return 'PARTIAL';
     case 'UNKNOWN':
       return 'UNKNOWN';
     case 'NOT_ANALYZED':
       return 'NOT_ANALYZED';
     case 'UNSUPPORTED':
+    case 'NOT_APPLICABLE':
       return 'UNSUPPORTED';
     default:
       return 'UNKNOWN';
   }
+}
+
+function combineResultStates(states: ResultState[]): ResultState {
+  if (states.length === 0) return 'ANALYZED_EMPTY';
+  if (states.every((s) => s === 'NOT_ANALYZED')) return 'NOT_ANALYZED';
+  if (states.every((s) => s === 'UNKNOWN')) return 'UNKNOWN';
+  if (states.every((s) => s === 'UNSUPPORTED')) return 'UNSUPPORTED';
+  if (states.every((s) => s === 'CANDIDATE')) return 'CANDIDATE';
+  if (states.every((s) => s === 'ESTABLISHED')) return 'ESTABLISHED';
+  const allEstablishedOrConditional = states.every((s) => s === 'ESTABLISHED' || s === 'CONDITIONAL');
+  if (allEstablishedOrConditional) return states.some((s) => s === 'CONDITIONAL') ? 'CONDITIONAL' : 'ESTABLISHED';
+  return 'PARTIAL';
 }
 
 function familyAnalysisState(family: AriFamilyCoverage | undefined): AnalysisCoverageState {
@@ -161,6 +179,14 @@ function customerStatus(label: string, analysis: AnalysisCoverageState, result: 
       return `${label} analysis is not supported for the evaluated snapshot.`;
     case 'NOT_RUNTIME_VALIDATED':
       return `No runtime corroboration for the evaluated ${lower} dimension.`;
+    case 'RUNTIME_NOT_SELECTED':
+      return `Runtime evidence was not selected for the evaluated ${lower} dimension.`;
+    case 'RUNTIME_SELECTED_EMPTY':
+      return `Runtime evidence selected but produced zero qualifying records for the evaluated ${lower} dimension.`;
+    case 'RUNTIME_FAILED':
+      return `Runtime producer failed for the evaluated ${lower} dimension.`;
+    case 'RUNTIME_PARTIAL':
+      return `Runtime producer returned partial results for the evaluated ${lower} dimension.`;
     case 'RUNTIME_EVIDENCE_PRESENT':
       return `Runtime evidence present, but exact action correspondence not established.`;
     case 'STATIC_WITH_RUNTIME_CORROBORATION':
@@ -241,13 +267,24 @@ function deriveOverallAnalysis(facets: ActionAssuranceSurfaceFacet[]): AnalysisC
 function deriveOverallResult(facets: ActionAssuranceSurfaceFacet[]): ResultState {
   if (facets.length === 0) return 'NOT_ANALYZED';
   const states = facets.map((f) => f.resultState);
-  if (states.every((s) => s === 'NOT_ANALYZED')) return 'NOT_ANALYZED';
-  if (states.every((s) => s === 'UNKNOWN')) return 'UNKNOWN';
-  if (states.every((s) => s === 'ANALYZED_EMPTY')) return 'ANALYZED_EMPTY';
-  if (states.every((s) => s === 'ESTABLISHED')) return 'ESTABLISHED';
-  if (states.includes('PRODUCER_FRONTIER')) return 'PRODUCER_FRONTIER';
-  if (states.includes('NOT_RUNTIME_VALIDATED')) return 'NOT_RUNTIME_VALIDATED';
-  if (states.includes('CANDIDATE')) return 'CANDIDATE';
+  // ANALYZED_EMPTY is a non-contradicting absence signal; it does not downgrade
+  // positive result states from other facets, but an empty-only surface is empty.
+  const meaningful = states.filter((s) => s !== 'ANALYZED_EMPTY');
+  if (meaningful.length === 0) return 'ANALYZED_EMPTY';
+
+  if (meaningful.every((s) => s === 'NOT_ANALYZED')) return 'NOT_ANALYZED';
+  if (meaningful.every((s) => s === 'UNKNOWN')) return 'UNKNOWN';
+  if (meaningful.every((s) => s === 'UNSUPPORTED')) return 'UNSUPPORTED';
+  if (meaningful.every((s) => s === 'CANDIDATE')) return 'CANDIDATE';
+  if (meaningful.every((s) => s === 'ESTABLISHED')) return 'ESTABLISHED';
+  const allEstablishedOrConditional = meaningful.every((s) => s === 'ESTABLISHED' || s === 'CONDITIONAL');
+  if (allEstablishedOrConditional) return meaningful.some((s) => s === 'CONDITIONAL') ? 'CONDITIONAL' : 'ESTABLISHED';
+  if (meaningful.some((s) => s === 'PRODUCER_FRONTIER')) {
+    const nonFrontier = meaningful.filter((s) => s !== 'PRODUCER_FRONTIER');
+    if (nonFrontier.length === 0 || nonFrontier.every((s) => ['NOT_ANALYZED', 'UNKNOWN', 'CANDIDATE'].includes(s))) {
+      return 'PRODUCER_FRONTIER';
+    }
+  }
   return 'PARTIAL';
 }
 
@@ -289,30 +326,46 @@ function buildAgentCapabilityConstellation(
 ): ActionAssuranceSurface {
   const agents = readModel.agents.items;
   const relationships = readModel.relationships?.items ?? [];
-  const frontiers = readModel.frontiers.total;
 
+  // Scope coverage to the agentTopology family only. Unrelated producer frontiers
+  // (replay, composition, delegation, etc.) must not downgrade this surface.
+  const agentTopologyFamily = _data.ariCoverage?.agentTopology;
   const analysis: AnalysisCoverageState =
     readModel.availability === 'NOT_AVAILABLE'
       ? 'NOT_ANALYZED'
-      : frontiers > 0 || !readModel.coverage.items.every((c) => c.state === 'ANALYZED')
-        ? 'PARTIAL'
-        : 'ANALYZED';
+      : familyAnalysisState(agentTopologyFamily);
+
+  // Derive result from actual bounded epistemic states: agent candidate states,
+  // canonical relationship states, and tool capability stage states. Do not let
+  // the mere existence of an agent definition establish the whole surface.
+  const states: ResultState[] = [];
+  for (const agent of agents) {
+    states.push(toResultState(agent.candidateState));
+  }
+  for (const rel of relationships) {
+    states.push(toResultState(rel.state));
+  }
+  for (const agent of agents) {
+    for (const tc of agent.toolCapabilities) {
+      for (const stage of tc.stages) {
+        states.push(toResultState(stage.state));
+      }
+    }
+  }
 
   const result: ResultState =
     readModel.availability === 'NOT_AVAILABLE'
       ? 'NOT_ANALYZED'
-      : frontiers > 0
-        ? 'PARTIAL'
-        : agents.length === 0
-          ? 'ANALYZED_EMPTY'
-          : 'ESTABLISHED';
+      : agentTopologyFamily?.reason?.includes('PRODUCER_FRONTIER')
+        ? 'PRODUCER_FRONTIER'
+        : combineResultStates(states);
 
   const relationCount = relationships.length;
   const relationRefs = relationships.map((r) => r.id).slice(0, MAX_SURFACE_REFS);
   const entityCount = agents.length;
   const entityRefs = agents.map((a) => a.id).slice(0, MAX_SURFACE_REFS);
 
-  const summary = `Agent capability constellation: ${agents.length} agent(s), ${relationships.length} agent relationship(s), ${frontiers} unresolved frontier(s).`;
+  const summary = `Agent capability constellation: ${agents.length} agent candidate(s), ${relationships.length} canonical relationship(s).`;
 
   return {
     ...buildSurfaceBase(
@@ -328,8 +381,9 @@ function buildAgentCapabilityConstellation(
         'AGENT_CANDIDATE != AGENT_INSTANCE',
         'TOOL_CAPABILITY != RUNTIME_REACHABLE',
         'TOPOLOGY_PROJECTION != OBSERVED_EXECUTION',
+        'AGENT_PRESENT != AGENT_ESTABLISHED',
       ],
-      'AgentReachabilityReadModel.agents, relationships, coverage, frontiers',
+      'AgentReachabilityReadModel.agents, relationships, toolCapabilities, agentTopology coverage',
     ),
     entityCount,
     entityRefs,
@@ -343,47 +397,86 @@ function buildReachabilitySharedSubstrate(
   const hubs = readModel.sharedResourceHubs?.items ?? [];
   const channels = readModel.potentialChannels?.items ?? [];
   const resourceAccess = data.resourceAccessRelations ?? [];
+  const serviceCalls = data.serviceCallRelations ?? [];
   const persistenceCreation = data.persistenceCreationRelations ?? [];
 
-  const frontiers = readModel.frontiers.total;
-  const analysis: AnalysisCoverageState =
-    readModel.availability === 'NOT_AVAILABLE' ? 'NOT_ANALYZED' : frontiers > 0 ? 'PARTIAL' : 'ANALYZED';
-  const result: ResultState =
-    readModel.availability === 'NOT_AVAILABLE'
-      ? 'NOT_ANALYZED'
-      : frontiers > 0
-        ? 'PARTIAL'
-        : hubs.length === 0 && resourceAccess.length === 0
-          ? 'ANALYZED_EMPTY'
-          : 'ESTABLISHED';
+  // Scope coverage to relevant families only. Unrelated frontiers (e.g. replay,
+  // action composition) must not downgrade this surface.
+  const sharedSubstrateFamily = data.ariCoverage?.sharedSubstrates;
+  const resourceAccessFamily = data.ariCoverage?.resourceAccess;
+  const persistenceFamily = data.ariCoverage?.persistenceCreation;
 
-  const relationCount = resourceAccess.length + persistenceCreation.length;
-  const relationRefs = [...resourceAccess, ...persistenceCreation].map((r) => r.id).slice(0, MAX_SURFACE_REFS);
-  const resourceCount = hubs.length;
-  const resourceRefs = hubs.map((h) => h.resourceKey).slice(0, MAX_SURFACE_REFS);
-
-  const summary = `Reachability and shared substrate: ${hubs.length} shared resource hub(s), ${channels.length} potential channel(s), ${resourceAccess.length} resource access relation(s), ${persistenceCreation.length} persistence creation relation(s).`;
-
-  return {
-    ...buildSurfaceBase(
-      'REACHABILITY_SHARED_SUBSTRATE',
-      'Reachability & Shared Substrate',
-      analysis,
-      result,
-      'ARI_RESOURCE_ACCESS_AND_SHARED_SUBSTRATE_PROJECTION',
-      relationCount,
-      relationRefs,
-      summary,
-      [
-        'REACHABLE != ACCESSED',
-        'SHARED_SUBSTRATE != CROSS_AGENT_EXFILTRATION',
-        'POTENTIAL_CHANNEL != ACTUAL_CHANNEL',
-      ],
-      'AgentReachabilityReadModel.sharedResourceHubs, potentialChannels; PersistedOperationCoverageIntelligence.resourceAccessRelations, persistenceCreationRelations',
+  // SHARED_SUBSTRATE facet: hubs and potential channels are projected resource
+  // artifacts, not canonical relations. Resource keys are kept in resourceRefs.
+  const substrateStates: ResultState[] = [];
+  for (const h of hubs) substrateStates.push(toResultState(h.state));
+  for (const c of channels) substrateStates.push(toResultState(c.state));
+  const substrateResult = sharedSubstrateFamily?.reason?.includes('PRODUCER_FRONTIER')
+    ? 'PRODUCER_FRONTIER'
+    : substrateStates.length === 0
+      ? familyResultState(sharedSubstrateFamily, [])
+      : combineResultStates(substrateStates);
+  const sharedSubstrateFacet: ActionAssuranceSurfaceFacet = {
+    facetKey: 'SHARED_SUBSTRATE',
+    title: 'Shared Substrate',
+    analysisCoverageState: familyAnalysisState(sharedSubstrateFamily),
+    resultState: substrateResult,
+    relationCount: 0,
+    relationRefs: [],
+    resourceCount: hubs.length + channels.length,
+    resourceRefs: [...hubs.map((h) => h.resourceKey), ...channels.map((c) => c.resourceKey)].slice(0, MAX_SURFACE_REFS),
+    summary: `Shared substrate: ${hubs.length} hub(s), ${channels.length} potential channel(s).`,
+    customerStatus: customerStatus('shared substrate', familyAnalysisState(sharedSubstrateFamily), substrateResult),
+    limitations: combineLimitations(
+      ['SHARED_SUBSTRATE != CROSS_AGENT_EXFILTRATION', 'POTENTIAL_CHANNEL != ACTUAL_CHANNEL'],
+      sharedSubstrateFamily,
     ),
-    resourceCount,
-    resourceRefs,
   };
+
+  // RESOURCE_ACCESS facet: canonical resource access and service call relations.
+  const resourceAccessFacet = buildFacet(
+    'RESOURCE_ACCESS',
+    'Resource Access',
+    resourceAccessFamily,
+    [...resourceAccess, ...serviceCalls],
+    ['REACHABLE != ACCESSED', 'SERVICE_CALL != RESOURCE_ACCESS_ESTABLISHED'],
+  );
+
+  // PERSISTENCE_CREATION facet: canonical persistence creation relations.
+  const persistenceFacet = buildFacet(
+    'PERSISTENCE_CREATION',
+    'Persistence Creation',
+    persistenceFamily,
+    persistenceCreation,
+    ['PERSISTENCE_CREATION != FUTURE_READ', 'WRITE != READ'],
+  );
+
+  const facets = [sharedSubstrateFacet, resourceAccessFacet, persistenceFacet];
+  const analysis = deriveOverallAnalysis(facets);
+  const result = deriveOverallResult(facets);
+
+  const relationCount = facets.reduce((sum, f) => sum + f.relationCount, 0);
+  const relationRefs = facets.flatMap((f) => f.relationRefs).slice(0, MAX_SURFACE_REFS);
+  const resourceCount = facets.reduce((sum, f) => sum + (f.resourceCount ?? 0), 0);
+  const resourceRefs = facets.flatMap((f) => f.resourceRefs ?? []).slice(0, MAX_SURFACE_REFS);
+
+  const summary = `Reachability & shared substrate: ${facets.map((f) => `${f.title} = ${f.resultState}`).join('; ')}.`;
+  const limitations = Array.from(new Set(facets.flatMap((f) => f.limitations)));
+
+  const base = buildSurfaceBase(
+    'REACHABILITY_SHARED_SUBSTRATE',
+    'Reachability & Shared Substrate',
+    analysis,
+    result,
+    'ARI_RESOURCE_ACCESS_AND_SHARED_SUBSTRATE_PROJECTION',
+    relationCount,
+    relationRefs,
+    summary,
+    limitations,
+    'AgentReachabilityReadModel.sharedResourceHubs, potentialChannels; PersistedOperationCoverageIntelligence.resourceAccessRelations, serviceCallRelations, persistenceCreationRelations',
+  );
+
+  return { ...base, resourceCount, resourceRefs, facets };
 }
 
 function buildMemoryContextIntegrity(
@@ -645,31 +738,123 @@ function buildEnforcementCoverage(
   return { ...surface, resultState, customerStatus };
 }
 
+type ProducerEvidenceState = {
+  producerId: string;
+  selected: boolean;
+  records: DecisionEvidenceProjection[];
+  outcome: ResultState;
+};
+
+function evidenceOutcomeFromRecord(record: DecisionEvidenceProjection | undefined): ResultState {
+  if (!record) return 'UNKNOWN';
+  const po = record.producerOutcome;
+  const cs = record.coverageStatus;
+  if (po === 'FAILED' || po === 'TIMEOUT' || po === 'CANCELLED') return 'PARTIAL';
+  if (po === 'PARTIAL' || cs === 'PARTIAL') return 'PARTIAL';
+  if (cs === 'UNKNOWN' || cs === 'NOT_ASSESSED') return 'UNKNOWN';
+  if (po === 'COMPLETE' && cs === 'COMPLETE') return 'ESTABLISHED';
+  return 'UNKNOWN';
+}
+
+function deriveProducerEvidenceStates(
+  projectedEvidence: DecisionEvidenceProjection[],
+  runContext: ActionAssuranceRunContext | undefined,
+): ProducerEvidenceState[] {
+  if (!runContext) return [];
+
+  const byProducer = new Map<string, DecisionEvidenceProjection[]>();
+  for (const e of projectedEvidence) {
+    const list = byProducer.get(e.producerId) ?? [];
+    list.push(e);
+    byProducer.set(e.producerId, list);
+  }
+
+  const canonicalSelected = new Set<string>();
+  for (const engine of runContext.selectedEngines ?? []) {
+    const canonical = resolveCanonicalProducerId(engine);
+    if (canonical) canonicalSelected.add(canonical);
+  }
+  // Explicit producer run IDs also select the corresponding producer.
+  if (runContext.staticScanId) canonicalSelected.add(PRODUCER_IDS.SAAS_STATIC);
+  if (runContext.runtimeTestId) canonicalSelected.add(PRODUCER_IDS.SAAS_RUNTIME);
+  if (runContext.wizardAssessmentId) canonicalSelected.add(PRODUCER_IDS.SAAS_WIZARD);
+  if (runContext.regulatoryReportId) canonicalSelected.add(PRODUCER_IDS.SAAS_REGULATORY);
+
+  const producers = Array.from(canonicalSelected).map((producerId) => {
+    const records = byProducer.get(producerId) ?? [];
+    const representative = records[0];
+    let outcome: ResultState;
+    if (records.length === 0) {
+      // Selected exact-run producer produced zero qualifying evidence records.
+      outcome = 'ANALYZED_EMPTY';
+    } else {
+      outcome = evidenceOutcomeFromRecord(representative);
+    }
+    return { producerId, selected: true, records, outcome };
+  });
+
+  return producers;
+}
+
+function deriveEvidenceSufficiency(
+  projectedEvidence: DecisionEvidenceProjection[],
+  runContext: ActionAssuranceRunContext | undefined,
+): { analysis: AnalysisCoverageState; result: ResultState; evidenceCount: number; evidenceRefs: string[]; findingRefs: FindingRef[] } {
+  const evidenceRefs = projectedEvidence.map((e) => e.evidenceId).slice(0, MAX_SURFACE_REFS);
+  const findingRefs = projectedEvidence.flatMap((e) => e.findingRefs).slice(0, MAX_SURFACE_REFS);
+
+  // Without an explicit run context we cannot distinguish producer selection vs
+  // ANALYZED_EMPTY, so we fall back to the safest coarse interpretation:
+  // evidence records present -> analyzed/partial; none present -> not analyzed.
+  if (!runContext) {
+    if (projectedEvidence.length === 0) {
+      return { analysis: 'NOT_ANALYZED', result: 'NOT_ANALYZED', evidenceCount: 0, evidenceRefs, findingRefs };
+    }
+    return { analysis: 'ANALYZED', result: 'PARTIAL', evidenceCount: projectedEvidence.length, evidenceRefs, findingRefs };
+  }
+
+  const producers = deriveProducerEvidenceStates(projectedEvidence, runContext);
+
+  if (producers.length === 0) {
+    return {
+      analysis: 'NOT_ANALYZED',
+      result: 'NOT_ANALYZED',
+      evidenceCount: 0,
+      evidenceRefs,
+      findingRefs,
+    };
+  }
+
+  const outcomes = producers.map((p) => p.outcome);
+  const analysis: AnalysisCoverageState = outcomes.some((o) => o === 'PARTIAL' || o === 'UNKNOWN')
+    ? 'PARTIAL'
+    : 'ANALYZED';
+
+  const totalRecords = producers.reduce((sum, p) => sum + p.records.length, 0);
+  const result: ResultState =
+    totalRecords === 0
+      ? outcomes.some((o) => o === 'PARTIAL' || o === 'UNKNOWN')
+        ? 'PARTIAL'
+        : 'ANALYZED_EMPTY'
+      : 'PARTIAL';
+
+  return { analysis, result, evidenceCount: totalRecords, evidenceRefs, findingRefs };
+}
+
 function buildEvidenceSufficiencyUncertainty(
   readModel: AgentReachabilityReadModel,
   _data: PersistedOperationCoverageIntelligence,
   projectedEvidence: DecisionEvidenceProjection[],
+  runContext: ActionAssuranceRunContext | undefined,
 ): ActionAssuranceSurface {
-  const analyzerFamilies = readModel.coverage.items;
-  const allAnalyzed = analyzerFamilies.every((c) => c.state === 'ANALYZED');
-  const anyNotAnalyzed = analyzerFamilies.some((c) => c.state === 'NOT_ANALYZED' || c.state === 'UNKNOWN');
+  const { analysis, result, evidenceCount, evidenceRefs, findingRefs } = deriveEvidenceSufficiency(
+    projectedEvidence,
+    runContext,
+  );
 
-  const analysis: AnalysisCoverageState =
-    readModel.availability === 'NOT_AVAILABLE'
-      ? 'NOT_ANALYZED'
-      : !allAnalyzed || anyNotAnalyzed
-        ? 'PARTIAL'
-        : projectedEvidence.length === 0
-          ? 'NOT_ANALYZED'
-          : 'ANALYZED';
-
-  const result: ResultState = projectedEvidence.length === 0 ? 'NOT_ANALYZED' : 'PARTIAL';
-
-  const evidenceCount = projectedEvidence.length;
-  const evidenceRefs = projectedEvidence.map((e) => e.evidenceId).slice(0, MAX_SURFACE_REFS);
   const frontierCount = readModel.frontiers.total;
 
-  const summary = `Evidence sufficiency and uncertainty: ${evidenceCount} exact-run Evidence Core projection(s), ${analyzerFamilies.length} analyzer coverage family(ies), ${frontierCount} unresolved frontier(s).`;
+  const summary = `Evidence sufficiency and uncertainty: ${evidenceCount} exact-run Evidence Core projection(s), ${readModel.coverage.items.length} analyzer coverage family(ies), ${frontierCount} unresolved frontier(s).`;
 
   const limitations = [
     'SURFACE_IMPLEMENTED != EVIDENCE_COMPLETE',
@@ -679,45 +864,89 @@ function buildEvidenceSufficiencyUncertainty(
     'ALL_ANALYZERS_RAN != SUFFICIENT_EVIDENCE',
     'ZERO_FRONTIERS != SUFFICIENT_EVIDENCE',
     'ARI_ANALYSIS_COVERAGE != EVIDENCE_SUFFICIENCY',
+    'ZERO_EVIDENCE != NOT_ANALYZED',
+    'NO_EVIDENCE_RECORD != PRODUCER_NOT_RUN',
   ];
 
-  return {
-    ...buildSurfaceBase(
-      'EVIDENCE_SUFFICIENCY_UNCERTAINTY',
-      'Evidence Sufficiency & Uncertainty',
-      analysis,
-      result,
-      'EXACT_RUN_EVIDENCE_AND_ANALYZER_COVERAGE_PROJECTION',
-      0,
-      [],
-      summary,
-      limitations,
-      'AgentReachabilityReadModel.coverage, frontiers; exact-run DecisionEvidenceProjection',
-      evidenceRefs,
-    ),
-    evidenceCount,
-  };
+  const base = buildSurfaceBase(
+    'EVIDENCE_SUFFICIENCY_UNCERTAINTY',
+    'Evidence Sufficiency & Uncertainty',
+    analysis,
+    result,
+    'EXACT_RUN_EVIDENCE_AND_ANALYZER_COVERAGE_PROJECTION',
+    0,
+    [],
+    summary,
+    limitations,
+    'AgentReachabilityReadModel.coverage, frontiers; exact-run DecisionEvidenceProjection; ActionAssuranceRunContext',
+    evidenceRefs,
+  );
+
+  return { ...base, evidenceCount, findingRefs, findingCount: findingRefs.length };
+}
+
+function deriveRuntimeState(
+  projectedEvidence: DecisionEvidenceProjection[],
+  runContext: ActionAssuranceRunContext | undefined,
+): { analysis: AnalysisCoverageState; result: ResultState; runtimeEvidence: DecisionEvidenceProjection[]; staticEvidence: DecisionEvidenceProjection[] } {
+  const runtimeEvidence = projectedEvidence.filter((e) => e.producerId === PRODUCER_IDS.SAAS_RUNTIME);
+  const staticEvidence = projectedEvidence.filter((e) => e.producerId === PRODUCER_IDS.SAAS_STATIC);
+
+  const explicitRuntimeSelected = runContext
+    ? !!(runContext.runtimeTestId ||
+        (runContext.selectedEngines ?? []).some((e) => resolveCanonicalProducerId(e) === PRODUCER_IDS.SAAS_RUNTIME))
+    : undefined;
+
+  // When no explicit run context is supplied, infer runtime participation from
+  // the presence of runtime evidence records.
+  const runtimeSelected = explicitRuntimeSelected ?? runtimeEvidence.length > 0;
+
+  if (!runtimeSelected) {
+    return {
+      analysis: 'NOT_ANALYZED',
+      result: runContext ? 'RUNTIME_NOT_SELECTED' : 'NOT_RUNTIME_VALIDATED',
+      runtimeEvidence,
+      staticEvidence,
+    };
+  }
+
+  if (runtimeEvidence.length === 0) {
+    return {
+      analysis: 'ANALYZED',
+      result: runContext ? 'RUNTIME_SELECTED_EMPTY' : 'NOT_RUNTIME_VALIDATED',
+      runtimeEvidence,
+      staticEvidence,
+    };
+  }
+
+  const representative = runtimeEvidence[0];
+  const po = representative.producerOutcome;
+  const cs = representative.coverageStatus;
+
+  if (po === 'FAILED' || po === 'TIMEOUT' || po === 'CANCELLED') {
+    return { analysis: 'PARTIAL', result: 'RUNTIME_FAILED', runtimeEvidence, staticEvidence };
+  }
+  if (po === 'PARTIAL' || cs === 'PARTIAL') {
+    return { analysis: 'PARTIAL', result: 'RUNTIME_PARTIAL', runtimeEvidence, staticEvidence };
+  }
+  if (cs === 'UNKNOWN' || cs === 'NOT_ASSESSED') {
+    return { analysis: 'PARTIAL', result: 'RUNTIME_PARTIAL', runtimeEvidence, staticEvidence };
+  }
+
+  return { analysis: 'ANALYZED', result: 'RUNTIME_EVIDENCE_PRESENT', runtimeEvidence, staticEvidence };
 }
 
 function buildRuntimeValidatedDifferential(
   _readModel: AgentReachabilityReadModel,
   _data: PersistedOperationCoverageIntelligence,
   projectedEvidence: DecisionEvidenceProjection[],
+  runContext: ActionAssuranceRunContext | undefined,
 ): ActionAssuranceSurface {
-  const runtimeEvidence = projectedEvidence.filter((e) => e.producerId === PRODUCER_IDS.SAAS_RUNTIME);
-  const staticEvidence = projectedEvidence.filter((e) => e.producerId === PRODUCER_IDS.SAAS_STATIC);
-
-  const analysis: AnalysisCoverageState = runtimeEvidence.length === 0 ? 'NOT_ANALYZED' : 'ANALYZED';
-
-  let result: ResultState = 'NOT_RUNTIME_VALIDATED';
-  if (runtimeEvidence.length > 0) {
-    // HAIEC has no canonical cross-plane action comparator in this projection;
-    // we deliberately stop at "runtime evidence present, not correlated".
-    result = 'RUNTIME_EVIDENCE_PRESENT';
-  }
+  const { analysis, result, runtimeEvidence, staticEvidence } = deriveRuntimeState(projectedEvidence, runContext);
 
   const evidenceCount = runtimeEvidence.length;
   const evidenceRefs = runtimeEvidence.map((e) => e.evidenceId).slice(0, MAX_SURFACE_REFS);
+  const findingRefs = runtimeEvidence.flatMap((e) => e.findingRefs).slice(0, MAX_SURFACE_REFS);
 
   const summary = `Runtime-validated differential: ${runtimeEvidence.length} runtime evidence projection(s), ${staticEvidence.length} static evidence projection(s). Exact static/runtime action correspondence not established by the available producers.`;
 
@@ -729,26 +958,27 @@ function buildRuntimeValidatedDifferential(
     'GENERIC_RUNTIME_TRACE != OBSERVED_CAPABILITY',
     'RUNTIME_TEST_EXECUTED != STATIC_RELATION_CONFIRMED',
     'EXACT_CROSS_PLANE_COMPARATOR_NOT_AVAILABLE',
+    'RUNTIME_NOT_SELECTED != RUNTIME_SELECTED_BUT_EMPTY',
+    'RUNTIME_FAILED != RUNTIME_NOT_ANALYZED',
   ];
 
-  return {
-    ...buildSurfaceBase(
-      'RUNTIME_VALIDATED_DIFFERENTIAL',
-      'Runtime-Validated Differential',
-      analysis,
-      result,
-      runtimeEvidence.length === 0
-        ? 'RUNTIME_EVIDENCE_NOT_INCLUDED_IN_EVALUATED_SCOPE'
-        : 'RUNTIME_EVIDENCE_PRESENT_WITHOUT_EXACT_CROSS_PLANE_COMPARATOR',
-      0,
-      [],
-      summary,
-      limitations,
-      'Exact-run DecisionEvidenceProjection filtered by saas-runtime and saas-static producer IDs',
-      evidenceRefs,
-    ),
-    evidenceCount,
-  };
+  const base = buildSurfaceBase(
+    'RUNTIME_VALIDATED_DIFFERENTIAL',
+    'Runtime-Validated Differential',
+    analysis,
+    result,
+    result === 'RUNTIME_NOT_SELECTED'
+      ? 'RUNTIME_EVIDENCE_NOT_INCLUDED_IN_EVALUATED_SCOPE'
+      : 'RUNTIME_EVIDENCE_PRESENT_WITHOUT_EXACT_CROSS_PLANE_COMPARATOR',
+    0,
+    [],
+    summary,
+    limitations,
+    'Exact-run DecisionEvidenceProjection filtered by saas-runtime and saas-static producer IDs; ActionAssuranceRunContext',
+    evidenceRefs,
+  );
+
+  return { ...base, evidenceCount, findingRefs, findingCount: findingRefs.length };
 }
 
 // ─── Surface assembly and report builder ────────────────────────────────────
@@ -757,6 +987,7 @@ function buildAllSurfaces(
   readModel: AgentReachabilityReadModel,
   data: PersistedOperationCoverageIntelligence,
   projectedEvidence: DecisionEvidenceProjection[],
+  runContext: ActionAssuranceRunContext | undefined,
 ): ActionAssuranceSurface[] {
   const surfaces: ActionAssuranceSurface[] = [
     buildAgentCapabilityConstellation(readModel, data),
@@ -767,8 +998,8 @@ function buildAllSurfaces(
     buildActionCompositionDeferred(readModel, data),
     buildReplayRetry(readModel, data),
     buildEnforcementCoverage(readModel, data),
-    buildEvidenceSufficiencyUncertainty(readModel, data, projectedEvidence),
-    buildRuntimeValidatedDifferential(readModel, data, projectedEvidence),
+    buildEvidenceSufficiencyUncertainty(readModel, data, projectedEvidence, runContext),
+    buildRuntimeValidatedDifferential(readModel, data, projectedEvidence, runContext),
   ];
 
   return surfaces.slice(0, MAX_SURFACES);
@@ -789,6 +1020,7 @@ export function buildActionAssuranceSectionFromReadModel(
   data: PersistedOperationCoverageIntelligence,
   provenance: SourceProvenance,
   projectedEvidence: DecisionEvidenceProjection[] = [],
+  runContext?: ActionAssuranceRunContext,
 ): ActionAssuranceReportSection {
   if (readModel.availability === 'NOT_AVAILABLE') {
     return {
@@ -814,7 +1046,7 @@ export function buildActionAssuranceSectionFromReadModel(
     };
   }
 
-  const surfaces = buildAllSurfaces(readModel, data, projectedEvidence);
+  const surfaces = buildAllSurfaces(readModel, data, projectedEvidence, runContext);
   const agentCount = readModel.agents.total;
   const relationCount = surfaces.reduce((sum, s) => sum + (s.relationCount ?? 0), 0);
   const frontierCount = surfaces.filter(
@@ -870,6 +1102,7 @@ function mapAriUnavailableReason(
 export async function buildActionAssuranceReportSection(
   evaluation: AssuranceEvaluation,
   projectedEvidence?: DecisionEvidenceProjection[],
+  runContext?: ActionAssuranceRunContext,
 ): Promise<ActionAssuranceReportSection> {
   function unavailable(reason: 'SECTION_BUILD_FAILED'): ActionAssuranceReportSection {
     return {
@@ -908,7 +1141,7 @@ export async function buildActionAssuranceReportSection(
     return buildActionAssuranceSectionFromReadModel(readModel, result.data, {
       scanId: result.scanId,
       commitSha: result.commitSha,
-    }, projectedEvidence ?? []);
+    }, projectedEvidence ?? [], runContext);
   } catch {
     return unavailable('SECTION_BUILD_FAILED');
   }

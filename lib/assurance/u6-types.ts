@@ -6,6 +6,7 @@
  */
 
 import { AssuranceDisposition, ClaimState, CapabilityComparisonRecord, CapabilityFact, PlaneAvailability, ProfileVerdict } from './types';
+import type { FindingRef } from '@/lib/evidence/evidence-contract';
 
 export const U6_REPORT_SCHEMA_VERSION = '1.0.0' as const;
 export const U6_BUNDLE_SCHEMA_VERSION = '1.0.0' as const;
@@ -623,9 +624,29 @@ export type ResultState =
   | 'NOT_ANALYZED'
   | 'UNSUPPORTED'
   | 'NOT_RUNTIME_VALIDATED'
+  | 'RUNTIME_NOT_SELECTED'
+  | 'RUNTIME_SELECTED_EMPTY'
+  | 'RUNTIME_FAILED'
+  | 'RUNTIME_PARTIAL'
   | 'RUNTIME_EVIDENCE_PRESENT'
   | 'STATIC_WITH_RUNTIME_CORROBORATION'
   | 'STATIC_RUNTIME_DIVERGENCE';
+
+/**
+ * S6: exact-run participation context. A read-only snapshot of which producers
+ * were selected/executed for the bound Assurance evaluation. Used to distinguish
+ * NOT_ANALYZED from ANALYZED_EMPTY and to preserve producer outcome/coverage
+ * semantics without querying arbitrary state.
+ */
+export interface ActionAssuranceRunContext {
+  selectedEngines: string[];
+  staticScanId?: string | null;
+  runtimeTestId?: string | null;
+  wizardAssessmentId?: string | null;
+  regulatoryReportId?: string | null;
+  orchestratorRunId: string;
+  completedAt?: string;
+}
 
 /**
  * A sub-dimension of a multi-family S6 surface (e.g. ACTION_COMPOSITION vs
@@ -648,6 +669,9 @@ export interface ActionAssuranceSurfaceFacet {
   summary: string;
   customerStatus: string;
   limitations: string[];
+  /** Canonical FindingRefs only when an exact per-facet mapping exists. */
+  findingRefs?: FindingRef[];
+  findingCount?: number;
 }
 
 /**
@@ -677,8 +701,8 @@ export interface ActionAssuranceSurface {
   /** Canonical Evidence Core evidence IDs that support this surface. */
   evidenceRefs: string[];
   evidenceCount?: number;
-  /** Canonical finding IDs only when an exact mapping exists. */
-  findingRefs: string[];
+  /** Canonical FindingRefs only when an exact mapping exists. */
+  findingRefs: FindingRef[];
   findingCount?: number;
   sourceBasis: string;
   customerStatus: string;
