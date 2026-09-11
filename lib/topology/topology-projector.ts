@@ -1096,6 +1096,12 @@ export function buildEvaluatedTopologyProjection(
         scannerVersion: null,
         scannedAt: null,
       },
+      evaluatedBasis: {
+        state: 'NOT_AVAILABLE',
+        evaluationId: provenance.evaluationId,
+        evaluationSnapshotAt: null,
+        disposition: null,
+      },
       lenses: SUPPORTED_MAP_LENSES,
       zoomLevels: SUPPORTED_SEMANTIC_ZOOM_LEVELS,
     };
@@ -1164,6 +1170,12 @@ export function buildEvaluatedTopologyProjection(
       commitSha: provenance.repositoryCommitSha,
       scannerVersion: null,
       scannedAt: null,
+    },
+    evaluatedBasis: {
+      state: 'AVAILABLE',
+      evaluationId: provenance.evaluationId,
+      evaluationSnapshotAt: null,
+      disposition: null,
     },
     lenses: SUPPORTED_MAP_LENSES,
     zoomLevels: SUPPORTED_SEMANTIC_ZOOM_LEVELS,

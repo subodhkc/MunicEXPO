@@ -9,14 +9,18 @@
  *   PROJECT_MANY
  *   NO_REANALYSIS
  *   NO_U5_RECOMPUTATION
+ *   PRODUCT_BUNDLE != DRY_RUN_PREVIEW_BUNDLE
+ *   PRODUCT_BUNDLE != CALLER_SUPPLIED_COVERAGE
  */
 
 import type { AssuranceEvaluation } from './types';
 import type { PersistedOperationCoverageIntelligence } from '@/lib/ai-security/operation-coverage-read';
 import {
+  composeAssuranceOutput,
   composeAssuranceOutputFromCoverage,
   type EvaluatedAssuranceOutput,
 } from './assurance-output-composer';
+import { loadEvaluatedOperationCoverage } from './u6-scan-loader';
 import { buildAgenticProductionPassport } from './agentic-production-passport';
 import { buildAssuranceReportFromOutput } from './assurance-report-composer';
 import { buildMachineReadableAssuranceOutput } from './assurance-artifact-manifest';
@@ -41,7 +45,7 @@ export interface AssuranceOutputBundle {
   reasons?: string[];
 }
 
-export interface AssuranceBundleInput {
+export interface AssuranceBundleFromCoverageInput {
   evaluation: Pick<AssuranceEvaluation, 'id' | 'organizationId' | 'aiSystemId' | 'orchestratorRunId'>;
   coverage: PersistedOperationCoverageIntelligence;
   scanId: string;
@@ -49,14 +53,22 @@ export interface AssuranceBundleInput {
   aiSystemName?: string;
 }
 
-export function buildAssuranceOutputBundle(input: AssuranceBundleInput): AssuranceOutputBundle {
-  // Exactly one composer invocation for the entire bundle.
-  const output = composeAssuranceOutputFromCoverage({
-    evaluation: input.evaluation,
-    coverage: input.coverage,
-    scanId: input.scanId,
-    commitSha: input.commitSha,
-  });
+export interface AssuranceBundleResult {
+  availability: 'ESTABLISHED' | 'PARTIAL' | 'NOT_AVAILABLE';
+  bundle?: AssuranceOutputBundle;
+  reason?: string;
+}
+
+function buildBundleFromOutput(
+  output: EvaluatedAssuranceOutput,
+  coverage: PersistedOperationCoverageIntelligence,
+  aiSystemName?: string,
+): AssuranceOutputBundle {
+  const evaluationId = output.evaluationIdentity.evaluationId;
+  const scanId = output.evaluationIdentity.exactScanId;
+  const commitSha = output.evaluationIdentity.repositoryCommitSha;
+  const orgId = output.evaluationIdentity.organizationId;
+  const aiSystemId = output.evaluationIdentity.aiSystemId;
 
   const passport = buildAgenticProductionPassport(output);
   const report = buildAssuranceReportFromOutput(output);
@@ -66,19 +78,17 @@ export function buildAssuranceOutputBundle(input: AssuranceBundleInput): Assuran
     output.buildProvenance.outputGeneratorBuildIdentity.buildTimestamp,
   );
 
-  const topology = buildEvaluatedTopologyProjection(input.coverage, {
-    evaluationId: input.evaluation.id,
-    scanId: input.scanId,
-    repositoryCommitSha: input.commitSha,
-    organizationId: input.evaluation.organizationId,
-    aiSystemId: input.evaluation.aiSystemId,
-    aiSystemName: input.aiSystemName,
+  const topology = buildEvaluatedTopologyProjection(coverage, {
+    evaluationId,
+    scanId,
+    repositoryCommitSha: commitSha,
+    organizationId: orgId,
+    aiSystemId,
+    aiSystemName,
   });
 
   const constellation = buildConstellationProjection(topology, null);
-  const constellationExport = buildConstellationExport(constellation, {
-    evaluationId: input.evaluation.id,
-  });
+  const constellationExport = buildConstellationExport(constellation, { evaluationId });
 
   const artifacts = [
     { name: 'passport.json', artifactType: 'passport', schemaVersion: passport.schemaVersion, bytes: Buffer.from(JSON.stringify(passport)) },
@@ -89,9 +99,9 @@ export function buildAssuranceOutputBundle(input: AssuranceBundleInput): Assuran
   ];
 
   const manifest = buildArtifactManifest(artifacts, {
-    evaluationId: input.evaluation.id,
-    scanId: input.scanId,
-    repositoryCommit: input.commitSha,
+    evaluationId,
+    scanId,
+    repositoryCommit: commitSha,
     outputGeneratorBuildCommit: output.buildProvenance.outputGeneratorBuildIdentity.commitSha,
     analyzerBuildAvailable: output.buildProvenance.analyzerBuildIdentity.available,
     generatedTimestamp: output.buildProvenance.outputGeneratorBuildIdentity.buildTimestamp,
@@ -99,9 +109,9 @@ export function buildAssuranceOutputBundle(input: AssuranceBundleInput): Assuran
 
   return {
     availability: topology.mapAvailability === 'AVAILABLE' ? 'ESTABLISHED' : 'PARTIAL',
-    evaluationId: input.evaluation.id,
-    exactScanId: input.scanId,
-    repositoryCommitSha: input.commitSha,
+    evaluationId,
+    exactScanId: scanId,
+    repositoryCommitSha: commitSha,
     output,
     passport,
     report,
@@ -110,4 +120,59 @@ export function buildAssuranceOutputBundle(input: AssuranceBundleInput): Assuran
     constellationSvg: constellationExport.svg,
     manifest,
   };
+}
+
+/**
+ * Dry-run / fixture projection helper.
+ *
+ * Accepts a caller-supplied in-memory coverage snapshot for unit tests and
+ * pre-auth previews. Does NOT load a persisted evaluation and does NOT run
+ * Action Proof / Reachability / Action Assurance sections.
+ */
+export function buildAssuranceOutputBundleFromCoverage(
+  input: AssuranceBundleFromCoverageInput,
+): AssuranceOutputBundle {
+  const output = composeAssuranceOutputFromCoverage({
+    evaluation: input.evaluation,
+    coverage: input.coverage,
+    scanId: input.scanId,
+    commitSha: input.commitSha,
+  });
+
+  return buildBundleFromOutput(output, input.coverage, input.aiSystemName);
+}
+
+/**
+ * Production exact-evaluation bundle.
+ *
+ * Resolves the exact historical scan via the evaluation and composes all
+ * artifacts once. Fails closed if the exact snapshot cannot be loaded.
+ */
+export async function buildAssuranceOutputBundle(
+  evaluation: AssuranceEvaluation,
+  aiSystemName?: string,
+): Promise<AssuranceBundleResult> {
+  const composed = await composeAssuranceOutput(evaluation);
+
+  if (composed.status !== 'AVAILABLE') {
+    return {
+      availability: 'NOT_AVAILABLE',
+      reason: composed.reason,
+    };
+  }
+
+  const output = composed.output;
+
+  // Load the same exact coverage separately for canonical topology projection.
+  const loaded = await loadEvaluatedOperationCoverage(evaluation);
+  if ('availability' in loaded) {
+    return {
+      availability: 'NOT_AVAILABLE',
+      reason: `EVALUATED_SNAPSHOT_UNAVAILABLE: ${loaded.unavailableReason}`,
+    };
+  }
+
+  const bundle = buildBundleFromOutput(output, loaded.data, aiSystemName);
+
+  return { availability: bundle.availability, bundle };
 }

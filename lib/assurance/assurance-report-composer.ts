@@ -12,6 +12,7 @@ import { createHash } from 'crypto';
 import type { EvaluatedAssuranceOutput } from './assurance-output-composer';
 import type { ArchetypeDimensionValue } from '@/lib/ai-inventory/execution-archetype';
 import type { AriCoverageState, AriRelationState } from '@/lib/ai-security/types';
+import type { ActionProofReportSection, AgentReachabilityReportSection, ActionAssuranceReportSection } from './u6-types';
 
 const REPORT_SCHEMA_VERSION = 'report-0.1.0';
 
@@ -79,6 +80,9 @@ export interface AssuranceReport {
     humanControls: string;
     context: string;
     aiSecurityFindings: { finding: string; severity: 'INFO' | 'FRONTIER'; evidence: string }[];
+    actionProof: ActionProofReportSection;
+    reachability: AgentReachabilityReportSection;
+    actionAssurance: ActionAssuranceReportSection;
     evidenceCoverage: { overall: AriCoverageState; families: { family: string; state: AriCoverageState }[] };
     runtimeProviderState: { runtime: string; provider: string };
     artifactProvenance: {
@@ -242,6 +246,9 @@ export function buildAssuranceReportFromOutput(
       humanControls: humanControl,
       context,
       aiSecurityFindings: findings,
+      actionProof: output.actionProof,
+      reachability: output.reachability,
+      actionAssurance: output.actionAssurance,
       evidenceCoverage: {
         overall: ea.coverageSummary.overall,
         families: Object.entries(ea.coverageSummary.families ?? {}).map(([family, state]) => ({ family, state })),

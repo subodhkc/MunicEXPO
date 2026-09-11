@@ -7,6 +7,7 @@
 
 import { createHash } from 'crypto';
 import type { ArtifactPublicationState } from './artifact-publication-state';
+import type { ActionProofReportSection, AgentReachabilityReportSection, ActionAssuranceReportSection } from './u6-types';
 
 export interface ArtifactManifestEntry {
   name: string;
@@ -135,6 +136,9 @@ export interface MachineReadableAssuranceOutput {
     byReasonCode: Record<string, number>;
     ariFamilyFrontiers: { family: string; state: string }[];
   };
+  actionProof: ActionProofReportSection;
+  reachability: AgentReachabilityReportSection;
+  actionAssurance: ActionAssuranceReportSection;
 }
 
 export function buildMachineReadableAssuranceOutput(
@@ -155,6 +159,9 @@ export function buildMachineReadableAssuranceOutput(
       summary: { totalFrontiers: number; byState: Record<string, number>; byReasonCode: Record<string, number> };
       ariFamilyFrontiers: { family: string; state: string }[];
     };
+    actionProof: ActionProofReportSection;
+    reachability: AgentReachabilityReportSection;
+    actionAssurance: ActionAssuranceReportSection;
   },
   generatedAt: string,
 ): MachineReadableAssuranceOutput {
@@ -186,5 +193,8 @@ export function buildMachineReadableAssuranceOutput(
       byReasonCode: output.evidenceFrontier.summary.byReasonCode,
       ariFamilyFrontiers: output.evidenceFrontier.ariFamilyFrontiers,
     },
+    actionProof: output.actionProof,
+    reachability: output.reachability,
+    actionAssurance: output.actionAssurance,
   };
 }
