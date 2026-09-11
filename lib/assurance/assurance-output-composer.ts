@@ -32,6 +32,16 @@ import type {
   ActionAssuranceReportSection,
 } from './u6-types';
 import type { AriCoverageState, AriRelationState } from '@/lib/ai-security/types';
+import {
+  calculateRuleExecutionSummary,
+  type RuleExecution,
+} from '@/lib/ai-security/rule-execution-helpers';
+import {
+  buildScanFrameworkRelevanceForFinding,
+  type ScanFrameworkProjectionEntry,
+} from '@/capabilities/engine-qual/versioned-framework-mapping';
+import type { FrameworkRelevanceEntry } from '@/lib/reports/base/report-types';
+import type { Prisma } from '@prisma/client';
 
 const COMPOSER_SCHEMA_VERSION = 'output-0.2.0';
 
@@ -107,6 +117,13 @@ export interface EvaluatedAssuranceOutput {
   reachability: AgentReachabilityReportSection;
   actionAssurance: ActionAssuranceReportSection;
   evidenceFrontier: EvidenceFrontierSection;
+  /** WP-S5: Aggregate versioned framework relevance crosswalk for this evaluation. Not a compliance verdict. */
+  frameworkRelevanceSummary: {
+    projectionStatus: 'ASSESSED' | 'NOT_ASSESSED';
+    reasonCode: string;
+    frameworks: FrameworkRelevanceEntry[];
+    disclaimer: string;
+  };
 }
 
 export type AssuranceOutputResult =
@@ -286,6 +303,12 @@ export function composeAssuranceOutputFromCoverage(
     reachability: notAvailableReachability(scanId, commitSha),
     actionAssurance: notAvailableActionAssurance(scanId, commitSha),
     evidenceFrontier,
+    frameworkRelevanceSummary: {
+      projectionStatus: 'NOT_ASSESSED',
+      reasonCode: 'NO_RULE_EXECUTION_TRUTH',
+      frameworks: [],
+      disclaimer: 'Framework relevance requires exact persisted rule execution truth.',
+    },
   };
 }
 
@@ -293,6 +316,86 @@ export interface LoadedAssuranceCoverage {
   data: PersistedOperationCoverageIntelligence;
   scanId: string;
   commitSha: string | null;
+  /** Persisted rule execution truth for this exact scan, when available. */
+  rulesEvaluated?: Prisma.JsonValue;
+}
+
+function parseRulesEvaluated(rulesEvaluated: Prisma.JsonValue | null | undefined): Record<string, RuleExecution> | null {
+  try {
+    const parsed = typeof rulesEvaluated === 'string' ? JSON.parse(rulesEvaluated) : rulesEvaluated;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    return parsed as Record<string, RuleExecution>;
+  } catch {
+    return null;
+  }
+}
+
+function toFrameworkRelevanceEntry(m: ScanFrameworkProjectionEntry): FrameworkRelevanceEntry {
+  return {
+    frameworkId: m.frameworkId,
+    family: m.family,
+    release: m.release,
+    categoryId: m.categoryId,
+    categoryTitle: m.categoryTitle,
+    mappingBasis: m.mappingBasis,
+    mappingStrength: m.mappingStrength,
+    mappingQualification: m.mappingQualification,
+    coverageClass: m.coverageClass,
+    limitations: m.limitations,
+    sourceIdentity: m.sourceIdentity,
+    isCanonical: m.mappingQualification !== 'LEGACY_UNVERSIONED',
+    ruleId: m.displayRuleId ?? m.haiecSubjectId,
+    producerRuleId: m.producerRuleId,
+  };
+}
+
+function buildFrameworkRelevanceSummary(
+  rulesEvaluated: Prisma.JsonValue | undefined,
+): EvaluatedAssuranceOutput['frameworkRelevanceSummary'] {
+  const parsed = parseRulesEvaluated(rulesEvaluated);
+  if (!parsed) {
+    return {
+      projectionStatus: 'NOT_ASSESSED',
+      reasonCode: 'NO_RULE_EXECUTION_TRUTH',
+      frameworks: [],
+      disclaimer: 'Framework relevance requires exact persisted rule execution truth.',
+    };
+  }
+
+  const summary = calculateRuleExecutionSummary(parsed);
+  const executionTruthStatus = summary.isTrustedExecutionTruth ? 'TRUSTED' : 'UNTRUSTED_EXECUTION_TRUTH';
+
+  const getProducerState = (record: RuleExecution): 'RUN' | 'NOT_RUN' | 'FAILED' => {
+    if (record.status === 'completed') return 'RUN';
+    if (record.status === 'error') return 'FAILED';
+    return 'NOT_RUN';
+  };
+
+  const seen = new Set<string>();
+  const frameworks: FrameworkRelevanceEntry[] = [];
+
+  for (const ruleId of Object.keys(parsed)) {
+    const record = parsed[ruleId];
+    const relevance = buildScanFrameworkRelevanceForFinding(ruleId, {
+      producerState: getProducerState(record),
+      executionTruthStatus,
+      applicability: record.applicability,
+    });
+    for (const entry of relevance.applicableMappings.map(toFrameworkRelevanceEntry)) {
+      const key = `${entry.frameworkId}::${entry.release}::${entry.categoryId}::${entry.ruleId}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        frameworks.push(entry);
+      }
+    }
+  }
+
+  return {
+    projectionStatus: frameworks.length > 0 ? 'ASSESSED' : 'NOT_ASSESSED',
+    reasonCode: frameworks.length > 0 ? 'QUALIFIED_SUBJECT_BINDINGS_FOUND' : 'NO_QUALIFIED_SUBJECT_BINDING',
+    frameworks,
+    disclaimer: 'Framework mappings indicate relevance of observed evidence to external framework categories/controls. Mapping presence does not imply control satisfaction, coverage, compliance, or certification.',
+  };
 }
 
 /**
@@ -319,12 +422,14 @@ export function buildAssuranceOutputFromLoadedCoverage(
   const actionProof = buildActionProofReportSectionFromSnapshot(loaded.data, loaded.scanId, loaded.commitSha);
   const reachability = buildAgentReachabilityReportSectionFromSnapshot(readModel);
   const actionAssurance = buildActionAssuranceReportSectionFromSnapshot(readModel, loaded.data, loaded.scanId, loaded.commitSha);
+  const frameworkRelevanceSummary = buildFrameworkRelevanceSummary(loaded.rulesEvaluated ?? null);
 
   return {
     ...base,
     actionProof,
     reachability,
     actionAssurance,
+    frameworkRelevanceSummary,
   };
 }
 

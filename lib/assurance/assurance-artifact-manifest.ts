@@ -164,6 +164,7 @@ export interface MachineReadableAssuranceOutput {
   actionProof: ActionProofReportSection;
   reachability: AgentReachabilityReportSection;
   actionAssurance: ActionAssuranceReportSection;
+  frameworkRelevanceSummary: EvaluatedAssuranceOutput['frameworkRelevanceSummary'];
 }
 
 export function buildMachineReadableAssuranceOutput(
@@ -233,5 +234,6 @@ export function buildMachineReadableAssuranceOutput(
     actionProof: output.actionProof,
     reachability: output.reachability,
     actionAssurance: output.actionAssurance,
+    frameworkRelevanceSummary: output.frameworkRelevanceSummary,
   };
 }

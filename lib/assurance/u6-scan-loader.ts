@@ -14,6 +14,7 @@
  */
 
 import { prisma } from '@/lib/prisma';
+import type { Prisma } from '@prisma/client';
 import {
   validatePersistedSnapshot,
   type PersistedOperationCoverageIntelligence,
@@ -24,6 +25,8 @@ export interface EvaluatedScanResult {
   scanId: string;
   commitSha: string | null;
   data: PersistedOperationCoverageIntelligence;
+  /** Persisted rule execution truth for this exact scan, when available. */
+  rulesEvaluated?: Prisma.JsonValue;
 }
 
 export type EvaluatedScanUnavailableReason =
@@ -71,7 +74,7 @@ export async function loadEvaluatedOperationCoverage(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const scan = await (prisma as any).ai_security_scans.findFirst({
     where: { scanId: run.staticScanId },
-    select: { scanId: true, commitSha: true, organizationId: true, aiSystemId: true, operationCoverageIntelligence: true },
+    select: { scanId: true, commitSha: true, organizationId: true, aiSystemId: true, operationCoverageIntelligence: true, rulesEvaluated: true },
   });
 
   if (!scan) {
@@ -172,5 +175,6 @@ export async function loadEvaluatedOperationCoverage(
     scanId: scan.scanId,
     commitSha: scan.commitSha ?? null,
     data,
+    rulesEvaluated: scan.rulesEvaluated,
   };
 }
