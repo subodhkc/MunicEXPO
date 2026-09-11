@@ -6,6 +6,7 @@
  */
 
 import { createHash } from 'crypto';
+import type { ArtifactPublicationState } from './artifact-publication-state';
 
 export interface ArtifactManifestEntry {
   name: string;
@@ -16,6 +17,8 @@ export interface ArtifactManifestEntry {
   repositoryCommit: string | null;
   outputGeneratorBuildCommit: string;
   analyzerBuildAvailable: boolean;
+  publicationState: ArtifactPublicationState;
+  publicationTransitionReceipt?: string;
   generatedTimestamp: string;
   byteSize: number;
   sha256: string;
@@ -62,6 +65,7 @@ export function buildArtifactManifest(
     repositoryCommit: input.repositoryCommit,
     outputGeneratorBuildCommit: input.outputGeneratorBuildCommit,
     analyzerBuildAvailable: input.analyzerBuildAvailable,
+    publicationState: 'PRIVATE_GENERATED',
     generatedTimestamp: input.generatedTimestamp,
     byteSize: a.bytes.length,
     sha256: computeArtifactSha256(a.bytes),

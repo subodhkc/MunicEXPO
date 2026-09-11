@@ -5,10 +5,12 @@
  * It does not create a second evidence path.
  *
  * PER_SUBJECT_ARCHETYPE != REPOSITORY_SINGLE_LABEL
+ * MULTI-VALUE_PER_SUBJECT != FIRST_VALUE_COLLAPSE
  */
 
 import { createHash } from 'crypto';
 import type { EvaluatedAssuranceOutput } from './assurance-output-composer';
+import type { ArchetypeDimensionValue } from '@/lib/ai-inventory/execution-archetype';
 import type { AriCoverageState, AriRelationState } from '@/lib/ai-security/types';
 
 const REPORT_SCHEMA_VERSION = 'report-0.1.0';
@@ -27,16 +29,19 @@ function computeReportId(output: EvaluatedAssuranceOutput): string {
   return `report-${createHash('sha256').update(identity).digest('hex').slice(0, 32)}`;
 }
 
+type DimensionSummary = Pick<ArchetypeDimensionValue, 'value' | 'state' | 'coverage' | 'evidenceRefs' | 'limitations' | 'sourceRelationIds'>;
+
 interface SubjectOperatingModel {
   kind: string;
   agentId: string;
   displayName?: string;
-  humanInteractionPattern: string;
-  modality: string[];
-  initiatingPrincipal: string;
-  triggerMechanism: string;
-  executionLifecycle: string;
-  decisionRole: string;
+  humanInteractionPattern: DimensionSummary[];
+  modality: DimensionSummary[];
+  initiatingPrincipal: DimensionSummary[];
+  triggerMechanism: DimensionSummary[];
+  executionLifecycle: DimensionSummary[];
+  decisionRole: DimensionSummary[];
+  contextInfluence: DimensionSummary[];
 }
 
 export interface AssuranceReport {
@@ -86,40 +91,69 @@ export interface AssuranceReport {
   limitations: string[];
 }
 
+function summarizeDimensionValues(values: DimensionSummary[]): string {
+  const unique = [...new Set(values.map((v) => v.value))];
+  return unique.length === 0 ? 'UNKNOWN' : unique.join('+');
+}
+
 function buildSubjectOperatingModels(dimensions: EvaluatedAssuranceOutput['executionArchetype']['dimensions']): Map<string, SubjectOperatingModel> {
-  const bySubject = new Map<string, SubjectOperatingModel>();
+  const bySubject = new Map<string, { model: SubjectOperatingModel; valuesByFacet: Map<string, ArchetypeDimensionValue[]> }>();
 
   for (const dim of dimensions) {
     for (const v of dim.values) {
       const key = `${v.subject.kind}:${v.subject.id}`;
-      const existing = bySubject.get(key) ?? {
-        kind: v.subject.kind,
-        agentId: v.subject.id,
-        displayName: v.subject.displayName,
-        humanInteractionPattern: 'UNKNOWN',
-        modality: [] as string[],
-        initiatingPrincipal: 'UNKNOWN',
-        triggerMechanism: 'UNKNOWN',
-        executionLifecycle: 'UNKNOWN',
-        decisionRole: 'UNKNOWN',
+      const entry = bySubject.get(key) ?? {
+        model: {
+          kind: v.subject.kind,
+          agentId: v.subject.id,
+          displayName: v.subject.displayName,
+          humanInteractionPattern: [],
+          modality: [],
+          initiatingPrincipal: [],
+          triggerMechanism: [],
+          executionLifecycle: [],
+          decisionRole: [],
+          contextInfluence: [],
+        },
+        valuesByFacet: new Map<string, ArchetypeDimensionValue[]>(),
       };
-
-      if (dim.facet === 'HUMAN_INTERACTION_PATTERN' && existing.humanInteractionPattern === 'UNKNOWN') {
-        existing.humanInteractionPattern = v.value;
-      }
-      if (dim.facet === 'MODALITY') existing.modality.push(v.value);
-      if (dim.facet === 'INITIATING_PRINCIPAL' && existing.initiatingPrincipal === 'UNKNOWN') existing.initiatingPrincipal = v.value;
-      if (dim.facet === 'TRIGGER_MECHANISM' && existing.triggerMechanism === 'UNKNOWN') existing.triggerMechanism = v.value;
-      if (dim.facet === 'EXECUTION_LIFECYCLE' && existing.executionLifecycle === 'UNKNOWN') existing.executionLifecycle = v.value;
-      if (dim.facet === 'DECISION_ROLE' && existing.decisionRole === 'UNKNOWN') existing.decisionRole = v.value;
-
-      bySubject.set(key, existing);
+      const list = entry.valuesByFacet.get(dim.facet) ?? [];
+      list.push(v);
+      entry.valuesByFacet.set(dim.facet, list);
+      bySubject.set(key, entry);
     }
   }
 
-  // Sort for determinism.
+  const sortFn = (a: ArchetypeDimensionValue, b: ArchetypeDimensionValue) => {
+    const byValue = a.value.localeCompare(b.value);
+    if (byValue !== 0) return byValue;
+    const aId = a.sourceRelationIds[0] ?? '';
+    const bId = b.sourceRelationIds[0] ?? '';
+    return aId.localeCompare(bId);
+  };
+
+  const project = (list: ArchetypeDimensionValue[]): DimensionSummary[] =>
+    [...list].sort(sortFn).map((v) => ({
+      value: v.value,
+      state: v.state,
+      coverage: v.coverage,
+      evidenceRefs: v.evidenceRefs,
+      limitations: v.limitations,
+      sourceRelationIds: v.sourceRelationIds,
+    }));
+
+  for (const { model, valuesByFacet } of bySubject.values()) {
+    model.humanInteractionPattern = project(valuesByFacet.get('HUMAN_INTERACTION_PATTERN') ?? []);
+    model.modality = project(valuesByFacet.get('MODALITY') ?? []);
+    model.initiatingPrincipal = project(valuesByFacet.get('INITIATING_PRINCIPAL') ?? []);
+    model.triggerMechanism = project(valuesByFacet.get('TRIGGER_MECHANISM') ?? []);
+    model.executionLifecycle = project(valuesByFacet.get('EXECUTION_LIFECYCLE') ?? []);
+    model.decisionRole = project(valuesByFacet.get('DECISION_ROLE') ?? []);
+    model.contextInfluence = project(valuesByFacet.get('CONTEXT_INFLUENCE') ?? []);
+  }
+
   const sorted = new Map([...bySubject.entries()].sort((a, b) => a[0].localeCompare(b[0])));
-  return sorted;
+  return new Map([...sorted.entries()].map(([k, v]) => [k, v.model]));
 }
 
 export function buildAssuranceReportFromOutput(
@@ -130,16 +164,19 @@ export function buildAssuranceReportFromOutput(
   const operatingModelBySubject = buildSubjectOperatingModels(ea.dimensions);
   const operatingModel: SubjectOperatingModel[] = Array.from(operatingModelBySubject.values());
 
-  const lifecycleSummary = [...new Set(operatingModel.map((s) => s.executionLifecycle))].join(', ');
-  const triggerSummary = [...new Set(operatingModel.map((s) => s.triggerMechanism))].join(', ');
-  const humanInteractionSummary = [...new Set(operatingModel.map((s) => s.humanInteractionPattern))].join(', ');
-  const unresolvedCount = operatingModel.filter((s) => s.executionLifecycle === 'UNKNOWN').length;
+  const allLifecycles = operatingModel.flatMap((s) => s.executionLifecycle.map((v) => v.value));
+  const allTriggers = operatingModel.flatMap((s) => s.triggerMechanism.map((v) => v.value));
+  const allHuman = operatingModel.flatMap((s) => s.humanInteractionPattern.map((v) => v.value));
+  const unresolvedCount = operatingModel.reduce(
+    (sum, s) => sum + s.executionLifecycle.filter((v) => v.value === 'UNKNOWN' || v.state === 'UNKNOWN' || v.coverage === 'NOT_ANALYZED').length,
+    0,
+  );
 
   const operatingModelSummary =
     `${operatingModel.length} subject(s) identified; ` +
-    `human interaction patterns: ${humanInteractionSummary}; ` +
-    `triggers: ${triggerSummary}; ` +
-    `lifecycles: ${lifecycleSummary}; ` +
+    `human interaction patterns: ${[...new Set(allHuman)].join('+') || 'UNKNOWN'}; ` +
+    `triggers: ${[...new Set(allTriggers)].join('+') || 'UNKNOWN'}; ` +
+    `lifecycles: ${[...new Set(allLifecycles)].join('+') || 'UNKNOWN'}; ` +
     `unresolved lifecycle frontiers: ${unresolvedCount}.`;
 
   const agentSurfaces = ea.dimensions
@@ -176,7 +213,7 @@ export function buildAssuranceReportFromOutput(
 
   const context = ea.dimensions
     .filter((d) => d.facet === 'CONTEXT_INFLUENCE')
-    .map((d) => d.values.map((v) => `${v.value} (${v.state})`).join(', '))
+    .flatMap((d) => d.values.map((v) => `${v.value} (${v.state})`))
     .join('; ') || 'No context influence established.';
 
   const findings = output.evidenceFrontier.frontierItems.map((f) => ({

@@ -82,7 +82,8 @@ function availabilityColor(availability?: NodeAvailability): string {
     case 'UNKNOWN':
       return '#6b7280';
     case 'SOURCE_GAP':
-      return '#dc2626';
+      // SOURCE_GAP != RISK; purple marks a frontier, not severity red.
+      return '#a855f7';
     case 'UNAVAILABLE':
       return '#f59e0b';
     default:

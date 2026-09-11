@@ -5,13 +5,15 @@
  * It is NOT a second report truth engine.
  *
  * PER-SUBJECT_ARCHETYPE != REPOSITORY_SINGLE_LABEL
+ * MULTI-VALUE_PER_SUBJECT != FIRST_VALUE_COLLAPSE
  */
 
 import { createHash } from 'crypto';
 import type { EvaluatedAssuranceOutput } from './assurance-output-composer';
+import type { ArchetypeDimensionValue } from '@/lib/ai-inventory/execution-archetype';
 import type { AriRelationState, AriCoverageState } from '@/lib/ai-security/types';
 
-const PASSPORT_SCHEMA_VERSION = 'passport-0.1.0';
+const PASSPORT_SCHEMA_VERSION = 'passport-0.2.0';
 
 function computePassportId(output: EvaluatedAssuranceOutput): string {
   // WALL_CLOCK_TIME != SEMANTIC_ID
@@ -35,13 +37,13 @@ export interface ArchetypeSubjectIdentity {
 
 export interface SubjectOperatingModel {
   subject: ArchetypeSubjectIdentity;
-  humanInteractionPattern: string;
-  modality: string[];
-  initiatingPrincipal: string;
-  triggerMechanism: string;
-  executionLifecycle: string;
-  decisionRole: string;
-  contextInfluence: string[];
+  humanInteractionPattern: Pick<ArchetypeDimensionValue, 'value' | 'state' | 'coverage' | 'evidenceRefs' | 'limitations' | 'sourceRelationIds'>[];
+  modality: Pick<ArchetypeDimensionValue, 'value' | 'state' | 'coverage' | 'evidenceRefs' | 'limitations' | 'sourceRelationIds'>[];
+  initiatingPrincipal: Pick<ArchetypeDimensionValue, 'value' | 'state' | 'coverage' | 'evidenceRefs' | 'limitations' | 'sourceRelationIds'>[];
+  triggerMechanism: Pick<ArchetypeDimensionValue, 'value' | 'state' | 'coverage' | 'evidenceRefs' | 'limitations' | 'sourceRelationIds'>[];
+  executionLifecycle: Pick<ArchetypeDimensionValue, 'value' | 'state' | 'coverage' | 'evidenceRefs' | 'limitations' | 'sourceRelationIds'>[];
+  decisionRole: Pick<ArchetypeDimensionValue, 'value' | 'state' | 'coverage' | 'evidenceRefs' | 'limitations' | 'sourceRelationIds'>[];
+  contextInfluence: Pick<ArchetypeDimensionValue, 'value' | 'state' | 'coverage' | 'evidenceRefs' | 'limitations' | 'sourceRelationIds'>[];
 }
 
 export interface AgenticProductionPassport {
@@ -69,6 +71,7 @@ export interface AgenticProductionPassport {
     };
   };
   operatingModel: {
+    system?: SubjectOperatingModel;
     subjects: SubjectOperatingModel[];
   };
   capabilityExposureLadder: CapabilityExposureStage[];
@@ -133,49 +136,75 @@ export interface ActionConsequencePath {
   coverage: AriCoverageState;
 }
 
-function firstValueBySubjectAndFacet(values: { facet: string; values: { value: string }[] }[], facet: string): string {
-  const dim = values.find((d) => d.facet === facet);
-  return dim?.values[0]?.value ?? 'UNKNOWN';
+function projectDimensionValues(
+  valuesByFacet: Map<string, ArchetypeDimensionValue[]>,
+  facet: string,
+): Pick<ArchetypeDimensionValue, 'value' | 'state' | 'coverage' | 'evidenceRefs' | 'limitations' | 'sourceRelationIds'>[] {
+  const values = valuesByFacet.get(facet) ?? [];
+  // Deterministic by value string then source relation id.
+  return [...values].sort((a, b) => {
+    const byValue = a.value.localeCompare(b.value);
+    if (byValue !== 0) return byValue;
+    const aId = a.sourceRelationIds[0] ?? '';
+    const bId = b.sourceRelationIds[0] ?? '';
+    return aId.localeCompare(bId);
+  }).map((v) => ({
+    value: v.value,
+    state: v.state,
+    coverage: v.coverage,
+    evidenceRefs: v.evidenceRefs,
+    limitations: v.limitations,
+    sourceRelationIds: v.sourceRelationIds,
+  }));
 }
 
-function allValuesBySubjectAndFacet(values: { facet: string; values: { value: string }[] }[], facet: string): string[] {
-  const dim = values.find((d) => d.facet === facet);
-  return dim?.values.map((v) => v.value) ?? [];
+interface SubjectBucket {
+  subject: ArchetypeSubjectIdentity;
+  valuesByFacet: Map<string, ArchetypeDimensionValue[]>;
 }
 
-function buildSubjectOperatingModels(dimensions: EvaluatedAssuranceOutput['executionArchetype']['dimensions']): SubjectOperatingModel[] {
-  const bySubject = new Map<string, { subject: ArchetypeSubjectIdentity; dims: { facet: string; values: { value: string }[] }[] }>();
+function buildSubjectOperatingModels(dimensions: EvaluatedAssuranceOutput['executionArchetype']['dimensions']): {
+  system?: SubjectOperatingModel;
+  subjects: SubjectOperatingModel[];
+} {
+  const bySubject = new Map<string, SubjectBucket>();
 
   for (const dim of dimensions) {
     for (const v of dim.values) {
       const key = `${v.subject.kind}:${v.subject.id}`;
-      const entry = bySubject.get(key) ?? { subject: v.subject, dims: [] };
-      const existing = entry.dims.find((d) => d.facet === dim.facet);
-      if (existing) {
-        existing.values.push({ value: v.value });
-      } else {
-        entry.dims.push({ facet: dim.facet, values: [{ value: v.value }] });
-      }
-      bySubject.set(key, entry);
+      const bucket = bySubject.get(key) ?? { subject: v.subject, valuesByFacet: new Map<string, ArchetypeDimensionValue[]>() };
+      const list = bucket.valuesByFacet.get(dim.facet) ?? [];
+      list.push(v);
+      bucket.valuesByFacet.set(dim.facet, list);
+      bySubject.set(key, bucket);
     }
   }
 
-  const models: SubjectOperatingModel[] = [];
-  for (const { subject, dims } of bySubject.values()) {
-    models.push({
+  const operatingModels: SubjectOperatingModel[] = [];
+  let system: SubjectOperatingModel | undefined;
+
+  for (const { subject, valuesByFacet } of bySubject.values()) {
+    const model: SubjectOperatingModel = {
       subject,
-      humanInteractionPattern: firstValueBySubjectAndFacet(dims, 'HUMAN_INTERACTION_PATTERN'),
-      modality: allValuesBySubjectAndFacet(dims, 'MODALITY'),
-      initiatingPrincipal: firstValueBySubjectAndFacet(dims, 'INITIATING_PRINCIPAL'),
-      triggerMechanism: firstValueBySubjectAndFacet(dims, 'TRIGGER_MECHANISM'),
-      executionLifecycle: firstValueBySubjectAndFacet(dims, 'EXECUTION_LIFECYCLE'),
-      decisionRole: firstValueBySubjectAndFacet(dims, 'DECISION_ROLE'),
-      contextInfluence: allValuesBySubjectAndFacet(dims, 'CONTEXT_INFLUENCE'),
-    });
+      humanInteractionPattern: projectDimensionValues(valuesByFacet, 'HUMAN_INTERACTION_PATTERN'),
+      modality: projectDimensionValues(valuesByFacet, 'MODALITY'),
+      initiatingPrincipal: projectDimensionValues(valuesByFacet, 'INITIATING_PRINCIPAL'),
+      triggerMechanism: projectDimensionValues(valuesByFacet, 'TRIGGER_MECHANISM'),
+      executionLifecycle: projectDimensionValues(valuesByFacet, 'EXECUTION_LIFECYCLE'),
+      decisionRole: projectDimensionValues(valuesByFacet, 'DECISION_ROLE'),
+      contextInfluence: projectDimensionValues(valuesByFacet, 'CONTEXT_INFLUENCE'),
+    };
+    if (subject.kind === 'AI_SYSTEM') {
+      system = model;
+    } else {
+      operatingModels.push(model);
+    }
   }
 
-  // Deterministic order by subject key.
-  return models.sort((a, b) => `${a.subject.kind}:${a.subject.id}`.localeCompare(`${b.subject.kind}:${b.subject.id}`));
+  // Deterministic subject ordering.
+  operatingModels.sort((a, b) => `${a.subject.kind}:${a.subject.id}`.localeCompare(`${b.subject.kind}:${b.subject.id}`));
+
+  return { system, subjects: operatingModels };
 }
 
 export function buildAgenticProductionPassport(
@@ -261,7 +290,12 @@ export function buildAgenticProductionPassport(
     coverage: p.coverage,
   }));
 
-  const subjects = buildSubjectOperatingModels(ea.dimensions);
+  const { system, subjects } = buildSubjectOperatingModels(ea.dimensions);
+
+  // Memory / RAG / MCP: do not hardcode. Project from exact evaluation evidence.
+  // CONTEXT_INFLUENCE already surfaces in subject operating models. Memory/RAG/MCP
+  // canonical producers are not bound to this exact snapshot, so we preserve truth.
+  const memoryRagMcpTruth = determineMemoryRagMcpTruth(output);
 
   return {
     schemaVersion: PASSPORT_SCHEMA_VERSION,
@@ -273,15 +307,16 @@ export function buildAgenticProductionPassport(
       analyzerBuildIdentity: output.buildProvenance.analyzerBuildIdentity,
     },
     operatingModel: {
+      system,
       subjects,
     },
     capabilityExposureLadder,
     actionConsequencePaths,
     humanControl: ea.humanControlSummary,
     context: {
-      memory: { available: false, reason: 'MEMORY_EVIDENCE_NOT_EVALUATED' as const } as any,
-      rag: { available: false, reason: 'RAG_EVIDENCE_NOT_EVALUATED' as const } as any,
-      mcp: { available: false, reason: 'MCP_EVIDENCE_NOT_EVALUATED' as const } as any,
+      memory: memoryRagMcpTruth.memory,
+      rag: memoryRagMcpTruth.rag,
+      mcp: memoryRagMcpTruth.mcp,
     },
     evidenceCoverage: {
       overall: ea.coverageSummary.overall,
@@ -307,5 +342,24 @@ export function buildAgenticProductionPassport(
       },
       limitations: ['Passport is a deterministic projection; it is not a runtime observation.'],
     },
+  };
+}
+
+function determineMemoryRagMcpTruth(output: EvaluatedAssuranceOutput): {
+  memory: { available: false; reason: string } | { available: true; kinds: string[]; limitations: string[] };
+  rag: { available: false; reason: string } | { available: true; kinds: string[]; limitations: string[] };
+  mcp: { available: false; reason: string } | { available: true; tools: string[]; limitations: string[] };
+} {
+  // Exact-scan producers for memory, RAG and MCP are not currently persisted into the
+  // operation-coverage snapshot. The canonical owners are:
+  //   memory: lib/ai-inventory/persistence-projection.ts (conceptual)
+  //   rag: lib/ai-inventory/retrieval-projection.ts (conceptual)
+  //   mcp: lib/ai-security/types.ts (requestedToolProjection; not a runtime MCP binding)
+  // Until an exact evaluation-bound owner is wired, the truthful state is unavailable.
+  const reason = 'EXACT_EVALUATION_BOUND_MEMORY_RAG_MCP_OWNER_NOT_WIRED';
+  return {
+    memory: { available: false, reason },
+    rag: { available: false, reason },
+    mcp: { available: false, reason },
   };
 }

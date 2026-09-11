@@ -1,14 +1,16 @@
 /**
- * Analyzer build provenance inventory (Q1-E).
+ * Analyzer build provenance inventory (Q2-H).
  *
  * Captures every exact build-identity fragment HAIEC knows for a given
- * evaluation. Does not invent identity where none is persisted.
+ * evaluation. Separates exact analyzer build identity from provenance fragments.
+ * Does not invent identity where none is persisted.
  */
 
 import type { EvaluatedAssuranceOutput } from './assurance-output-composer';
 
 export interface AnalyzerBuildIdentity {
-  capture: 'FULL' | 'PARTIAL' | 'NONE';
+  exactAnalyzerBuildIdentityAvailable: boolean;
+  analyzerProvenanceFragments: 'FULL' | 'PARTIAL' | 'NONE';
   outputGenerator: {
     commitSha: string;
     commitRef: string;
@@ -56,7 +58,8 @@ export function gatherAnalyzerBuildIdentity(output: EvaluatedAssuranceOutput): A
   ];
 
   return {
-    capture: 'PARTIAL',
+    exactAnalyzerBuildIdentityAvailable: false,
+    analyzerProvenanceFragments: 'PARTIAL',
     outputGenerator: output.buildProvenance.outputGeneratorBuildIdentity,
     knownFragments,
     unavailable: output.buildProvenance.analyzerBuildIdentity.reason
