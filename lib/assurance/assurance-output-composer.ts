@@ -36,10 +36,8 @@ import {
   calculateRuleExecutionSummary,
   type RuleExecution,
 } from '@/lib/ai-security/rule-execution-helpers';
-import {
-  buildScanFrameworkRelevanceForFinding,
-  type ScanFrameworkProjectionEntry,
-} from '@/capabilities/engine-qual/versioned-framework-mapping';
+import { buildExecutedFrameworkRelevanceForRule } from '@/lib/ai-security/rule-identity';
+import { type ScanFrameworkProjectionEntry } from '@/capabilities/engine-qual/versioned-framework-mapping';
 import type { FrameworkRelevanceEntry } from '@/lib/reports/base/report-types';
 import type { Prisma } from '@prisma/client';
 
@@ -363,24 +361,14 @@ function buildFrameworkRelevanceSummary(
   }
 
   const summary = calculateRuleExecutionSummary(parsed);
-  const executionTruthStatus = summary.isTrustedExecutionTruth ? 'TRUSTED' : 'UNTRUSTED_EXECUTION_TRUTH';
-
-  const getProducerState = (record: RuleExecution): 'RUN' | 'NOT_RUN' | 'FAILED' => {
-    if (record.status === 'completed') return 'RUN';
-    if (record.status === 'error') return 'FAILED';
-    return 'NOT_RUN';
-  };
+  const isTrustedCohort = summary.isTrustedExecutionTruth;
 
   const seen = new Set<string>();
   const frameworks: FrameworkRelevanceEntry[] = [];
 
-  for (const ruleId of Object.keys(parsed)) {
-    const record = parsed[ruleId];
-    const relevance = buildScanFrameworkRelevanceForFinding(ruleId, {
-      producerState: getProducerState(record),
-      executionTruthStatus,
-      applicability: record.applicability,
-    });
+  for (const producerRuleId of Object.keys(parsed)) {
+    const record = parsed[producerRuleId];
+    const relevance = buildExecutedFrameworkRelevanceForRule(producerRuleId, record, isTrustedCohort);
     for (const entry of relevance.applicableMappings.map(toFrameworkRelevanceEntry)) {
       const key = `${entry.frameworkId}::${entry.release}::${entry.categoryId}::${entry.ruleId}`;
       if (!seen.has(key)) {
