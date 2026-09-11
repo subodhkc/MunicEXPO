@@ -167,6 +167,8 @@ export interface DeltaAnalyzerComparability {
     candidateCoverageSchemaVersion: string;
     baselineArchetypeProducerId: string;
     candidateArchetypeProducerId: string;
+    baselineArchetypeProducerVersion: string;
+    candidateArchetypeProducerVersion: string;
     baselineArchetypeSchemaVersion: string;
     candidateArchetypeSchemaVersion: string;
   };
@@ -918,12 +920,15 @@ export function buildConsequenceDelta(input: BuildDeltaInput): ConsequenceDelta 
     cs: candidate.identity.scanId,
   })).slice(0, 24);
 
-  // P4: the semantic digest binds every interpretation-bearing comparison
-  // context, not only the resulting items — scope comparability, coverage
-  // state, and analyzer provenance all change the meaning of identical item
-  // sets, so identical items under different context are different deltas.
+  // P0/P4: the semantic digest binds only interpretation-bearing semantic
+  // facts — never explanatory copy. TITLE/SUMMARY/LIMITATION wording changes
+  // must NOT alter the digest; semantic changes (scope, coverage, analyzer
+  // comparability, item identity basis) MUST.
+  //   COPY_CHANGE_ONLY => DIGEST_MUST_NOT_CHANGE
+  //   IDENTITY_BASIS_CHANGE => DIGEST_CHANGE
   // Deterministic inputs only — no Date.now()/render/request timestamps.
-  const comparisonDigest = hashTextContent(canonicalSerialize({
+  const ctx = input.comparisonContext;
+  const semanticDigestInput: DeltaSemanticDigestInput = {
     schemaVersion: CONSEQUENCE_DELTA_SCHEMA_VERSION,
     organizationId: baseline.identity.organizationId,
     aiSystemId: baseline.identity.aiSystemId,
@@ -936,7 +941,7 @@ export function buildConsequenceDelta(input: BuildDeltaInput): ConsequenceDelta 
       evaluatedScopeSchemaVersion: baseline.identity.evaluatedScopeSchemaVersion,
       evaluatedScopeDigest: baseline.identity.evaluatedScopeDigest,
     },
-    candidate: {
+    target: {
       evaluationId: candidate.identity.evaluationId,
       orchestratorRunId: candidate.identity.orchestratorRunId,
       scanId: candidate.identity.scanId,
@@ -946,22 +951,41 @@ export function buildConsequenceDelta(input: BuildDeltaInput): ConsequenceDelta 
       evaluatedScopeDigest: candidate.identity.evaluatedScopeDigest,
     },
     methodologyVersions: {
-      baseline: input.comparisonContext?.baselineAssuranceMethodologyVersion ?? null,
-      candidate: input.comparisonContext?.candidateAssuranceMethodologyVersion ?? null,
+      baseline: ctx?.baselineAssuranceMethodologyVersion ?? null,
+      target: ctx?.candidateAssuranceMethodologyVersion ?? null,
     },
-    scopeComparison: input.comparisonContext?.scopeComparison ?? { state: 'NOT_AVAILABLE', limitations: [] },
-    analyzerComparability: input.comparisonContext?.analyzerComparability ?? null,
+    scopeComparison: {
+      state: ctx?.scopeComparison.state ?? 'NOT_AVAILABLE',
+      baselineScopeSchemaVersion: ctx?.scopeComparison.baselineScopeSchemaVersion,
+      targetScopeSchemaVersion: ctx?.scopeComparison.candidateScopeSchemaVersion,
+      baselineScopeDigest: ctx?.scopeComparison.baselineScopeDigest,
+      targetScopeDigest: ctx?.scopeComparison.candidateScopeDigest,
+    },
+    analyzerComparability: ctx?.analyzerComparability
+      ? {
+          state: ctx.analyzerComparability.state,
+          exactAnalyzerBuildIdentityAvailable:
+            ctx.analyzerComparability.exactAnalyzerBuildIdentityAvailable,
+          knownFragments: { ...ctx.analyzerComparability.knownFragments },
+        }
+      : null,
+    coverage: coverage.map((c) => ({
+      dimension: c.dimension,
+      baselineCoverage: c.baselineCoverage,
+      targetCoverage: c.candidateCoverage,
+      comparisonCoverage: c.comparisonCoverage,
+    })),
     items: items.map((i) => ({
       dimension: i.dimension,
       kind: i.kind,
       semanticKey: i.semanticKey,
+      identityBasis: i.identityBasis,
       comparisonState: i.comparisonState,
       baselineState: i.baselineState,
-      candidateState: i.candidateState,
+      targetState: i.candidateState,
     })),
-    coverage,
-    limitations,
-  }));
+  };
+  const comparisonDigest = computeDeltaComparisonDigest(semanticDigestInput);
 
   return {
     schemaVersion: CONSEQUENCE_DELTA_SCHEMA_VERSION,
@@ -976,6 +1000,88 @@ export function buildConsequenceDelta(input: BuildDeltaInput): ConsequenceDelta 
     limitations,
     comparisonDigest,
   };
+}
+
+/**
+ * Explicit semantic digest projection — the ONLY input hashed into
+ * comparisonDigest. Explanatory content (titles, summaries, limitation
+ * prose, UI labels) is deliberately excluded; those fields live on the
+ * returned ConsequenceDelta artifact and may be reworded without breaking
+ * semantic lineage.
+ */
+export interface DeltaSemanticDigestInput {
+  schemaVersion: string;
+  organizationId: string;
+  aiSystemId: string;
+  baseline: {
+    evaluationId: string;
+    orchestratorRunId: string;
+    scanId: string;
+    commitSha: string | null;
+    operationCoverageSchemaVersion: string;
+    evaluatedScopeSchemaVersion?: string;
+    evaluatedScopeDigest?: string;
+  };
+  target: {
+    evaluationId: string;
+    orchestratorRunId: string;
+    scanId: string;
+    commitSha: string | null;
+    operationCoverageSchemaVersion: string;
+    evaluatedScopeSchemaVersion?: string;
+    evaluatedScopeDigest?: string;
+  };
+  methodologyVersions: {
+    baseline: string | null;
+    target: string | null;
+  };
+  scopeComparison: {
+    state: 'SAME' | 'CHANGED' | 'NOT_AVAILABLE';
+    baselineScopeSchemaVersion?: string;
+    targetScopeSchemaVersion?: string;
+    baselineScopeDigest?: string;
+    targetScopeDigest?: string;
+  };
+  analyzerComparability: {
+    state: DeltaAnalyzerComparability['state'];
+    exactAnalyzerBuildIdentityAvailable: boolean;
+    knownFragments: DeltaAnalyzerComparability['knownFragments'];
+  } | null;
+  coverage: Array<{
+    dimension: DeltaDimension;
+    baselineCoverage: string;
+    targetCoverage: string;
+    comparisonCoverage: DeltaCoverageRecord['comparisonCoverage'];
+  }>;
+  items: Array<{
+    dimension: DeltaDimension;
+    kind: DeltaKind;
+    semanticKey: string;
+    identityBasis: DeltaIdentityBasis;
+    comparisonState: DeltaComparisonState;
+    baselineState?: string;
+    targetState?: string;
+  }>;
+}
+
+/** Hash the explicit semantic core — the canonical Delta digest owner. */
+export function computeDeltaComparisonDigest(
+  input: DeltaSemanticDigestInput,
+): string {
+  // Items/coverage are sets: array position is not semantic. Sort by the
+  // full semantic tuple so equivalent sets digest identically.
+  const normalized: DeltaSemanticDigestInput = {
+    ...input,
+    coverage: [...input.coverage].sort((a, b) =>
+      a.dimension.localeCompare(b.dimension)),
+    items: [...input.items].sort((a, b) =>
+      [a.dimension, a.semanticKey, a.kind, a.identityBasis, a.comparisonState]
+        .join('')
+        .localeCompare(
+          [b.dimension, b.semanticKey, b.kind, b.identityBasis, b.comparisonState].join(''),
+        )),
+  };
+  return hashTextContent(canonicalSerialize(normalized));
 }
 
 /** Deterministic canonical byte form for evidence packaging. */

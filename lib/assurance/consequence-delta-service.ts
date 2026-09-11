@@ -198,11 +198,16 @@ export async function buildConsequenceDeltaForEvaluations(
       baselineExactIdentity !== null &&
       candidateExactIdentity !== null &&
       baselineExactIdentity === candidateExactIdentity;
+    // PRODUCER_ID_EQUAL + SCHEMA_VERSION_EQUAL + PRODUCER_VERSION_DIFFERENT
+    // != EQUIVALENT_ANALYZER_PROVENANCE_FRAGMENTS — producer version is part
+    // of the canonical provenance fragment equality.
     const fragmentsEqual =
       baselineIdentity.knownFragments.coverageSchemaVersion ===
         candidateIdentity.knownFragments.coverageSchemaVersion &&
       baselineIdentity.knownFragments.archetypeProducerId ===
         candidateIdentity.knownFragments.archetypeProducerId &&
+      baselineIdentity.knownFragments.archetypeProducerVersion ===
+        candidateIdentity.knownFragments.archetypeProducerVersion &&
       baselineIdentity.knownFragments.archetypeSchemaVersion ===
         candidateIdentity.knownFragments.archetypeSchemaVersion;
     return {
@@ -213,6 +218,8 @@ export async function buildConsequenceDeltaForEvaluations(
         candidateCoverageSchemaVersion: candidateIdentity.knownFragments.coverageSchemaVersion,
         baselineArchetypeProducerId: baselineIdentity.knownFragments.archetypeProducerId,
         candidateArchetypeProducerId: candidateIdentity.knownFragments.archetypeProducerId,
+        baselineArchetypeProducerVersion: baselineIdentity.knownFragments.archetypeProducerVersion,
+        candidateArchetypeProducerVersion: candidateIdentity.knownFragments.archetypeProducerVersion,
         baselineArchetypeSchemaVersion: baselineIdentity.knownFragments.archetypeSchemaVersion,
         candidateArchetypeSchemaVersion: candidateIdentity.knownFragments.archetypeSchemaVersion,
       },
