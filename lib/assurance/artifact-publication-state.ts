@@ -188,6 +188,52 @@ export function transitionPublicationState(
     };
   }
 
+  if (to === 'SANITIZED') {
+    if (!sanitizerResult || sanitizerResult.publicationState !== 'SANITIZED' || !sanitizerResult.sanitized) {
+      return {
+        artifactDigest,
+        previousState: from,
+        newState: from,
+        transitionTimestamp: new Date().toISOString(),
+        valid: false,
+        reason: 'SANITIZED requires a passing sanitizer result with sanitizedDigest.',
+      };
+    }
+    if (!sanitizerResult.sanitizedDigest) {
+      return {
+        artifactDigest,
+        previousState: from,
+        newState: from,
+        transitionTimestamp: new Date().toISOString(),
+        valid: false,
+        reason: 'SANITIZED requires a sanitizedDigest in the sanitizer result.',
+      };
+    }
+  }
+
+  if (to === 'APPROVED_FOR_PUBLICATION') {
+    if (!sanitizerResult || sanitizerResult.publicationState !== 'SANITIZED' || !sanitizerResult.sanitized) {
+      return {
+        artifactDigest,
+        previousState: from,
+        newState: from,
+        transitionTimestamp: new Date().toISOString(),
+        valid: false,
+        reason: 'APPROVED_FOR_PUBLICATION requires a SANITIZED sanitization result.',
+      };
+    }
+    if (!approvalIdentity) {
+      return {
+        artifactDigest,
+        previousState: from,
+        newState: from,
+        transitionTimestamp: new Date().toISOString(),
+        valid: false,
+        reason: 'APPROVED_FOR_PUBLICATION requires an explicit approval identity.',
+      };
+    }
+  }
+
   if (to === 'PUBLIC_SAMPLE') {
     if (from !== 'APPROVED_FOR_PUBLICATION') {
       return {

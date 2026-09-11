@@ -204,7 +204,8 @@ function renderConstellationSvg(
     lines.push(shape);
     lines.push(`<text x="${pos.x}" y="${pos.y + 5}" text-anchor="middle" font-family="sans-serif" font-size="11" fill="#1f2937">${escapeXml(n.label)}</text>`);
     if (n.isFrontier) {
-      lines.push(`<text x="${pos.x}" y="${pos.y + radius + 14}" text-anchor="middle" font-family="sans-serif" font-size="9" fill="#dc2626">frontier</text>`);
+      // Frontier label is neutral/evidence, not severity red.
+      lines.push(`<text x="${pos.x}" y="${pos.y + radius + 14}" text-anchor="middle" font-family="sans-serif" font-size="9" fill="#a855f7">frontier</text>`);
     }
   }
 

@@ -201,7 +201,7 @@ function buildSubjectOperatingModels(dimensions: EvaluatedAssuranceOutput['execu
     }
   }
 
-  // Deterministic subject ordering.
+  // Deterministic order by subject key.
   operatingModels.sort((a, b) => `${a.subject.kind}:${a.subject.id}`.localeCompare(`${b.subject.kind}:${b.subject.id}`));
 
   return { system, subjects: operatingModels };
@@ -292,9 +292,6 @@ export function buildAgenticProductionPassport(
 
   const { system, subjects } = buildSubjectOperatingModels(ea.dimensions);
 
-  // Memory / RAG / MCP: do not hardcode. Project from exact evaluation evidence.
-  // CONTEXT_INFLUENCE already surfaces in subject operating models. Memory/RAG/MCP
-  // canonical producers are not bound to this exact snapshot, so we preserve truth.
   const memoryRagMcpTruth = determineMemoryRagMcpTruth(output);
 
   return {
@@ -350,16 +347,63 @@ function determineMemoryRagMcpTruth(output: EvaluatedAssuranceOutput): {
   rag: { available: false; reason: string } | { available: true; kinds: string[]; limitations: string[] };
   mcp: { available: false; reason: string } | { available: true; tools: string[]; limitations: string[] };
 } {
-  // Exact-scan producers for memory, RAG and MCP are not currently persisted into the
-  // operation-coverage snapshot. The canonical owners are:
-  //   memory: lib/ai-inventory/persistence-projection.ts (conceptual)
-  //   rag: lib/ai-inventory/retrieval-projection.ts (conceptual)
-  //   mcp: lib/ai-security/types.ts (requestedToolProjection; not a runtime MCP binding)
-  // Until an exact evaluation-bound owner is wired, the truthful state is unavailable.
-  const reason = 'EXACT_EVALUATION_BOUND_MEMORY_RAG_MCP_OWNER_NOT_WIRED';
-  return {
-    memory: { available: false, reason },
-    rag: { available: false, reason },
-    mcp: { available: false, reason },
-  };
+  const ea = output.executionArchetype;
+  const families = ea.coverageSummary.families ?? {};
+
+  const memoryAccesses = ea.memoryAccessRelations ?? [];
+  const memoryLineages = ea.memoryLineageRelations ?? [];
+  const contextInfluences = ea.modelContextInfluenceRelations ?? [];
+  const mcpRefs = ea.mcpServerRefs ?? [];
+
+  const memoryFamily = families['memoryLineage'] ?? 'NOT_ANALYZED';
+  const ragFamily = families['modelContextInfluence'] ?? 'NOT_ANALYZED';
+
+  const memory: { available: false; reason: string } | { available: true; kinds: string[]; limitations: string[] } =
+    memoryAccesses.length > 0 || memoryLineages.length > 0
+      ? {
+          available: true,
+          kinds: [
+            ...new Set([
+              ...memoryAccesses.map((r) => r.accessKind),
+              ...memoryLineages.map((r) => r.influenceKind),
+            ]),
+          ].sort(),
+          limitations: [
+            'MEMORY_WRITE != LATER_MEMORY_INFLUENCE',
+            'Static access evidence establishes code capability, not runtime execution.',
+          ],
+        }
+      : memoryFamily === 'ANALYZED'
+        ? { available: true, kinds: [], limitations: ['ANALYZED_EMPTY: memory family analyzed, no memory access/lineage relations in this snapshot.'] }
+        : { available: false, reason: `memoryLineage family state is ${memoryFamily}; no exact relations bound.` };
+
+  const rag: { available: false; reason: string } | { available: true; kinds: string[]; limitations: string[] } =
+    contextInfluences.length > 0
+      ? {
+          available: true,
+          kinds: [...new Set(contextInfluences.map((r) => r.influenceKind))].sort(),
+          limitations: [
+            'VECTOR_STORE_ACCESS != RAG_INFLUENCE',
+            'RAG_REFERENCE != RETRIEVAL_EXECUTED',
+            'Static context influence evidence is not runtime retrieval execution.',
+          ],
+        }
+      : ragFamily === 'ANALYZED'
+        ? { available: true, kinds: [], limitations: ['ANALYZED_EMPTY: modelContextInfluence family analyzed, no context-influence relations in this snapshot.'] }
+        : { available: false, reason: `modelContextInfluence family state is ${ragFamily}; no exact relations bound.` };
+
+  const mcp: { available: false; reason: string } | { available: true; tools: string[]; limitations: string[] } =
+    mcpRefs.length > 0
+      ? {
+          available: true,
+          tools: [...new Set(mcpRefs.flatMap((r) => r.refs))].sort(),
+          limitations: [
+            'MCP_SERVER_REF != CONNECTED_RUNTIME_MCP_SESSION',
+            'DECLARED_MCP_TOOL != RUNTIME_CALL',
+            'Source declaration establishes topology/capability candidates, not runtime connection.',
+          ],
+        }
+      : { available: false, reason: 'No MCP server references found in agent candidate declarations for this snapshot.' };
+
+  return { memory, rag, mcp };
 }
