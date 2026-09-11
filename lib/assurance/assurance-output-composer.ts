@@ -347,7 +347,7 @@ function toFrameworkRelevanceEntry(m: ScanFrameworkProjectionEntry): FrameworkRe
   };
 }
 
-function buildFrameworkRelevanceSummary(
+export function buildFrameworkRelevanceSummary(
   rulesEvaluated: Prisma.JsonValue | undefined,
 ): EvaluatedAssuranceOutput['frameworkRelevanceSummary'] {
   const parsed = parseRulesEvaluated(rulesEvaluated);
@@ -370,7 +370,7 @@ function buildFrameworkRelevanceSummary(
     const record = parsed[producerRuleId];
     const relevance = buildExecutedFrameworkRelevanceForRule(producerRuleId, record, isTrustedCohort);
     for (const entry of relevance.applicableMappings.map(toFrameworkRelevanceEntry)) {
-      const key = `${entry.frameworkId}::${entry.release}::${entry.categoryId}::${entry.ruleId}`;
+      const key = `${entry.frameworkId}::${entry.release}::${entry.categoryId}::${entry.ruleId}::${entry.producerRuleId ?? 'UNSPECIFIED'}`;
       if (!seen.has(key)) {
         seen.add(key);
         frameworks.push(entry);
