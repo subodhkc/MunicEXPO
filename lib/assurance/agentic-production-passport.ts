@@ -15,7 +15,7 @@ import type { AriRelationState, AriCoverageState } from '@/lib/ai-security/types
 import type { ConsequenceDelta } from './consequence-delta';
 import { canonicalSerialize } from '@/lib/evidence/deterministic-serialization';
 
-const PASSPORT_SCHEMA_VERSION = 'passport-0.3.0';
+const PASSPORT_SCHEMA_VERSION = 'passport-0.3.1';
 
 /**
  * U6 lineage binding states. Lineage direction is strictly U5 -> U6 -> Passport:
@@ -40,8 +40,23 @@ export type PassportU6BindingState =
  *   INTERNALLY_CONSISTENT != VERIFIED_AGAINST_HAIEC_RECORD
  *   RECEIPT_AVAILABLE != SYSTEM_CERTIFIED
  */
+export type PassportU6PublicationState =
+  | 'PRIVATE'
+  | 'PUBLIC'
+  | 'REVOKED'
+  | 'NOT_ASSESSED';
+
 export interface PassportU6Lineage {
   bindingState: PassportU6BindingState;
+  /**
+   * U6 lifecycle truth, a separate axis from integrity verification.
+   *   PACKAGE_PUBLICATION_STATE != PACKAGE_INTEGRITY_STATE
+   *   REVOKED != INVALID_PACKAGE
+   *   INTEGRITY_VERIFIED != CURRENTLY_PUBLIC
+   * NOT_ASSESSED when no canonical persisted lifecycle evidence exists
+   * (unbound or caller-supplied pure package) — never inferred.
+   */
+  publicationState: PassportU6PublicationState;
   packageId?: string;
   semanticPackageDigest?: string;
   semanticReportDigest?: string;
@@ -158,10 +173,17 @@ export interface AgenticProductionPassport {
     repositoryCommitSha: string | null;
   };
   buildProvenance: {
+    /**
+     * Stable output-generator software identity only.
+     *   PROCESS_START_TIME != PASSPORT_SEMANTIC_INPUT
+     *   BUILD_INSTANCE_TIMESTAMP != SOURCE_BUILD_IDENTITY
+     * The process/build-instance timestamp from lib/build-identity.ts is
+     * intentionally excluded from canonical Passport bytes — it is not a
+     * stable semantic build identifier.
+     */
     outputGeneratorBuildIdentity: {
       commitSha: string;
       commitRef: string;
-      buildTimestamp: string;
       packageVersion: string;
     };
     analyzerBuildIdentity: {
@@ -458,6 +480,7 @@ export function buildAgenticProductionPassport(
   const evaluationSnapshotAt = output.evaluationIdentity.evaluationSnapshotAt ?? null;
   const u6Lineage: PassportU6Lineage = context?.u6Lineage ?? {
     bindingState: 'NOT_BOUND',
+    publicationState: 'NOT_ASSESSED',
     limitations: [
       'This Passport represents the evaluated HAIEC output but is not bound to an issued U6 Decision Receipt/package.',
       'NO_PACKAGE != PACKAGE_VERIFIED; NO_PACKAGE != VERIFICATION_FAILURE; NO_PACKAGE != CERTIFICATION.',
@@ -475,7 +498,11 @@ export function buildAgenticProductionPassport(
     ...(consequenceDelta ? { consequenceDelta } : {}),
     evaluationIdentity: output.evaluationIdentity,
     buildProvenance: {
-      outputGeneratorBuildIdentity: output.buildProvenance.outputGeneratorBuildIdentity,
+      outputGeneratorBuildIdentity: {
+        commitSha: output.buildProvenance.outputGeneratorBuildIdentity.commitSha,
+        commitRef: output.buildProvenance.outputGeneratorBuildIdentity.commitRef,
+        packageVersion: output.buildProvenance.outputGeneratorBuildIdentity.packageVersion,
+      },
       analyzerBuildIdentity: output.buildProvenance.analyzerBuildIdentity,
     },
     operatingModel: {
@@ -514,6 +541,7 @@ export function buildAgenticProductionPassport(
       },
       limitations: [
         'Passport is a deterministic projection; it is not a runtime observation.',
+        'Output-generator identity is bound by source/build identifiers. Process-instance initialization time is intentionally excluded from canonical Passport bytes.',
         'Passport is not a U6 Decision Receipt and not a U5 disposition; it does not issue, verify, or recompute either.',
         ...(evaluationSnapshotAt
           ? []

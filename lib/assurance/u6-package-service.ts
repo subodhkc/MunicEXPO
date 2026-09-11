@@ -642,6 +642,8 @@ export function buildPassportU6LineageFromPackage(
   }
   return {
     bindingState: 'BOUND_INTERNAL_CONSISTENCY',
+    // No canonical persisted lifecycle evidence for a caller-supplied object.
+    publicationState: 'NOT_ASSESSED',
     packageId: pkg.packageId,
     semanticPackageDigest: pkg.semanticPackageDigest,
     semanticReportDigest: pkg.semanticReportDigest,
@@ -676,6 +678,7 @@ export async function resolvePassportU6Lineage(
   if (!u6PackageId) {
     return {
       bindingState: 'NOT_BOUND',
+      publicationState: 'NOT_ASSESSED',
       limitations: [
         'This Passport represents the evaluated HAIEC output but is not bound to an issued U6 Decision Receipt/package.',
         'NO_PACKAGE != PACKAGE_VERIFIED; NO_PACKAGE != VERIFICATION_FAILURE; NO_PACKAGE != CERTIFICATION.',
@@ -687,11 +690,24 @@ export async function resolvePassportU6Lineage(
     throw new Error('PASSPORT_U6_PACKAGE_NOT_FOUND');
   }
   const lineage = buildPassportU6LineageFromPackage(output, loaded.package);
+  // Lifecycle truth is a separate axis from integrity: a REVOKED package can
+  // still be integrity-verified, and integrity verification does not imply
+  // current publication. REVOKED != INVALID_PACKAGE.
+  const publicationState =
+    loaded.publicationState === 'PUBLIC' || loaded.publicationState === 'REVOKED'
+      ? loaded.publicationState
+      : 'PRIVATE';
   return {
     ...lineage,
     bindingState: 'BOUND_VERIFIED_AGAINST_HAIEC_RECORD',
+    publicationState,
     limitations: [
       'Package integrity verified against the persisted HAIEC record — integrity verification, not certification.',
+      ...(publicationState === 'REVOKED'
+        ? [
+            'Package record is REVOKED. Integrity verification does not imply current publication or active issuance status.',
+          ]
+        : []),
     ],
   };
 }
