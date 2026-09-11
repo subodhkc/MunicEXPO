@@ -46,6 +46,21 @@ export interface SubjectOperatingModel {
   contextInfluence: Pick<ArchetypeDimensionValue, 'value' | 'state' | 'coverage' | 'evidenceRefs' | 'limitations' | 'sourceRelationIds'>[];
 }
 
+export interface ContextEvidenceItem {
+  kind: string;
+  state?: AriRelationState;
+  coverage?: AriCoverageState;
+  sourceAgentId?: string;
+  sourceRelationIds: string[];
+  limitations: string[];
+}
+
+export interface ContextEvidence {
+  coverage: AriCoverageState;
+  items: ContextEvidenceItem[];
+  frontier?: string;
+}
+
 export interface AgenticProductionPassport {
   schemaVersion: string;
   passportId: string;
@@ -84,9 +99,9 @@ export interface AgenticProductionPassport {
     limitations: string[];
   }[];
   context: {
-    memory: { available: false; reason: string } | { available: true; kinds: string[]; limitations: string[] };
-    rag: { available: false; reason: string } | { available: true; kinds: string[]; limitations: string[] };
-    mcp: { available: false; reason: string } | { available: true; tools: string[]; limitations: string[] };
+    memory: ContextEvidence;
+    rag: ContextEvidence;
+    mcp: ContextEvidence;
   };
   evidenceCoverage: {
     overall: AriCoverageState;
@@ -343,9 +358,9 @@ export function buildAgenticProductionPassport(
 }
 
 function determineMemoryRagMcpTruth(output: EvaluatedAssuranceOutput): {
-  memory: { available: false; reason: string } | { available: true; kinds: string[]; limitations: string[] };
-  rag: { available: false; reason: string } | { available: true; kinds: string[]; limitations: string[] };
-  mcp: { available: false; reason: string } | { available: true; tools: string[]; limitations: string[] };
+  memory: ContextEvidence;
+  rag: ContextEvidence;
+  mcp: ContextEvidence;
 } {
   const ea = output.executionArchetype;
   const families = ea.coverageSummary.families ?? {};
@@ -358,52 +373,75 @@ function determineMemoryRagMcpTruth(output: EvaluatedAssuranceOutput): {
   const memoryFamily = families['memoryLineage'] ?? 'NOT_ANALYZED';
   const ragFamily = families['modelContextInfluence'] ?? 'NOT_ANALYZED';
 
-  const memory: { available: false; reason: string } | { available: true; kinds: string[]; limitations: string[] } =
-    memoryAccesses.length > 0 || memoryLineages.length > 0
-      ? {
-          available: true,
-          kinds: [
-            ...new Set([
-              ...memoryAccesses.map((r) => r.accessKind),
-              ...memoryLineages.map((r) => r.influenceKind),
-            ]),
-          ].sort(),
-          limitations: [
-            'MEMORY_WRITE != LATER_MEMORY_INFLUENCE',
-            'Static access evidence establishes code capability, not runtime execution.',
-          ],
-        }
+  const memoryItems: ContextEvidenceItem[] = [
+    ...memoryAccesses.map((r) => ({
+      kind: `MEMORY_${r.accessKind}`,
+      state: r.state,
+      coverage: 'ANALYZED' as AriCoverageState,
+      sourceAgentId: r.subject?.id,
+      sourceRelationIds: [r.id],
+      limitations: [
+        ...r.limitations,
+        'MEMORY_WRITE != LATER_MEMORY_INFLUENCE',
+        'Static memory access evidence establishes code capability, not runtime execution.',
+      ],
+    })),
+    ...memoryLineages.map((r) => ({
+      kind: `MEMORY_LINEAGE_${r.influenceKind}`,
+      state: r.state,
+      coverage: 'ANALYZED' as AriCoverageState,
+      sourceRelationIds: [r.id],
+      limitations: [r.establishmentBasis, 'MEMORY_WRITE != LATER_MEMORY_INFLUENCE'].concat(r.limitations),
+    })),
+  ];
+
+  const memory: ContextEvidence =
+    memoryItems.length > 0
+      ? { coverage: 'ANALYZED', items: memoryItems }
       : memoryFamily === 'ANALYZED'
-        ? { available: true, kinds: [], limitations: ['ANALYZED_EMPTY: memory family analyzed, no memory access/lineage relations in this snapshot.'] }
-        : { available: false, reason: `memoryLineage family state is ${memoryFamily}; no exact relations bound.` };
+        ? { coverage: 'ANALYZED', items: [], frontier: 'ANALYZED_EMPTY: memory lineage family analyzed with no relation instances.' }
+        : { coverage: memoryFamily, items: [], frontier: `memoryLineage family coverage is ${memoryFamily}.` };
 
-  const rag: { available: false; reason: string } | { available: true; kinds: string[]; limitations: string[] } =
-    contextInfluences.length > 0
-      ? {
-          available: true,
-          kinds: [...new Set(contextInfluences.map((r) => r.influenceKind))].sort(),
-          limitations: [
-            'VECTOR_STORE_ACCESS != RAG_INFLUENCE',
-            'RAG_REFERENCE != RETRIEVAL_EXECUTED',
-            'Static context influence evidence is not runtime retrieval execution.',
-          ],
-        }
+  const ragItems: ContextEvidenceItem[] = contextInfluences.map((r) => ({
+    kind: `RAG_${r.influenceKind}`,
+    state: r.state,
+    coverage: 'ANALYZED' as AriCoverageState,
+    sourceAgentId: r.modelCallId,
+    sourceRelationIds: r.promptId ? [r.id, r.promptId] : [r.id],
+    limitations: [
+      ...r.limitations,
+      'VECTOR_STORE_ACCESS != RAG_INFLUENCE',
+      'RAG_REFERENCE != RETRIEVAL_EXECUTED',
+      'Static context-influence evidence is not runtime retrieval execution.',
+    ],
+  }));
+
+  const rag: ContextEvidence =
+    ragItems.length > 0
+      ? { coverage: 'ANALYZED', items: ragItems }
       : ragFamily === 'ANALYZED'
-        ? { available: true, kinds: [], limitations: ['ANALYZED_EMPTY: modelContextInfluence family analyzed, no context-influence relations in this snapshot.'] }
-        : { available: false, reason: `modelContextInfluence family state is ${ragFamily}; no exact relations bound.` };
+        ? { coverage: 'ANALYZED', items: [], frontier: 'ANALYZED_EMPTY: modelContextInfluence family analyzed with no relation instances.' }
+        : { coverage: ragFamily, items: [], frontier: `modelContextInfluence family coverage is ${ragFamily}.` };
 
-  const mcp: { available: false; reason: string } | { available: true; tools: string[]; limitations: string[] } =
-    mcpRefs.length > 0
-      ? {
-          available: true,
-          tools: [...new Set(mcpRefs.flatMap((r) => r.refs))].sort(),
-          limitations: [
-            'MCP_SERVER_REF != CONNECTED_RUNTIME_MCP_SESSION',
-            'DECLARED_MCP_TOOL != RUNTIME_CALL',
-            'Source declaration establishes topology/capability candidates, not runtime connection.',
-          ],
-        }
-      : { available: false, reason: 'No MCP server references found in agent candidate declarations for this snapshot.' };
+  const mcpItems: ContextEvidenceItem[] = mcpRefs.flatMap((r) =>
+    r.refs.map((ref) => ({
+      kind: 'MCP_SERVER_REF',
+      state: 'CANDIDATE' as AriRelationState,
+      coverage: 'ANALYZED' as AriCoverageState,
+      sourceAgentId: r.agentId,
+      sourceRelationIds: [r.agentId, ref],
+      limitations: [
+        'MCP_SERVER_REF != CONNECTED_RUNTIME_MCP_SESSION',
+        'DECLARED_MCP_TOOL != RUNTIME_CALL',
+        'Source declaration establishes topology/capability candidates, not runtime connection.',
+      ],
+    })),
+  );
+
+  const mcp: ContextEvidence =
+    mcpItems.length > 0
+      ? { coverage: 'ANALYZED', items: mcpItems }
+      : { coverage: 'NOT_ANALYZED', items: [], frontier: 'No MCP server references found in agent candidate declarations for this snapshot.' };
 
   return { memory, rag, mcp };
 }
