@@ -129,16 +129,11 @@ interface ComposeInput {
 function reasonCodeFromState(
   state: AriRelationState,
   coverage: AriCoverageState,
-  limitations: string[],
 ): EvidenceFrontierReasonCode {
-  if (limitations.some((l) => l.includes('RUNTIME'))) return 'RUNTIME_EVIDENCE_REQUIRED';
-  if (limitations.some((l) => l.includes('PROVIDER'))) return 'PROVIDER_EVIDENCE_REQUIRED';
-  if (limitations.some((l) => l.includes('UNSUPPORTED'))) return 'UNSUPPORTED_ANALYSIS';
-  if (state === 'PARTIAL') return 'ANALYSIS_INCOMPLETE';
-  if (state === 'UNKNOWN') return 'SOURCE_EVIDENCE_MISSING';
-  if (state === 'CANDIDATE') return 'NO_QUALIFYING_EVIDENCE';
+  // PROSE != STRUCTURED_REASON
+  // Reason codes are derived only from structured source state/coverage.
+  // UNKNOWN != SOURCE_EVIDENCE_MISSING; CANDIDATE != NO_QUALIFYING_EVIDENCE.
   if (state === 'NOT_ANALYZED' || coverage === 'NOT_ANALYZED') return 'NOT_EVALUATED';
-  if (coverage === 'PARTIAL' || coverage === 'UNKNOWN') return 'ANALYSIS_INCOMPLETE';
   return 'REASON_NOT_ESTABLISHED';
 }
 
@@ -149,20 +144,7 @@ export function buildEvidenceFrontierSection(
   const frontierItems: EvidenceFrontierItem[] = [];
 
   for (const f of archetypeSummary.unresolvedFrontiers) {
-    const reasonCode = reasonCodeFromState(f.state, f.coverage, []);
-    const reasonMap: Record<EvidenceFrontierReasonCode, string> = {
-      ANALYSIS_INCOMPLETE: 'Evidence is partial; the analysis did not fully establish this facet.',
-      SOURCE_EVIDENCE_MISSING: 'Source evidence required to establish this value is missing.',
-      NO_QUALIFYING_EVIDENCE: 'No qualifying evidence supports this value.',
-      NOT_EVALUATED: 'This facet was not evaluated for the exact bound scan.',
-      SOURCE_NOT_CONNECTED: 'A required evidence source is not connected.',
-      RUNTIME_EVIDENCE_REQUIRED: 'Runtime evidence is required to establish this value.',
-      PROVIDER_EVIDENCE_REQUIRED: 'Provider-side evidence is required to establish this value.',
-      ANALYSIS_LIMITATION: 'The analysis has a known limitation that prevents establishment.',
-      UNSUPPORTED_ANALYSIS: 'The current analysis does not support this evidence dimension.',
-      NOT_APPLICABLE: 'This item is not applicable to the evaluated scope.',
-      REASON_NOT_ESTABLISHED: 'No specific reason was established.',
-    };
+    const reasonCode = reasonCodeFromState(f.state, f.coverage);
 
     const dim = archetypeSummary.dimensions.find((d) => d.facet === f.facet);
     const value = dim?.values.find((v) => v.value === f.value);
@@ -174,7 +156,7 @@ export function buildEvidenceFrontierSection(
       state: f.state,
       coverage: f.coverage,
       reasonCode,
-      reason: f.reason || reasonMap[reasonCode],
+      reason: f.reason || 'No specific reason was established.',
       sourceRelationIds: value?.sourceRelationIds ?? [],
     });
   }

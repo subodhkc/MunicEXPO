@@ -5,10 +5,26 @@
  * It is NOT a second report truth engine.
  */
 
+import { createHash } from 'crypto';
 import type { EvaluatedAssuranceOutput } from './assurance-output-composer';
 import type { AriRelationState, AriCoverageState } from '@/lib/ai-security/types';
 
 const PASSPORT_SCHEMA_VERSION = 'passport-0.1.0';
+
+function computePassportId(output: EvaluatedAssuranceOutput): string {
+  // WALL_CLOCK_TIME != SEMANTIC_ID
+  // Passport identity is material, not an instance timestamp.
+  const identity = [
+    PASSPORT_SCHEMA_VERSION,
+    output.evaluationIdentity.organizationId,
+    output.evaluationIdentity.aiSystemId,
+    output.evaluationIdentity.evaluationId,
+    output.evaluationIdentity.orchestratorRunId,
+    output.evaluationIdentity.exactScanId,
+    output.evaluationIdentity.repositoryCommitSha ?? '',
+  ].join(':');
+  return `passport-${createHash('sha256').update(identity).digest('hex').slice(0, 32)}`;
+}
 
 export interface AgenticProductionPassport {
   schemaVersion: string;
@@ -79,7 +95,16 @@ export interface AgenticProductionPassport {
 }
 
 export interface CapabilityExposureStage {
-  stage: 'Registered' | 'Model-visible' | 'Model-requested' | 'Effective dispatch' | 'Handler bound' | 'Consequence path' | 'Observed action';
+  stage:
+    | 'Registered'
+    | 'Model-visible'
+    | 'Model-requested'
+    | 'Dispatch'
+    | 'Conditional dispatch'
+    | 'Effective dispatch'
+    | 'Handler bound'
+    | 'Consequence path'
+    | 'Observed action';
   state: AriRelationState;
   relationIds: string[];
   toolName?: string;
@@ -101,12 +126,14 @@ export function buildAgenticProductionPassport(
 ): AgenticProductionPassport {
   const ea = output.executionArchetype;
 
-  const humanInteraction = ea.dimensions.find((d) => d.facet === 'HUMAN_INTERACTION_PATTERN')?.values[0]?.value ?? 'UNKNOWN';
+  const firstValue = (facet: string) => ea.dimensions.find((d) => d.facet === facet)?.values[0]?.value ?? 'UNKNOWN';
+
+  const humanInteraction = firstValue('HUMAN_INTERACTION_PATTERN');
   const modality = ea.dimensions.find((d) => d.facet === 'MODALITY')?.values.map((v) => v.value) ?? [];
-  const initiatingPrincipal = ea.dimensions.find((d) => d.facet === 'INITIATING_PRINCIPAL')?.values[0]?.value ?? 'UNKNOWN';
-  const trigger = ea.dimensions.find((d) => d.facet === 'TRIGGER_MECHANISM')?.values[0]?.value ?? 'UNKNOWN';
-  const lifecycle = ea.dimensions.find((d) => d.facet === 'EXECUTION_LIFECYCLE')?.values[0]?.value ?? 'UNKNOWN';
-  const decisionRole = ea.dimensions.find((d) => d.facet === 'DECISION_ROLE')?.values[0]?.value ?? 'UNKNOWN';
+  const initiatingPrincipal = firstValue('INITIATING_PRINCIPAL');
+  const trigger = firstValue('TRIGGER_MECHANISM');
+  const lifecycle = firstValue('EXECUTION_LIFECYCLE');
+  const decisionRole = firstValue('DECISION_ROLE');
 
   const capabilityExposureLadder: CapabilityExposureStage[] = [];
   for (const path of ea.consequencePathSummary) {
@@ -120,7 +147,17 @@ export function buildAgenticProductionPassport(
           stageName = 'Model-visible';
           break;
         case 'DISPATCH':
-          stageName = stage.state === 'EFFECTIVE_DISPATCH' ? 'Effective dispatch' : 'Model-requested';
+          // MODEL_REQUESTED != DISPATCH
+          // Expose canonical dispatch state, never alias it as Model-requested.
+          if (stage.state === 'EFFECTIVE_DISPATCH') {
+            stageName = 'Effective dispatch';
+          } else if (stage.state === 'CONDITIONAL_DISPATCH') {
+            stageName = 'Conditional dispatch';
+          } else if (stage.state === 'CANDIDATE') {
+            stageName = 'Dispatch';
+          } else {
+            stageName = 'Dispatch';
+          }
           break;
         case 'HANDLER':
           stageName = 'Handler bound';
@@ -140,6 +177,21 @@ export function buildAgenticProductionPassport(
         limitations: stage.limitations,
       });
     }
+
+    // Model-requested is a separate ladder stage and is not derived from dispatch.
+    // MODEL_REQUESTED requires an independent request-binding evidence owner.
+    // Current exact-scan evaluation does not provide that binding in this wave.
+    capabilityExposureLadder.push({
+      stage: 'Model-requested',
+      state: 'NOT_ANALYZED',
+      relationIds: [],
+      toolName: path.toolCandidateId,
+      handlerRef: path.handlerRef,
+      limitations: [
+        'MODEL_REQUESTED requires an independent request-binding evidence owner; no exact owner is bound to this scan.',
+      ],
+    });
+
     capabilityExposureLadder.push({
       stage: 'Observed action',
       state: 'NOT_ANALYZED',
@@ -179,7 +231,7 @@ export function buildAgenticProductionPassport(
 
   return {
     schemaVersion: PASSPORT_SCHEMA_VERSION,
-    passportId: `passport-${output.evaluationIdentity.evaluationId}-${Date.now()}`,
+    passportId: computePassportId(output),
     generatedAt: new Date().toISOString(),
     evaluationIdentity: output.evaluationIdentity,
     buildProvenance: {
@@ -201,11 +253,11 @@ export function buildAgenticProductionPassport(
     evidenceCoverage: {
       overall: ea.coverageSummary.overall,
       ariFamilies,
-      frontiers: ea.unresolvedFrontiers.map((f) => ({
+      frontiers: output.evidenceFrontier.frontierItems.map((f) => ({
         facet: f.facet,
         value: f.value,
         state: f.state,
-        reasonCode: 'FRONTIER',
+        reasonCode: f.reasonCode,
       })),
     },
     runtimeProviderFrontiers: {

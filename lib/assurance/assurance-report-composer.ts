@@ -5,10 +5,25 @@
  * It does not create a second evidence path.
  */
 
+import { createHash } from 'crypto';
 import type { EvaluatedAssuranceOutput } from './assurance-output-composer';
 import type { AriCoverageState, AriRelationState } from '@/lib/ai-security/types';
 
 const REPORT_SCHEMA_VERSION = 'report-0.1.0';
+
+function computeReportId(output: EvaluatedAssuranceOutput): string {
+  // WALL_CLOCK_TIME != SEMANTIC_ID
+  const identity = [
+    REPORT_SCHEMA_VERSION,
+    output.evaluationIdentity.organizationId,
+    output.evaluationIdentity.aiSystemId,
+    output.evaluationIdentity.evaluationId,
+    output.evaluationIdentity.orchestratorRunId,
+    output.evaluationIdentity.exactScanId,
+    output.evaluationIdentity.repositoryCommitSha ?? '',
+  ].join(':');
+  return `report-${createHash('sha256').update(identity).digest('hex').slice(0, 32)}`;
+}
 
 export interface AssuranceReport {
   schemaVersion: string;
@@ -38,7 +53,7 @@ export interface AssuranceReport {
   sections: {
     executiveSummary: string;
     operatingModel: string;
-    agentSurfaces: { agentId: string; surface: string; state: AriRelationState; limitations: string[] }[];
+    agentSurfaces: { kind: string; agentId: string; displayName: string; surface: string; state: AriRelationState; limitations: string[] }[];
     capabilityExposureLadder: { stage: string; state: AriRelationState; toolName?: string; limitations: string[] }[];
     actionConsequencePaths: { toolCandidateId?: string; handlerRef?: string; stages: string[]; state: AriRelationState; limitations: string[] }[];
     humanControls: string;
@@ -64,7 +79,9 @@ export function buildAssuranceReportFromOutput(
   const agentSurfaces = ea.dimensions
     .filter((d) => d.facet === 'HUMAN_INTERACTION_PATTERN' || d.facet === 'MODALITY')
     .flatMap((d) => d.values.map((v) => ({
-      agentId: v.sourceRelationIds[0] ?? 'unknown',
+      kind: v.subject.kind,
+      agentId: v.subject.id,
+      displayName: v.subject.displayName ?? 'unknown',
       surface: `${d.facet}: ${v.value}`,
       state: v.state,
       limitations: v.limitations,
@@ -104,7 +121,7 @@ export function buildAssuranceReportFromOutput(
 
   return {
     schemaVersion: REPORT_SCHEMA_VERSION,
-    reportId: `report-${output.evaluationIdentity.evaluationId}-${Date.now()}`,
+    reportId: computeReportId(output),
     generatedAt: new Date().toISOString(),
     evaluationIdentity: output.evaluationIdentity,
     buildProvenance: {
@@ -113,7 +130,7 @@ export function buildAssuranceReportFromOutput(
       schemaVersions: output.buildProvenance.schemaVersions,
     },
     sections: {
-      executiveSummary: `Assurance report for ${output.evaluationIdentity.aiSystemId}. Semantic coverage is ${ea.coverageSummary.overall}. Output is deterministic and does not recompute evidence.`,
+      executiveSummary: `Assurance report for ${output.evaluationIdentity.aiSystemId}. Semantic coverage is ${ea.coverageSummary.overall}. Output is deterministic and does not recompute evidence. Modeled commercial context is OFF.`,
       operatingModel: `Interaction: ${ea.dimensions.find((d) => d.facet === 'HUMAN_INTERACTION_PATTERN')?.values[0]?.value ?? 'UNKNOWN'}; lifecycle: ${ea.dimensions.find((d) => d.facet === 'EXECUTION_LIFECYCLE')?.values[0]?.value ?? 'UNKNOWN'}.`,
       agentSurfaces,
       capabilityExposureLadder,
@@ -138,7 +155,7 @@ export function buildAssuranceReportFromOutput(
     },
     limitations: [
       'Report is a deterministic projection over the shared composer.',
-      'Unknown != failure; SOURCE_GAP != risk.',
+      'Unknown is not failure; SOURCE_GAP is not risk.',
       'Modeled commercial context is disabled for technical assurance.',
     ],
   };
