@@ -147,6 +147,7 @@ export interface MachineReadableAssuranceOutput {
         toolCandidateId?: string;
         handlerRef?: string;
         targetId?: string;
+        sourceFamily?: string;
         limitations: string[];
       }[];
     }[];
@@ -210,6 +211,7 @@ export function buildMachineReadableAssuranceOutput(
           toolCandidateId: s.toolCandidateId,
           handlerRef: s.handlerRef,
           targetId: s.targetId,
+          sourceFamily: s.sourceFamily,
           limitations: s.limitations,
         })),
       })),

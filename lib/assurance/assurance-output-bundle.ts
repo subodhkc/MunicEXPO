@@ -16,7 +16,7 @@
 import type { AssuranceEvaluation } from './types';
 import type { PersistedOperationCoverageIntelligence } from '@/lib/ai-security/operation-coverage-read';
 import {
-  composeAssuranceOutput,
+  buildAssuranceOutputFromLoadedCoverage,
   composeAssuranceOutputFromCoverage,
   type EvaluatedAssuranceOutput,
 } from './assurance-output-composer';
@@ -26,7 +26,7 @@ import { buildAssuranceReportFromOutput } from './assurance-report-composer';
 import { buildMachineReadableAssuranceOutput } from './assurance-artifact-manifest';
 import { buildArtifactManifest } from './assurance-artifact-manifest';
 import { buildEvaluatedTopologyProjection } from '@/lib/topology/topology-projector';
-import { buildAgentReachabilityReadModel } from '@/lib/ai-inventory/agent-reachability-read-model';
+import { buildAgentReachabilityReadModel, type AgentReachabilityReadModel } from '@/lib/ai-inventory/agent-reachability-read-model';
 import { buildConstellationProjection } from '@/lib/topology/constellation-presentation-projection';
 import { buildConstellationExport } from '@/lib/topology/constellation-export';
 import type { ArtifactManifest } from './assurance-artifact-manifest';
@@ -64,6 +64,7 @@ function buildBundleFromOutput(
   output: EvaluatedAssuranceOutput,
   coverage: PersistedOperationCoverageIntelligence,
   aiSystemName?: string,
+  readModel?: AgentReachabilityReadModel,
 ): AssuranceOutputBundle {
   const evaluationId = output.evaluationIdentity.evaluationId;
   const scanId = output.evaluationIdentity.exactScanId;
@@ -88,7 +89,7 @@ function buildBundleFromOutput(
     aiSystemName,
   });
 
-  const reachability = buildAgentReachabilityReadModel(coverage, { scanId, commitSha });
+  const reachability = readModel ?? buildAgentReachabilityReadModel(coverage, { scanId, commitSha });
   const constellation = buildConstellationProjection(topology, reachability);
   const constellationExport = buildConstellationExport(constellation, { evaluationId });
 
@@ -154,18 +155,6 @@ export async function buildAssuranceOutputBundle(
   evaluation: AssuranceEvaluation,
   aiSystemName?: string,
 ): Promise<AssuranceBundleResult> {
-  const composed = await composeAssuranceOutput(evaluation);
-
-  if (composed.status !== 'AVAILABLE') {
-    return {
-      availability: 'NOT_AVAILABLE',
-      reason: composed.reason,
-    };
-  }
-
-  const output = composed.output;
-
-  // Load the same exact coverage separately for canonical topology projection.
   const loaded = await loadEvaluatedOperationCoverage(evaluation);
   if ('availability' in loaded) {
     return {
@@ -174,7 +163,14 @@ export async function buildAssuranceOutputBundle(
     };
   }
 
-  const bundle = buildBundleFromOutput(output, loaded.data, aiSystemName);
+  const readModel = buildAgentReachabilityReadModel(loaded.data, {
+    scanId: loaded.scanId,
+    commitSha: loaded.commitSha,
+  });
+
+  const output = buildAssuranceOutputFromLoadedCoverage(evaluation, loaded, readModel);
+
+  const bundle = buildBundleFromOutput(output, loaded.data, aiSystemName, readModel);
 
   return { availability: bundle.availability, bundle };
 }

@@ -21,9 +21,11 @@ import {
 } from '@/lib/ai-inventory/execution-archetype';
 import type { PersistedOperationCoverageIntelligence } from '@/lib/ai-security/operation-coverage-read';
 import type { AssuranceEvaluation } from './types';
-import { buildActionProofReportSection } from './u6-action-proof-section';
-import { buildAgentReachabilityReportSection } from './u6-agent-reachability-section';
-import { buildActionAssuranceReportSection } from './u6-action-assurance-section';
+import { buildActionProofReportSectionFromSnapshot } from './u6-action-proof-section';
+import { buildAgentReachabilityReportSectionFromSnapshot } from './u6-agent-reachability-section';
+import { buildActionAssuranceReportSectionFromSnapshot } from './u6-action-assurance-section';
+import { buildAgentReachabilityReadModel } from '@/lib/ai-inventory/agent-reachability-read-model';
+import type { AgentReachabilityReadModel } from '@/lib/ai-inventory/agent-reachability-read-model';
 import type {
   ActionProofReportSection,
   AgentReachabilityReportSection,
@@ -287,6 +289,45 @@ export function composeAssuranceOutputFromCoverage(
   };
 }
 
+export interface LoadedAssuranceCoverage {
+  data: PersistedOperationCoverageIntelligence;
+  scanId: string;
+  commitSha: string | null;
+}
+
+/**
+ * Build the complete EvaluatedAssuranceOutput from a single already-loaded,
+ * validated coverage snapshot. No database access.
+ */
+export function buildAssuranceOutputFromLoadedCoverage(
+  evaluation: Pick<AssuranceEvaluation, 'id' | 'organizationId' | 'aiSystemId' | 'orchestratorRunId'>,
+  loaded: LoadedAssuranceCoverage,
+  providedReadModel?: AgentReachabilityReadModel,
+): EvaluatedAssuranceOutput {
+  const base = composeAssuranceOutputFromCoverage({
+    evaluation,
+    coverage: loaded.data,
+    scanId: loaded.scanId,
+    commitSha: loaded.commitSha,
+  });
+
+  const readModel = providedReadModel ?? buildAgentReachabilityReadModel(loaded.data, {
+    scanId: loaded.scanId,
+    commitSha: loaded.commitSha,
+  });
+
+  const actionProof = buildActionProofReportSectionFromSnapshot(loaded.data, loaded.scanId, loaded.commitSha);
+  const reachability = buildAgentReachabilityReportSectionFromSnapshot(readModel);
+  const actionAssurance = buildActionAssuranceReportSectionFromSnapshot(readModel, loaded.data, loaded.scanId, loaded.commitSha);
+
+  return {
+    ...base,
+    actionProof,
+    reachability,
+    actionAssurance,
+  };
+}
+
 /**
  * Shared composer entry point. Resolves the exact historical scan bound to the
  * evaluation and returns the complete output model. Never falls back to a
@@ -305,25 +346,7 @@ export async function composeAssuranceOutput(
     };
   }
 
-  const base = composeAssuranceOutputFromCoverage({
-    evaluation,
-    coverage: loaded.data,
-    scanId: loaded.scanId,
-    commitSha: loaded.commitSha,
-  });
-
-  const [actionProof, reachability, actionAssurance] = await Promise.all([
-    buildActionProofReportSection(evaluation),
-    buildAgentReachabilityReportSection(evaluation),
-    buildActionAssuranceReportSection(evaluation),
-  ]);
-
-  const output: EvaluatedAssuranceOutput = {
-    ...base,
-    actionProof,
-    reachability,
-    actionAssurance,
-  };
+  const output = buildAssuranceOutputFromLoadedCoverage(evaluation, loaded);
 
   return { status: 'AVAILABLE', output };
 }

@@ -241,17 +241,26 @@ export async function buildAgentReachabilityReportSection(
       commitSha: result.commitSha,
     });
 
-    if (readModel.availability === 'NOT_AVAILABLE') {
-      return {
-        availability: 'NOT_AVAILABLE',
-        unavailableReason: mapAriUnavailableReason(readModel.unavailableReason),
-        scanId: readModel.scanId,
-        commitSha: readModel.commitSha,
-      };
-    }
-
-    return summarizeSection(readModel);
+    return buildAgentReachabilityReportSectionFromSnapshot(readModel);
   } catch {
     return unavailable('SECTION_BUILD_FAILED');
   }
+}
+
+/**
+ * Build the Agent Reachability report section from an already-built
+ * AgentReachabilityReadModel. No database access.
+ */
+export function buildAgentReachabilityReportSectionFromSnapshot(
+  readModel: AgentReachabilityReadModel,
+): AgentReachabilityReportSection {
+  if (readModel.availability === 'NOT_AVAILABLE') {
+    return {
+      availability: 'NOT_AVAILABLE',
+      unavailableReason: mapAriUnavailableReason(readModel.unavailableReason),
+      scanId: readModel.scanId,
+      commitSha: readModel.commitSha,
+    };
+  }
+  return summarizeSection(readModel);
 }

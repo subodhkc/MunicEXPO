@@ -167,7 +167,9 @@ export function reconcileReachabilityIdentity(
   projection: TopologyProjectionResult,
   reachability?: AgentReachabilityReadModel | null,
 ): { compatible: boolean; limitation?: string } {
-  if (!reachability) return { compatible: false };
+  if (!reachability) {
+    return { compatible: false, limitation: 'Agent Reachability enrichment omitted because no reachability read-model was supplied.' };
+  }
   if (!projection.organizationId || !projection.aiSystemId || !projection.scanId || !reachability.scanId) {
     return {
       compatible: false,
@@ -177,13 +179,31 @@ export function reconcileReachabilityIdentity(
   if (projection.scanId !== reachability.scanId) {
     return {
       compatible: false,
-      limitation: 'Agent Reachability enrichment omitted because exact source-scan identity could not be reconciled.',
+      limitation: `Agent Reachability enrichment omitted: scanId mismatch (topology ${projection.scanId}, reachability ${reachability.scanId}).`,
     };
   }
-  if (projection.scanProvenance?.commitSha && reachability.commitSha && projection.scanProvenance.commitSha !== reachability.commitSha) {
+
+  const pCommit = projection.scanProvenance?.commitSha ?? null;
+  const rCommit = reachability.commitSha ?? null;
+  const pCommitKnown = pCommit !== null;
+  const rCommitKnown = rCommit !== null;
+
+  if (pCommitKnown && !rCommitKnown) {
     return {
       compatible: false,
-      limitation: 'Agent Reachability enrichment omitted because exact source-scan identity could not be reconciled.',
+      limitation: 'Agent Reachability enrichment omitted: topology has a commit SHA but reachability does not.',
+    };
+  }
+  if (!pCommitKnown && rCommitKnown) {
+    return {
+      compatible: false,
+      limitation: 'Agent Reachability enrichment omitted: reachability has a commit SHA but topology does not.',
+    };
+  }
+  if (pCommitKnown && rCommitKnown && pCommit !== rCommit) {
+    return {
+      compatible: false,
+      limitation: `Agent Reachability enrichment omitted: commitSha mismatch (topology ${pCommit}, reachability ${rCommit}).`,
     };
   }
   return { compatible: true };
