@@ -13,6 +13,11 @@
  */
 
 import { getBuildIdentity } from '@/lib/build-identity';
+import {
+  computeAnalyzerIdentityDigest,
+  type AnalyzerExecutionIdentity,
+  type AnalyzerIdentityCaptureState,
+} from '@/lib/ai-security/analyzer-execution-identity';
 import { loadEvaluatedOperationCoverage } from './u6-scan-loader';
 import {
   buildExecutionArchetypeProjection,
@@ -73,9 +78,29 @@ export interface EvaluatedAssuranceOutputBuildProvenance {
     buildTimestamp: string;
     packageVersion: string;
   };
+  /**
+   * AEI-1: projection of the canonical persisted analyzer execution identity.
+   *   available   — true only when the persisted captureState is EXACT.
+   *   captureState — the persisted historical capture state (EXACT / PARTIAL /
+   *                 NOT_AVAILABLE); NEVER reconstructed from the current
+   *                 environment.
+   *   identity    — the persisted AnalyzerExecutionIdentity verbatim when
+   *                 present on the historical snapshot.
+   *   digest      — canonical executed-analyzer-identity digest, present only
+   *                 when captureState is EXACT.
+   *   LOCK: CURRENT_ENVIRONMENT_IDENTITY != HISTORICAL_SCAN_IDENTITY
+   *   LOCK: OUTPUT_GENERATOR_BUILD_IDENTITY != ANALYZER_BUILD_IDENTITY
+   */
   analyzerBuildIdentity: {
-    available: false;
-    reason: 'EXACT_ANALYZER_BUILD_IDENTITY_NOT_YET_PERSISTED';
+    available: boolean;
+    reason:
+      | 'EXACT_ANALYZER_BUILD_IDENTITY_CAPTURED'
+      | 'EXACT_ANALYZER_BUILD_IDENTITY_PARTIAL'
+      | 'ANALYZER_EXECUTION_IDENTITY_NOT_CAPTURED'
+      | 'EXACT_ANALYZER_BUILD_IDENTITY_NOT_YET_PERSISTED';
+    captureState: AnalyzerIdentityCaptureState;
+    identity?: AnalyzerExecutionIdentity;
+    digest?: string;
   };
   schemaVersions: {
     composer: string;
@@ -272,6 +297,19 @@ export function composeAssuranceOutputFromCoverage(
 
   const buildIdentity = getBuildIdentity();
 
+  // AEI-1: project the canonical persisted analyzer execution identity.
+  // The persisted record is the ONLY analyzer-identity source — the current
+  // environment is never consulted to reconstruct historical provenance.
+  //   LOCK: CURRENT_ENVIRONMENT_IDENTITY != HISTORICAL_SCAN_IDENTITY
+  //   LOCK: PROVENANCE_GAP != SECURITY_FINDING
+  const persistedAnalyzerIdentity = coverage.analyzerExecutionIdentity;
+  const analyzerCaptureState: AnalyzerIdentityCaptureState =
+    persistedAnalyzerIdentity?.captureState ?? 'NOT_AVAILABLE';
+  const analyzerIdentityDigest =
+    persistedAnalyzerIdentity && persistedAnalyzerIdentity.captureState === 'EXACT'
+      ? computeAnalyzerIdentityDigest(persistedAnalyzerIdentity)
+      : undefined;
+
   const archetypeResult = buildExecutionArchetypeProjection(coverage, {
     commitSha,
     buildIdentity: undefined,
@@ -280,7 +318,7 @@ export function composeAssuranceOutputFromCoverage(
   const archetypeSummary = buildExecutionArchetypeSummary(archetypeResult, coverage, {
     evaluationId: evaluation.id,
     repositoryCommit: commitSha,
-    analyzerBuildIdentity: undefined,
+    analyzerBuildIdentity: analyzerIdentityDigest,
   });
 
   const evidenceFrontier = buildEvidenceFrontierSection(archetypeSummary, coverage);
@@ -304,8 +342,17 @@ export function composeAssuranceOutputFromCoverage(
         packageVersion: buildIdentity.packageVersion,
       },
       analyzerBuildIdentity: {
-        available: false,
-        reason: 'EXACT_ANALYZER_BUILD_IDENTITY_NOT_YET_PERSISTED',
+        available: analyzerCaptureState === 'EXACT',
+        reason: !persistedAnalyzerIdentity
+          ? 'EXACT_ANALYZER_BUILD_IDENTITY_NOT_YET_PERSISTED'
+          : analyzerCaptureState === 'EXACT'
+            ? 'EXACT_ANALYZER_BUILD_IDENTITY_CAPTURED'
+            : analyzerCaptureState === 'PARTIAL'
+              ? 'EXACT_ANALYZER_BUILD_IDENTITY_PARTIAL'
+              : 'ANALYZER_EXECUTION_IDENTITY_NOT_CAPTURED',
+        captureState: analyzerCaptureState,
+        ...(persistedAnalyzerIdentity ? { identity: persistedAnalyzerIdentity } : {}),
+        ...(analyzerIdentityDigest ? { digest: analyzerIdentityDigest } : {}),
       },
       schemaVersions: {
         composer: COMPOSER_SCHEMA_VERSION,

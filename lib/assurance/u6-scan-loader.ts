@@ -20,6 +20,7 @@ import {
   type PersistedOperationCoverageIntelligence,
 } from '@/lib/ai-security/operation-coverage-read';
 import type { AssuranceEvaluation } from './types';
+import type { AnalyzerExecutionIdentity } from '@/lib/ai-security/analyzer-execution-identity';
 
 export interface EvaluatedScanResult {
   scanId: string;
@@ -27,6 +28,14 @@ export interface EvaluatedScanResult {
   data: PersistedOperationCoverageIntelligence;
   /** Persisted rule execution truth for this exact scan, when available. */
   rulesEvaluated?: Prisma.JsonValue;
+  /**
+   * AEI-1: the canonical persisted analyzer execution identity bound to this
+   * exact historical scan. Carried verbatim from the persisted snapshot —
+   * absent on legacy snapshots and NEVER reconstructed from current
+   * environment state.
+   *   LOCK: CURRENT_ENVIRONMENT_IDENTITY != HISTORICAL_SCAN_IDENTITY
+   */
+  analyzerExecutionIdentity?: AnalyzerExecutionIdentity;
 }
 
 export type EvaluatedScanUnavailableReason =
@@ -176,5 +185,8 @@ export async function loadEvaluatedOperationCoverage(
     commitSha: scan.commitSha ?? null,
     data,
     rulesEvaluated: scan.rulesEvaluated,
+    // AEI-1: the persisted analyzer identity is carried verbatim inside data;
+    // surfaced explicitly for provenance consumers.
+    analyzerExecutionIdentity: data.analyzerExecutionIdentity,
   };
 }

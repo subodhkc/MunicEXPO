@@ -13,6 +13,10 @@ import type { EvaluatedAssuranceOutput } from './assurance-output-composer';
 import type { ArchetypeDimensionValue } from '@/lib/ai-inventory/execution-archetype';
 import type { AriRelationState, AriCoverageState } from '@/lib/ai-security/types';
 import type { ConsequenceDelta } from './consequence-delta';
+import type {
+  AnalyzerExecutionIdentity,
+  AnalyzerIdentityCaptureState,
+} from '@/lib/ai-security/analyzer-execution-identity';
 import { canonicalSerialize } from '@/lib/evidence/deterministic-serialization';
 
 const PASSPORT_SCHEMA_VERSION = 'passport-0.3.1';
@@ -186,9 +190,21 @@ export interface AgenticProductionPassport {
       commitRef: string;
       packageVersion: string;
     };
+    /**
+     * AEI-1: projection of the canonical persisted analyzer execution
+     * identity bound to the exact historical scan — additive on top of the
+     * v1 {available, reason} contract. The persisted component-level record
+     * travels verbatim when present; absent/partial provenance is disclosed,
+     * never inferred.
+     *   LOCK: CURRENT_ENVIRONMENT_IDENTITY != HISTORICAL_SCAN_IDENTITY
+     *   LOCK: OUTPUT_GENERATOR_BUILD_IDENTITY != ANALYZER_BUILD_IDENTITY
+     */
     analyzerBuildIdentity: {
       available: boolean;
       reason: string;
+      captureState?: AnalyzerIdentityCaptureState;
+      identity?: AnalyzerExecutionIdentity;
+      digest?: string;
     };
   };
   operatingModel: {

@@ -20,6 +20,7 @@ import { loadEvaluatedOperationCoverage } from './u6-scan-loader';
 import { getEvaluatedScopeByEvaluationId } from './scope-persistence';
 import { composeAssuranceOutputFromCoverage } from './assurance-output-composer';
 import { gatherAnalyzerBuildIdentity } from './analyzer-build-inventory';
+import { compareAnalyzerExecutionIdentities } from '@/lib/ai-security/analyzer-execution-identity';
 import type { AssuranceEvaluation } from './types';
 import {
   buildConsequenceDelta,
@@ -184,20 +185,23 @@ export async function buildConsequenceDeltaForEvaluations(
         commitSha: candidateCoverage.commitSha,
       }),
     );
-    // P5: EXACT requires actual comparable exact build identity data from the
-    // canonical analyzer identity owner — not merely an availability boolean.
-    // The owner exposes no exact identity value today, so EXACT is
-    // unreachable by construction: a future boolean flip alone cannot
-    // accidentally upgrade comparability.
+    // P5/AEI-1: EXACT requires actual comparable exact analyzer execution
+    // identities from the canonical persisted owner — not merely an
+    // availability boolean. When both snapshots carry a persisted
+    // AnalyzerExecutionIdentity, comparability resolves against the persisted
+    // executed-component identity sets: EXACT only when both capture EXACT
+    // and the canonical identity digests are equal; a known identity conflict
+    // is NOT_COMPARABLE; otherwise PARTIAL. Legacy snapshots without a
+    // persisted identity keep the pre-AEI fragment semantics — PARTIAL when
+    // known fragments are equal, never EXACT.
     //   EXACT_AVAILABLE_BOOLEAN != EXACT_IDENTITY_EQUALITY
-    const baselineExactIdentity =
-      (baselineIdentity as { exactAnalyzerBuildIdentity?: string }).exactAnalyzerBuildIdentity ?? null;
-    const candidateExactIdentity =
-      (candidateIdentity as { exactAnalyzerBuildIdentity?: string }).exactAnalyzerBuildIdentity ?? null;
-    const exact =
-      baselineExactIdentity !== null &&
-      candidateExactIdentity !== null &&
-      baselineExactIdentity === candidateExactIdentity;
+    //   ABSENT_IDENTITY != CONFLICT
+    //   LEGACY_SNAPSHOT_NEVER_EXACT_COMPARABLE
+    const identityComparison = compareAnalyzerExecutionIdentities(
+      baselineIdentity.identity,
+      candidateIdentity.identity,
+    );
+    const exact = identityComparison.state === 'EXACT';
     // PRODUCER_ID_EQUAL + SCHEMA_VERSION_EQUAL + PRODUCER_VERSION_DIFFERENT
     // != EQUIVALENT_ANALYZER_PROVENANCE_FRAGMENTS — producer version is part
     // of the canonical provenance fragment equality.
@@ -211,7 +215,14 @@ export async function buildConsequenceDeltaForEvaluations(
       baselineIdentity.knownFragments.archetypeSchemaVersion ===
         candidateIdentity.knownFragments.archetypeSchemaVersion;
     return {
-      state: exact ? 'EXACT' : fragmentsEqual ? 'PARTIAL' : 'NOT_COMPARABLE',
+      state:
+        identityComparison.state === 'EXACT'
+          ? 'EXACT'
+          : identityComparison.state === 'NOT_COMPARABLE'
+            ? 'NOT_COMPARABLE'
+            : fragmentsEqual
+              ? 'PARTIAL'
+              : 'NOT_COMPARABLE',
       exactAnalyzerBuildIdentityAvailable: exact,
       knownFragments: {
         baselineCoverageSchemaVersion: baselineIdentity.knownFragments.coverageSchemaVersion,
@@ -224,6 +235,7 @@ export async function buildConsequenceDeltaForEvaluations(
         candidateArchetypeSchemaVersion: candidateIdentity.knownFragments.archetypeSchemaVersion,
       },
       limitations: [
+        ...identityComparison.conflicts,
         ...(exact
           ? []
           : [

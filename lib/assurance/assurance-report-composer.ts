@@ -67,6 +67,9 @@ export interface AssuranceReport {
     analyzerBuildIdentity: {
       available: boolean;
       reason: string;
+      captureState?: 'EXACT' | 'PARTIAL' | 'NOT_AVAILABLE';
+      identity?: import('@/lib/ai-security/analyzer-execution-identity').AnalyzerExecutionIdentity;
+      digest?: string;
     };
     schemaVersions: Record<string, string>;
   };
