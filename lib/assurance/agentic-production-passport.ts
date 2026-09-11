@@ -3,6 +3,8 @@
  *
  * A compact, deterministic projection over the shared evaluated-assurance composer.
  * It is NOT a second report truth engine.
+ *
+ * PER-SUBJECT_ARCHETYPE != REPOSITORY_SINGLE_LABEL
  */
 
 import { createHash } from 'crypto';
@@ -13,7 +15,6 @@ const PASSPORT_SCHEMA_VERSION = 'passport-0.1.0';
 
 function computePassportId(output: EvaluatedAssuranceOutput): string {
   // WALL_CLOCK_TIME != SEMANTIC_ID
-  // Passport identity is material, not an instance timestamp.
   const identity = [
     PASSPORT_SCHEMA_VERSION,
     output.evaluationIdentity.organizationId,
@@ -24,6 +25,23 @@ function computePassportId(output: EvaluatedAssuranceOutput): string {
     output.evaluationIdentity.repositoryCommitSha ?? '',
   ].join(':');
   return `passport-${createHash('sha256').update(identity).digest('hex').slice(0, 32)}`;
+}
+
+export interface ArchetypeSubjectIdentity {
+  kind: string;
+  id: string;
+  displayName?: string;
+}
+
+export interface SubjectOperatingModel {
+  subject: ArchetypeSubjectIdentity;
+  humanInteractionPattern: string;
+  modality: string[];
+  initiatingPrincipal: string;
+  triggerMechanism: string;
+  executionLifecycle: string;
+  decisionRole: string;
+  contextInfluence: string[];
 }
 
 export interface AgenticProductionPassport {
@@ -51,12 +69,7 @@ export interface AgenticProductionPassport {
     };
   };
   operatingModel: {
-    humanInteractionPattern: string;
-    modality: string[];
-    initiatingPrincipal: string;
-    triggerMechanism: string;
-    executionLifecycle: string;
-    decisionRole: string;
+    subjects: SubjectOperatingModel[];
   };
   capabilityExposureLadder: CapabilityExposureStage[];
   actionConsequencePaths: ActionConsequencePath[];
@@ -68,7 +81,6 @@ export interface AgenticProductionPassport {
     limitations: string[];
   }[];
   context: {
-    contextInfluence: string[];
     memory: { available: false; reason: string } | { available: true; kinds: string[]; limitations: string[] };
     rag: { available: false; reason: string } | { available: true; kinds: string[]; limitations: string[] };
     mcp: { available: false; reason: string } | { available: true; tools: string[]; limitations: string[] };
@@ -121,19 +133,55 @@ export interface ActionConsequencePath {
   coverage: AriCoverageState;
 }
 
+function firstValueBySubjectAndFacet(values: { facet: string; values: { value: string }[] }[], facet: string): string {
+  const dim = values.find((d) => d.facet === facet);
+  return dim?.values[0]?.value ?? 'UNKNOWN';
+}
+
+function allValuesBySubjectAndFacet(values: { facet: string; values: { value: string }[] }[], facet: string): string[] {
+  const dim = values.find((d) => d.facet === facet);
+  return dim?.values.map((v) => v.value) ?? [];
+}
+
+function buildSubjectOperatingModels(dimensions: EvaluatedAssuranceOutput['executionArchetype']['dimensions']): SubjectOperatingModel[] {
+  const bySubject = new Map<string, { subject: ArchetypeSubjectIdentity; dims: { facet: string; values: { value: string }[] }[] }>();
+
+  for (const dim of dimensions) {
+    for (const v of dim.values) {
+      const key = `${v.subject.kind}:${v.subject.id}`;
+      const entry = bySubject.get(key) ?? { subject: v.subject, dims: [] };
+      const existing = entry.dims.find((d) => d.facet === dim.facet);
+      if (existing) {
+        existing.values.push({ value: v.value });
+      } else {
+        entry.dims.push({ facet: dim.facet, values: [{ value: v.value }] });
+      }
+      bySubject.set(key, entry);
+    }
+  }
+
+  const models: SubjectOperatingModel[] = [];
+  for (const { subject, dims } of bySubject.values()) {
+    models.push({
+      subject,
+      humanInteractionPattern: firstValueBySubjectAndFacet(dims, 'HUMAN_INTERACTION_PATTERN'),
+      modality: allValuesBySubjectAndFacet(dims, 'MODALITY'),
+      initiatingPrincipal: firstValueBySubjectAndFacet(dims, 'INITIATING_PRINCIPAL'),
+      triggerMechanism: firstValueBySubjectAndFacet(dims, 'TRIGGER_MECHANISM'),
+      executionLifecycle: firstValueBySubjectAndFacet(dims, 'EXECUTION_LIFECYCLE'),
+      decisionRole: firstValueBySubjectAndFacet(dims, 'DECISION_ROLE'),
+      contextInfluence: allValuesBySubjectAndFacet(dims, 'CONTEXT_INFLUENCE'),
+    });
+  }
+
+  // Deterministic order by subject key.
+  return models.sort((a, b) => `${a.subject.kind}:${a.subject.id}`.localeCompare(`${b.subject.kind}:${b.subject.id}`));
+}
+
 export function buildAgenticProductionPassport(
   output: EvaluatedAssuranceOutput,
 ): AgenticProductionPassport {
   const ea = output.executionArchetype;
-
-  const firstValue = (facet: string) => ea.dimensions.find((d) => d.facet === facet)?.values[0]?.value ?? 'UNKNOWN';
-
-  const humanInteraction = firstValue('HUMAN_INTERACTION_PATTERN');
-  const modality = ea.dimensions.find((d) => d.facet === 'MODALITY')?.values.map((v) => v.value) ?? [];
-  const initiatingPrincipal = firstValue('INITIATING_PRINCIPAL');
-  const trigger = firstValue('TRIGGER_MECHANISM');
-  const lifecycle = firstValue('EXECUTION_LIFECYCLE');
-  const decisionRole = firstValue('DECISION_ROLE');
 
   const capabilityExposureLadder: CapabilityExposureStage[] = [];
   for (const path of ea.consequencePathSummary) {
@@ -148,7 +196,6 @@ export function buildAgenticProductionPassport(
           break;
         case 'DISPATCH':
           // MODEL_REQUESTED != DISPATCH
-          // Expose canonical dispatch state, never alias it as Model-requested.
           if (stage.state === 'EFFECTIVE_DISPATCH') {
             stageName = 'Effective dispatch';
           } else if (stage.state === 'CONDITIONAL_DISPATCH') {
@@ -179,8 +226,6 @@ export function buildAgenticProductionPassport(
     }
 
     // Model-requested is a separate ladder stage and is not derived from dispatch.
-    // MODEL_REQUESTED requires an independent request-binding evidence owner.
-    // Current exact-scan evaluation does not provide that binding in this wave.
     capabilityExposureLadder.push({
       stage: 'Model-requested',
       state: 'NOT_ANALYZED',
@@ -216,18 +261,7 @@ export function buildAgenticProductionPassport(
     coverage: p.coverage,
   }));
 
-  const contextInfluence = ea.dimensions
-    .filter((d) => d.facet === 'CONTEXT_INFLUENCE')
-    .flatMap((d) => d.values.map((v) => v.value));
-
-  const context = {
-    contextInfluence,
-    memory: { available: false, reason: 'MEMORY_EVIDENCE_NOT_EVALUATED' as const } as any,
-    rag: { available: false, reason: 'RAG_EVIDENCE_NOT_EVALUATED' as const } as any,
-    mcp: { available: false, reason: 'MCP_EVIDENCE_NOT_EVALUATED' as const } as any,
-  };
-
-  const ariFamilies = Object.entries(ea.coverageSummary.families ?? {}).map(([family, state]) => ({ family, state }));
+  const subjects = buildSubjectOperatingModels(ea.dimensions);
 
   return {
     schemaVersion: PASSPORT_SCHEMA_VERSION,
@@ -239,20 +273,19 @@ export function buildAgenticProductionPassport(
       analyzerBuildIdentity: output.buildProvenance.analyzerBuildIdentity,
     },
     operatingModel: {
-      humanInteractionPattern: humanInteraction,
-      modality,
-      initiatingPrincipal,
-      triggerMechanism: trigger,
-      executionLifecycle: lifecycle,
-      decisionRole,
+      subjects,
     },
     capabilityExposureLadder,
     actionConsequencePaths,
     humanControl: ea.humanControlSummary,
-    context,
+    context: {
+      memory: { available: false, reason: 'MEMORY_EVIDENCE_NOT_EVALUATED' as const } as any,
+      rag: { available: false, reason: 'RAG_EVIDENCE_NOT_EVALUATED' as const } as any,
+      mcp: { available: false, reason: 'MCP_EVIDENCE_NOT_EVALUATED' as const } as any,
+    },
     evidenceCoverage: {
       overall: ea.coverageSummary.overall,
-      ariFamilies,
+      ariFamilies: Object.entries(ea.coverageSummary.families ?? {}).map(([family, state]) => ({ family, state })),
       frontiers: output.evidenceFrontier.frontierItems.map((f) => ({
         facet: f.facet,
         value: f.value,
