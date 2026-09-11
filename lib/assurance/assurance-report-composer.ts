@@ -75,8 +75,8 @@ export interface AssuranceReport {
     operatingModel: SubjectOperatingModel[];
     operatingModelSummary: string;
     agentSurfaces: { kind: string; agentId: string; displayName: string; surface: string; state: AriRelationState; limitations: string[] }[];
-    capabilityExposureLadder: { stage: string; state: AriRelationState; toolName?: string; limitations: string[] }[];
-    actionConsequencePaths: { toolCandidateId?: string; handlerRef?: string; stages: string[]; state: AriRelationState; limitations: string[] }[];
+    capabilityExposureLadder: { stage: string; state: string; toolName?: string; limitations: string[] }[];
+    actionConsequencePaths: { toolCandidateId?: string; handlerRef?: string; stages: string[]; state: string; limitations: string[] }[];
     humanControls: string;
     context: string;
     aiSecurityFindings: { finding: string; severity: 'INFO' | 'FRONTIER'; evidence: string }[];
@@ -197,7 +197,7 @@ export function buildAssuranceReportFromOutput(
   const capabilityExposureLadder = ea.consequencePathSummary.flatMap((p) =>
     p.stages.map((s) => ({
       stage: `${s.stage}${p.toolCandidateId ? ` (${p.toolCandidateId})` : ''}`,
-      state: s.state as AriRelationState,
+      state: s.state,
       toolName: p.toolCandidateId,
       limitations: s.limitations,
     })),

@@ -8,6 +8,7 @@
 import { createHash } from 'crypto';
 import type { ArtifactPublicationState } from './artifact-publication-state';
 import type { ActionProofReportSection, AgentReachabilityReportSection, ActionAssuranceReportSection } from './u6-types';
+import type { EvaluatedAssuranceOutput } from './assurance-output-composer';
 
 export interface ArtifactManifestEntry {
   name: string;
@@ -119,12 +120,35 @@ export interface MachineReadableAssuranceOutput {
   executionArchetype: {
     schemaVersion: string;
     scanId: string;
-    dimensions: { facet: string; values: string[] }[];
+    dimensions: {
+      facet: string;
+      values: {
+        subject: { kind: string; id: string; displayName?: string };
+        value: string;
+        valueSet?: string[];
+        state: string;
+        coverage: string;
+        evidenceRefs: string[];
+        sourceRelationIds: string[];
+        limitations: string[];
+      }[];
+    }[];
     consequencePathSummary: {
       toolCandidateId?: string;
       handlerRef?: string;
+      consequenceId?: string;
       state: string;
-      stages: string[];
+      coverage: string;
+      limitations: string[];
+      stages: {
+        stage: string;
+        state: string;
+        relationId: string;
+        toolCandidateId?: string;
+        handlerRef?: string;
+        targetId?: string;
+        limitations: string[];
+      }[];
     }[];
     unresolvedFrontiers: { facet: string; value: string; state: string; reasonCode: string }[];
     sourceLocationProvenance: { status: string; resolvedCount: number; totalCount: number };
@@ -142,29 +166,11 @@ export interface MachineReadableAssuranceOutput {
 }
 
 export function buildMachineReadableAssuranceOutput(
-  output: {
-    schemaVersion: string;
-    evaluationIdentity: MachineReadableAssuranceOutput['evaluationIdentity'];
-    buildProvenance: MachineReadableAssuranceOutput['buildProvenance'];
-    executionArchetype: {
-      schemaVersion: string;
-      scanId: string;
-      dimensions: { facet: string; values: { value: string }[] }[];
-      consequencePathSummary: { toolCandidateId?: string; handlerRef?: string; state: string; stages: { stage: string }[] }[];
-      unresolvedFrontiers: { facet: string; value: string; state: string; reasonCode: string }[];
-      sourceLocationProvenance: { status: string; resolvedCount: number; totalCount: number };
-      coverageSummary: { overall: string; families?: Record<string, string> };
-    };
-    evidenceFrontier: {
-      summary: { totalFrontiers: number; byState: Record<string, number>; byReasonCode: Record<string, number> };
-      ariFamilyFrontiers: { family: string; state: string }[];
-    };
-    actionProof: ActionProofReportSection;
-    reachability: AgentReachabilityReportSection;
-    actionAssurance: ActionAssuranceReportSection;
-  },
+  output: EvaluatedAssuranceOutput,
   generatedAt: string,
 ): MachineReadableAssuranceOutput {
+  const frontierItems = output.evidenceFrontier.frontierItems ?? [];
+
   return {
     schemaVersion: 'machine-readable-0.1.0',
     generatedAt,
@@ -175,15 +181,44 @@ export function buildMachineReadableAssuranceOutput(
       scanId: output.executionArchetype.scanId,
       dimensions: output.executionArchetype.dimensions.map((d) => ({
         facet: d.facet,
-        values: d.values.map((v) => v.value),
+        values: d.values.map((v) => ({
+          subject: {
+            kind: v.subject.kind,
+            id: v.subject.id,
+            displayName: v.subject.displayName,
+          },
+          value: v.value,
+          valueSet: v.valueSet,
+          state: v.state,
+          coverage: v.coverage,
+          evidenceRefs: v.evidenceRefs,
+          sourceRelationIds: v.sourceRelationIds,
+          limitations: v.limitations,
+        })),
       })),
       consequencePathSummary: output.executionArchetype.consequencePathSummary.map((p) => ({
         toolCandidateId: p.toolCandidateId,
         handlerRef: p.handlerRef,
+        consequenceId: p.consequenceId,
         state: p.state,
-        stages: p.stages.map((s) => s.stage),
+        coverage: p.coverage,
+        limitations: p.limitations,
+        stages: p.stages.map((s) => ({
+          stage: s.stage,
+          state: s.state,
+          relationId: s.relationId,
+          toolCandidateId: s.toolCandidateId,
+          handlerRef: s.handlerRef,
+          targetId: s.targetId,
+          limitations: s.limitations,
+        })),
       })),
-      unresolvedFrontiers: output.executionArchetype.unresolvedFrontiers,
+      unresolvedFrontiers: frontierItems.map((f) => ({
+        facet: f.facet,
+        value: f.value,
+        state: f.state,
+        reasonCode: f.reasonCode,
+      })),
       sourceLocationProvenance: output.executionArchetype.sourceLocationProvenance,
       coverageSummary: output.executionArchetype.coverageSummary,
     },

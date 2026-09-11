@@ -26,6 +26,7 @@ import { buildAssuranceReportFromOutput } from './assurance-report-composer';
 import { buildMachineReadableAssuranceOutput } from './assurance-artifact-manifest';
 import { buildArtifactManifest } from './assurance-artifact-manifest';
 import { buildEvaluatedTopologyProjection } from '@/lib/topology/topology-projector';
+import { buildAgentReachabilityReadModel } from '@/lib/ai-inventory/agent-reachability-read-model';
 import { buildConstellationProjection } from '@/lib/topology/constellation-presentation-projection';
 import { buildConstellationExport } from '@/lib/topology/constellation-export';
 import type { ArtifactManifest } from './assurance-artifact-manifest';
@@ -74,7 +75,7 @@ function buildBundleFromOutput(
   const report = buildAssuranceReportFromOutput(output);
 
   const machineJson = buildMachineReadableAssuranceOutput(
-    output as any,
+    output,
     output.buildProvenance.outputGeneratorBuildIdentity.buildTimestamp,
   );
 
@@ -87,7 +88,8 @@ function buildBundleFromOutput(
     aiSystemName,
   });
 
-  const constellation = buildConstellationProjection(topology, null);
+  const reachability = buildAgentReachabilityReadModel(coverage, { scanId, commitSha });
+  const constellation = buildConstellationProjection(topology, reachability);
   const constellationExport = buildConstellationExport(constellation, { evaluationId });
 
   const artifacts = [

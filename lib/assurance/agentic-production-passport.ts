@@ -147,7 +147,7 @@ export interface ActionConsequencePath {
   handlerRef?: string;
   consequenceId: string;
   stages: { stage: string; state: string; relationId: string; limitations: string[] }[];
-  state: AriRelationState;
+  state: string;
   coverage: AriCoverageState;
 }
 
