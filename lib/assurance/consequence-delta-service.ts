@@ -73,17 +73,19 @@ export async function buildConsequenceDeltaForEvaluations(
     aiSystemId,
   } = input;
 
-  // 5/6. Reject same-evaluation and missing records.
-  if (baselineEvaluationId === candidateEvaluationId) {
-    return notAvailable('SAME_EVALUATION_COMPARISON');
-  }
+  // Direction is caller-defined: baseline is the comparison REFERENCE, not
+  // the chronologically older evaluation. A→B, B→A, and A→A are all valid;
+  // A→A deterministically yields a zero-change delta. Chronology remains a
+  // displayed evidence fact in comparisonContext, never a gate.
+  //   COMPARISON_DIRECTION = CALLER_DEFINED
+  //   OLDER_TO_NEWER_REQUIRED = NO
+  const sameEvaluation = baselineEvaluationId === candidateEvaluationId;
 
-  const [baselineOwnership, candidateOwnership] = await Promise.all([
-    loadOwnership(baselineEvaluationId),
-    loadOwnership(candidateEvaluationId),
-  ]);
-
+  const baselineOwnership = await loadOwnership(baselineEvaluationId);
   if (!baselineOwnership) return notAvailable('BASELINE_EVALUATION_NOT_FOUND');
+  const candidateOwnership = sameEvaluation
+    ? baselineOwnership
+    : await loadOwnership(candidateEvaluationId);
   if (!candidateOwnership) return notAvailable('CANDIDATE_EVALUATION_NOT_FOUND');
 
   // 3/4/5. Org + system ownership — fail closed on any mismatch.
@@ -107,13 +109,6 @@ export async function buildConsequenceDeltaForEvaluations(
   }
   if (candidateOwnership.evaluationStatus !== 'COMPLETED') {
     return notAvailable('CANDIDATE_EVALUATION_NOT_COMPLETED');
-  }
-
-  // 7B. Directional chronology is evaluation chronology.
-  if (
-    !(baselineOwnership.evaluationSnapshotAt < candidateOwnership.evaluationSnapshotAt)
-  ) {
-    return notAvailable('INVALID_COMPARISON_ORDER');
   }
 
   // 7. Full reconstruction through the canonical owner (org-scoped).
@@ -189,9 +184,20 @@ export async function buildConsequenceDeltaForEvaluations(
         commitSha: candidateCoverage.commitSha,
       }),
     );
+    // P5: EXACT requires actual comparable exact build identity data from the
+    // canonical analyzer identity owner — not merely an availability boolean.
+    // The owner exposes no exact identity value today, so EXACT is
+    // unreachable by construction: a future boolean flip alone cannot
+    // accidentally upgrade comparability.
+    //   EXACT_AVAILABLE_BOOLEAN != EXACT_IDENTITY_EQUALITY
+    const baselineExactIdentity =
+      (baselineIdentity as { exactAnalyzerBuildIdentity?: string }).exactAnalyzerBuildIdentity ?? null;
+    const candidateExactIdentity =
+      (candidateIdentity as { exactAnalyzerBuildIdentity?: string }).exactAnalyzerBuildIdentity ?? null;
     const exact =
-      baselineIdentity.exactAnalyzerBuildIdentityAvailable &&
-      candidateIdentity.exactAnalyzerBuildIdentityAvailable;
+      baselineExactIdentity !== null &&
+      candidateExactIdentity !== null &&
+      baselineExactIdentity === candidateExactIdentity;
     const fragmentsEqual =
       baselineIdentity.knownFragments.coverageSchemaVersion ===
         candidateIdentity.knownFragments.coverageSchemaVersion &&
@@ -200,7 +206,7 @@ export async function buildConsequenceDeltaForEvaluations(
       baselineIdentity.knownFragments.archetypeSchemaVersion ===
         candidateIdentity.knownFragments.archetypeSchemaVersion;
     return {
-      state: exact && fragmentsEqual ? 'EXACT' : 'PARTIAL',
+      state: exact ? 'EXACT' : fragmentsEqual ? 'PARTIAL' : 'NOT_COMPARABLE',
       exactAnalyzerBuildIdentityAvailable: exact,
       knownFragments: {
         baselineCoverageSchemaVersion: baselineIdentity.knownFragments.coverageSchemaVersion,

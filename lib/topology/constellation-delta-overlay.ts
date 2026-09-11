@@ -207,27 +207,17 @@ export function buildConstellationDeltaOverlay(
     }
   }
 
-  // Edge annotations: existing edges that directly touch an annotated node.
-  // Derived presentation only — no edge is created or mutated.
-  const annotatedNodes = new Set(nodeAnnotations.keys());
-  const edgeAnnotations: ConstellationDeltaEdgeAnnotation[] = constellation.edges
-    .filter((e) => annotatedNodes.has(e.source) || annotatedNodes.has(e.target))
-    .map((e) => {
-      const itemIds = new Set<string>();
-      const kinds = new Set<DeltaKind>();
-      for (const endpoint of [e.source, e.target]) {
-        const ann = nodeAnnotations.get(endpoint);
-        if (!ann) continue;
-        for (const id of ann.deltaItemIds) itemIds.add(id);
-        for (const k of ann.kinds) kinds.add(k);
-      }
-      return {
-        canonicalEdgeId: e.canonicalEdgeId,
-        deltaItemIds: [...itemIds].sort(),
-        kinds: [...kinds].sort(),
-      };
-    })
-    .sort((a, b) => a.canonicalEdgeId.localeCompare(b.canonicalEdgeId));
+  // P0: CHANGED_NODE != CHANGED_EDGE. Endpoint propagation would visually
+  // claim a specific relationship/path changed when the Delta only
+  // established that a neighboring node changed. The canonical Delta item
+  // does not carry an edge-joinable semantic identity (stableEdgeId needs
+  // exact source+target+kind identity which delta refs do not provide), and
+  // no fuzzy/adjacent-edge inference is permitted.
+  //   ENDPOINT_CHANGED != EDGE_CHANGED
+  //   NO_FABRICATED_PATH_CHANGE = YES
+  // v1 behavior: NODE_ANNOTATIONS = YES, EDGE_ANNOTATIONS = NONE; path-level
+  // change detail remains in the textual Consequence Delta panel.
+  const edgeAnnotations: ConstellationDeltaEdgeAnnotation[] = [];
 
   const annotations: ConstellationDeltaNodeAnnotation[] = [...nodeAnnotations.entries()]
     .map(([canonicalNodeId, ann]) => ({
@@ -237,7 +227,10 @@ export function buildConstellationDeltaOverlay(
     }))
     .sort((a, b) => a.canonicalNodeId.localeCompare(b.canonicalNodeId));
 
-  const limitations = [...delta.limitations];
+  const limitations = [
+    ...delta.limitations,
+    'Edge annotations are disabled: node-level change evidence does not prove an adjacent relationship changed.',
+  ];
   if (unmappedDeltaItemIds.length > 0) {
     limitations.push(
       `${unmappedDeltaItemIds.length} delta item(s) have no exact match on the current map and remain textual only.`,

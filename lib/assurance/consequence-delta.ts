@@ -152,8 +152,15 @@ export interface ConsequenceDeltaScopeComparison {
 }
 
 export interface DeltaAnalyzerComparability {
-  /** EXACT only when exact analyzer build identity is persisted and equal. */
-  state: 'EXACT' | 'PARTIAL' | 'UNRESOLVED';
+  /**
+   * EXACT may only be emitted when the canonical analyzer identity owner
+   * supplies actual comparable exact build identity data AND the baseline
+   * identity equals the target identity per that owner. A boolean
+   * availability flag is not identity equality:
+   *   EXACT_AVAILABLE_BOOLEAN != EXACT_IDENTITY_EQUALITY
+   * Today no such data is persisted, so EXACT is unreachable.
+   */
+  state: 'EXACT' | 'PARTIAL' | 'UNRESOLVED' | 'NOT_COMPARABLE';
   exactAnalyzerBuildIdentityAvailable: boolean;
   knownFragments: {
     baselineCoverageSchemaVersion: string;
@@ -684,6 +691,21 @@ export function buildConsequenceDelta(input: BuildDeltaInput): ConsequenceDelta 
   const { baseline, candidate } = input;
   const limitations = [...(input.limitations ?? [])].sort();
 
+  // P0: Structural change claims (ADDED/REMOVED/EXPANDED/NARROWED) require
+  // established scope comparability. Analyzed per-dimension coverage alone
+  // does NOT establish comparable scope — different observed topology under
+  // incomparable scopes is not proof the system topology itself changed.
+  //   SCOPE_CHANGED != PROOF_OF_ADDITION / PROOF_OF_REMOVAL
+  //   SCOPE_NOT_AVAILABLE != PROOF_OF_ADDITION / PROOF_OF_REMOVAL
+  //   ANALYZED_COVERAGE_ALONE != COMPARABLE_SCOPE
+  const scopeComparisonState =
+    input.comparisonContext?.scopeComparison.state ?? 'NOT_AVAILABLE';
+  const scopeComparable = scopeComparisonState === 'SAME';
+  const scopeGateLimitation =
+    scopeComparisonState === 'CHANGED'
+      ? 'Evaluated scope differs between baseline and target — structural difference cannot be claimed as an actual addition/removal.'
+      : 'Evaluated scope is not persisted for one or both evaluations — structural difference cannot be claimed as an actual addition/removal.';
+
   const baselineFacts = indexFacts(buildComparableFacts(baseline.snapshot));
   const candidateFacts = indexFacts(buildComparableFacts(candidate.snapshot));
 
@@ -756,11 +778,17 @@ export function buildConsequenceDelta(input: BuildDeltaInput): ConsequenceDelta 
       const gained = [...cSet].filter((r) => !bSet.has(r));
       const lost = [...bSet].filter((r) => !cSet.has(r));
       if (STRONG_BASES.has(c.identityBasis) && gained.length > 0 && lost.length === 0 && b.state === c.state) {
-        push('EXPANDED');
+        if (!scopeComparable) {
+          push('UNRESOLVED_DELTA', [scopeGateLimitation]);
+        } else {
+          push('EXPANDED');
+        }
         continue;
       }
       if (STRONG_BASES.has(b.identityBasis) && lost.length > 0 && gained.length === 0 && b.state === c.state) {
-        if (!coverageAdequate(candCov)) {
+        if (!scopeComparable) {
+          push('UNRESOLVED_DELTA', [scopeGateLimitation]);
+        } else if (!coverageAdequate(candCov)) {
           push('UNRESOLVED_DELTA', ['Candidate coverage is not adequate to prove scope narrowing.']);
         } else {
           push('NARROWED');
@@ -773,9 +801,11 @@ export function buildConsequenceDelta(input: BuildDeltaInput): ConsequenceDelta 
     }
 
     if (c && !b) {
-      // Candidate-only fact: ADDED only when baseline coverage makes absence
-      // meaningful AND identity is exact enough for the claim.
-      if (!coverageAdequate(baseCov)) {
+      // Candidate-only fact: ADDED requires comparable scope (SAME), baseline
+      // coverage adequate to make absence meaningful, AND exact identity.
+      if (!scopeComparable) {
+        push('UNRESOLVED_DELTA', [scopeGateLimitation]);
+      } else if (!coverageAdequate(baseCov)) {
         push('UNRESOLVED_DELTA', [
           `Baseline ${dimension} coverage is ${baseCov} — absence in baseline is not proven.`,
         ]);
@@ -790,9 +820,11 @@ export function buildConsequenceDelta(input: BuildDeltaInput): ConsequenceDelta 
     }
 
     if (b && !c) {
-      // Baseline-only fact: REMOVED only when candidate coverage makes
-      // absence meaningful.
-      if (!coverageAdequate(candCov)) {
+      // Baseline-only fact: REMOVED requires comparable scope (SAME) AND
+      // candidate coverage adequate to make absence meaningful.
+      if (!scopeComparable) {
+        push('UNRESOLVED_DELTA', [scopeGateLimitation]);
+      } else if (!coverageAdequate(candCov)) {
         push('UNRESOLVED_DELTA', [
           `Candidate ${dimension} coverage is ${candCov} — absence in candidate is not proven.`,
         ]);
@@ -869,11 +901,12 @@ export function buildConsequenceDelta(input: BuildDeltaInput): ConsequenceDelta 
     unresolved: items.filter((i) => i.kind === 'UNRESOLVED_DELTA').length,
   };
 
-  // Any non-ESTABLISHED coverage or analyzer limitation → PARTIAL.
+  // ESTABLISHED requires fully analyzed coverage on all dimensions AND exact
+  // analyzer comparability. Anything less (PARTIAL / UNRESOLVED /
+  // NOT_COMPARABLE / absent) degrades the delta to PARTIAL.
   const availability: ConsequenceDeltaAvailability =
     coverage.every((c) => c.comparisonCoverage === 'ESTABLISHED') &&
-    (input.comparisonContext?.analyzerComparability?.state !== 'PARTIAL' &&
-     input.comparisonContext?.analyzerComparability?.state !== 'UNRESOLVED')
+    input.comparisonContext?.analyzerComparability?.state === 'EXACT'
       ? 'ESTABLISHED'
       : 'PARTIAL';
 
@@ -885,18 +918,39 @@ export function buildConsequenceDelta(input: BuildDeltaInput): ConsequenceDelta 
     cs: candidate.identity.scanId,
   })).slice(0, 24);
 
+  // P4: the semantic digest binds every interpretation-bearing comparison
+  // context, not only the resulting items — scope comparability, coverage
+  // state, and analyzer provenance all change the meaning of identical item
+  // sets, so identical items under different context are different deltas.
+  // Deterministic inputs only — no Date.now()/render/request timestamps.
   const comparisonDigest = hashTextContent(canonicalSerialize({
     schemaVersion: CONSEQUENCE_DELTA_SCHEMA_VERSION,
+    organizationId: baseline.identity.organizationId,
+    aiSystemId: baseline.identity.aiSystemId,
     baseline: {
       evaluationId: baseline.identity.evaluationId,
+      orchestratorRunId: baseline.identity.orchestratorRunId,
       scanId: baseline.identity.scanId,
       commitSha: baseline.identity.commitSha,
+      operationCoverageSchemaVersion: baseline.identity.operationCoverageSchemaVersion,
+      evaluatedScopeSchemaVersion: baseline.identity.evaluatedScopeSchemaVersion,
+      evaluatedScopeDigest: baseline.identity.evaluatedScopeDigest,
     },
     candidate: {
       evaluationId: candidate.identity.evaluationId,
+      orchestratorRunId: candidate.identity.orchestratorRunId,
       scanId: candidate.identity.scanId,
       commitSha: candidate.identity.commitSha,
+      operationCoverageSchemaVersion: candidate.identity.operationCoverageSchemaVersion,
+      evaluatedScopeSchemaVersion: candidate.identity.evaluatedScopeSchemaVersion,
+      evaluatedScopeDigest: candidate.identity.evaluatedScopeDigest,
     },
+    methodologyVersions: {
+      baseline: input.comparisonContext?.baselineAssuranceMethodologyVersion ?? null,
+      candidate: input.comparisonContext?.candidateAssuranceMethodologyVersion ?? null,
+    },
+    scopeComparison: input.comparisonContext?.scopeComparison ?? { state: 'NOT_AVAILABLE', limitations: [] },
+    analyzerComparability: input.comparisonContext?.analyzerComparability ?? null,
     items: items.map((i) => ({
       dimension: i.dimension,
       kind: i.kind,
