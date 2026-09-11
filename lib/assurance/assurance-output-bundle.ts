@@ -21,7 +21,14 @@ import {
   type EvaluatedAssuranceOutput,
 } from './assurance-output-composer';
 import { loadEvaluatedOperationCoverage } from './u6-scan-loader';
-import { buildAgenticProductionPassport } from './agentic-production-passport';
+import { resolvePassportU6Lineage } from './u6-package-service';
+import {
+  buildAgenticProductionPassport,
+  canonicalPassportBytes,
+  type PassportBuildContext,
+  type PassportU6Lineage,
+} from './agentic-production-passport';
+import type { ConsequenceDelta } from './consequence-delta';
 import { buildAssuranceReportFromOutput } from './assurance-report-composer';
 import { buildMachineReadableAssuranceOutput } from './assurance-artifact-manifest';
 import { buildArtifactManifest } from './assurance-artifact-manifest';
@@ -60,11 +67,24 @@ export interface AssuranceBundleResult {
   reason?: string;
 }
 
+/**
+ * Optional Passport binding request for the production bundle.
+ *   u6PackageId  — explicit exact package ID; absent => NOT_BOUND lineage
+ *                  (NO_LATEST_U6_FALLBACK).
+ *   consequenceDelta — explicitly supplied accepted Delta; must target this
+ *                  evaluation (validated, fail closed on mismatch).
+ */
+export interface PassportBindingRequest {
+  u6PackageId?: string;
+  consequenceDelta?: ConsequenceDelta;
+}
+
 function buildBundleFromOutput(
   output: EvaluatedAssuranceOutput,
   coverage: PersistedOperationCoverageIntelligence,
   aiSystemName?: string,
   readModel?: AgentReachabilityReadModel,
+  passportContext?: PassportBuildContext,
 ): AssuranceOutputBundle {
   const evaluationId = output.evaluationIdentity.evaluationId;
   const scanId = output.evaluationIdentity.exactScanId;
@@ -72,7 +92,7 @@ function buildBundleFromOutput(
   const orgId = output.evaluationIdentity.organizationId;
   const aiSystemId = output.evaluationIdentity.aiSystemId;
 
-  const passport = buildAgenticProductionPassport(output);
+  const passport = buildAgenticProductionPassport(output, passportContext);
   const report = buildAssuranceReportFromOutput(output);
 
   const machineJson = buildMachineReadableAssuranceOutput(
@@ -94,7 +114,8 @@ function buildBundleFromOutput(
   const constellationExport = buildConstellationExport(constellation, { evaluationId });
 
   const artifacts = [
-    { name: 'passport.json', artifactType: 'passport', schemaVersion: passport.schemaVersion, bytes: Buffer.from(JSON.stringify(passport)) },
+    // MANIFEST_PASSPORT_SHA == SHA256(exact canonical Passport artifact bytes)
+    { name: 'passport.json', artifactType: 'passport', schemaVersion: passport.schemaVersion, bytes: Buffer.from(canonicalPassportBytes(passport), 'utf8') },
     { name: 'report.json', artifactType: 'report', schemaVersion: report.schemaVersion, bytes: Buffer.from(JSON.stringify(report)) },
     { name: 'machine.json', artifactType: 'machine-readable', schemaVersion: machineJson.schemaVersion, bytes: Buffer.from(JSON.stringify(machineJson)) },
     { name: 'constellation.svg', artifactType: 'constellation-svg', schemaVersion: constellation.projectionSchemaVersion, bytes: Buffer.from(constellationExport.svg) },
@@ -134,6 +155,11 @@ function buildBundleFromOutput(
  */
 export function buildAssuranceOutputBundleFromCoverage(
   input: AssuranceBundleFromCoverageInput,
+  passportContext?: {
+    /** Caller-resolved lineage only — the fixture path performs no lookups. */
+    u6Lineage?: PassportU6Lineage;
+    consequenceDelta?: ConsequenceDelta;
+  },
 ): AssuranceOutputBundle {
   const output = composeAssuranceOutputFromCoverage({
     evaluation: input.evaluation,
@@ -142,7 +168,7 @@ export function buildAssuranceOutputBundleFromCoverage(
     commitSha: input.commitSha,
   });
 
-  return buildBundleFromOutput(output, input.coverage, input.aiSystemName);
+  return buildBundleFromOutput(output, input.coverage, input.aiSystemName, undefined, passportContext);
 }
 
 /**
@@ -154,6 +180,7 @@ export function buildAssuranceOutputBundleFromCoverage(
 export async function buildAssuranceOutputBundle(
   evaluation: AssuranceEvaluation,
   aiSystemName?: string,
+  passportRequest?: PassportBindingRequest,
 ): Promise<AssuranceBundleResult> {
   const loaded = await loadEvaluatedOperationCoverage(evaluation);
   if ('availability' in loaded) {
@@ -170,7 +197,16 @@ export async function buildAssuranceOutputBundle(
 
   const output = buildAssuranceOutputFromLoadedCoverage(evaluation, loaded, readModel);
 
-  const bundle = buildBundleFromOutput(output, loaded.data, aiSystemName, readModel);
+  // Resolve exact U6 lineage through the canonical package service.
+  // No packageId supplied => NOT_BOUND (never a latest-package fallback).
+  const passportContext: PassportBuildContext | undefined = passportRequest
+    ? {
+        u6Lineage: await resolvePassportU6Lineage(output, passportRequest.u6PackageId),
+        consequenceDelta: passportRequest.consequenceDelta,
+      }
+    : undefined;
+
+  const bundle = buildBundleFromOutput(output, loaded.data, aiSystemName, readModel, passportContext);
 
   return { availability: bundle.availability, bundle };
 }

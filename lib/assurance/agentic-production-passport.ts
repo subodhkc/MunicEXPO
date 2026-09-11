@@ -12,8 +12,85 @@ import { createHash } from 'crypto';
 import type { EvaluatedAssuranceOutput } from './assurance-output-composer';
 import type { ArchetypeDimensionValue } from '@/lib/ai-inventory/execution-archetype';
 import type { AriRelationState, AriCoverageState } from '@/lib/ai-security/types';
+import type { ConsequenceDelta } from './consequence-delta';
+import { canonicalSerialize } from '@/lib/evidence/deterministic-serialization';
 
-const PASSPORT_SCHEMA_VERSION = 'passport-0.2.0';
+const PASSPORT_SCHEMA_VERSION = 'passport-0.3.0';
+
+/**
+ * U6 lineage binding states. Lineage direction is strictly U5 -> U6 -> Passport:
+ *   PASSPORT_INCLUDED_IN_U6_SEMANTIC_PACKAGE_DIGEST = NO
+ *   PASSPORT_INCLUDED_IN_U6_RECEIPT_HASH = NO
+ *   U6_DEPENDS_ON_PASSPORT = NO
+ *   PACKAGE_IDENTITY_MATCH_REQUIRED = YES — a package for another org,
+ *   system, evaluation, or run must never bind (fail closed, no downgrade
+ *   to "partial binding").
+ *   NO_LATEST_U6_FALLBACK = YES — binding requires an explicit exact
+ *   packageId; an absent package is NOT_BOUND, never auto-selected.
+ */
+export type PassportU6BindingState =
+  | 'NOT_BOUND'
+  | 'BOUND_INTERNAL_CONSISTENCY'
+  | 'BOUND_VERIFIED_AGAINST_HAIEC_RECORD';
+
+/**
+ * Explicit U6 package lineage envelope. References canonical U6 digests
+ * verbatim; never recomputes them.
+ *   PACKAGE_EXISTS != PACKAGE_VERIFIED
+ *   INTERNALLY_CONSISTENT != VERIFIED_AGAINST_HAIEC_RECORD
+ *   RECEIPT_AVAILABLE != SYSTEM_CERTIFIED
+ */
+export interface PassportU6Lineage {
+  bindingState: PassportU6BindingState;
+  packageId?: string;
+  semanticPackageDigest?: string;
+  semanticReportDigest?: string;
+  receiptHash?: string;
+  merkleRoot?: string;
+  assuranceEvaluationId?: string;
+  orchestratorRunId?: string;
+  packageSchemaVersion?: string;
+  assuranceMethodologyVersion?: string;
+  limitations: string[];
+}
+
+/**
+ * Thin deterministic reference to an explicitly supplied, accepted
+ * Consequence Delta. Passport never recomputes Delta, never selects a
+ * baseline, and never claims improved/worse/safer — Delta does not own
+ * those conclusions.
+ */
+export interface PassportDeltaReference {
+  /** Deterministic Delta identity = its semantic comparisonDigest. */
+  deltaId: string;
+  comparisonDigest: string;
+  schemaVersion: string;
+  baselineEvaluationId: string;
+  targetEvaluationId: string;
+  baselineScanId: string;
+  targetScanId: string;
+  availability: string;
+  summary: {
+    added: number;
+    removed: number;
+    expanded: number;
+    narrowed: number;
+    controlChanged: number;
+    dependencyChanged: number;
+    evidenceChanged: number;
+    unresolved: number;
+  };
+}
+
+export interface PassportBuildContext {
+  /** Resolved U6 lineage envelope (resolved by the canonical service). */
+  u6Lineage?: PassportU6Lineage;
+  /**
+   * Optional explicitly supplied accepted Consequence Delta. Must target
+   * this passport's evaluation; identity mismatch fails closed.
+   */
+  consequenceDelta?: ConsequenceDelta;
+}
 
 function computePassportId(output: EvaluatedAssuranceOutput): string {
   // WALL_CLOCK_TIME != SEMANTIC_ID
@@ -64,7 +141,14 @@ export interface ContextEvidence {
 export interface AgenticProductionPassport {
   schemaVersion: string;
   passportId: string;
-  generatedAt: string;
+  /**
+   * The persisted evaluation boundary time — NOT a render/wall-clock
+   * timestamp. Same evaluated inputs must produce identical Passport bytes.
+   *   WALL_CLOCK_IN_PASSPORT_BYTES = NO
+   */
+  evaluationSnapshotAt: string | null;
+  u6Lineage: PassportU6Lineage;
+  consequenceDelta?: PassportDeltaReference;
   evaluationIdentity: {
     organizationId: string;
     aiSystemId: string;
@@ -222,8 +306,70 @@ function buildSubjectOperatingModels(dimensions: EvaluatedAssuranceOutput['execu
   return { system, subjects: operatingModels };
 }
 
+/**
+ * Project an explicitly supplied accepted Delta into a thin lineage
+ * reference. Fails closed when the Delta does not target this passport's
+ * evaluation — DELTA_TARGET_MISMATCH is a binding error, never silently
+ * attached or degraded.
+ */
+export function buildPassportDeltaReference(
+  delta: ConsequenceDelta,
+  output: EvaluatedAssuranceOutput,
+): PassportDeltaReference {
+  const identity = output.evaluationIdentity;
+  const target = delta.candidate;
+  const baseline = delta.baseline;
+  if (!target || !baseline) {
+    throw new Error('PASSPORT_DELTA_NOT_AVAILABLE: delta artifact is NOT_AVAILABLE');
+  }
+  if (
+    target.evaluationId !== identity.evaluationId ||
+    target.organizationId !== identity.organizationId ||
+    target.aiSystemId !== identity.aiSystemId
+  ) {
+    throw new Error(
+      'PASSPORT_DELTA_IDENTITY_MISMATCH: delta target does not share the passport evaluation/org/system identity',
+    );
+  }
+  const s = delta.summary;
+  if (!s || !delta.comparisonDigest) {
+    throw new Error('PASSPORT_DELTA_NOT_AVAILABLE: delta artifact has no summary/digest');
+  }
+  const comparisonDigest = delta.comparisonDigest;
+  return {
+    deltaId: comparisonDigest,
+    comparisonDigest,
+    schemaVersion: delta.schemaVersion,
+    baselineEvaluationId: baseline.evaluationId,
+    targetEvaluationId: target.evaluationId,
+    baselineScanId: baseline.scanId,
+    targetScanId: target.scanId,
+    availability: delta.availability,
+    summary: {
+      added: s.added,
+      removed: s.removed,
+      expanded: s.expanded,
+      narrowed: s.narrowed,
+      controlChanged: s.controlChanged,
+      dependencyChanged: s.dependencyChanged,
+      evidenceChanged: s.evidenceChanged,
+      unresolved: s.unresolved,
+    },
+  };
+}
+
+/**
+ * Canonical Passport byte owner — the ONLY serialization used when a
+ * Passport artifact is hashed or packaged.
+ *   PASSPORT_ARTIFACT_BYTE_OWNER = ONE
+ */
+export function canonicalPassportBytes(passport: AgenticProductionPassport): string {
+  return canonicalSerialize(passport);
+}
+
 export function buildAgenticProductionPassport(
   output: EvaluatedAssuranceOutput,
+  context?: PassportBuildContext,
 ): AgenticProductionPassport {
   const ea = output.executionArchetype;
 
@@ -309,10 +455,24 @@ export function buildAgenticProductionPassport(
 
   const memoryRagMcpTruth = determineMemoryRagMcpTruth(output);
 
+  const evaluationSnapshotAt = output.evaluationIdentity.evaluationSnapshotAt ?? null;
+  const u6Lineage: PassportU6Lineage = context?.u6Lineage ?? {
+    bindingState: 'NOT_BOUND',
+    limitations: [
+      'This Passport represents the evaluated HAIEC output but is not bound to an issued U6 Decision Receipt/package.',
+      'NO_PACKAGE != PACKAGE_VERIFIED; NO_PACKAGE != VERIFICATION_FAILURE; NO_PACKAGE != CERTIFICATION.',
+    ],
+  };
+  const consequenceDelta = context?.consequenceDelta
+    ? buildPassportDeltaReference(context.consequenceDelta, output)
+    : undefined;
+
   return {
     schemaVersion: PASSPORT_SCHEMA_VERSION,
     passportId: computePassportId(output),
-    generatedAt: new Date().toISOString(),
+    evaluationSnapshotAt,
+    u6Lineage,
+    ...(consequenceDelta ? { consequenceDelta } : {}),
     evaluationIdentity: output.evaluationIdentity,
     buildProvenance: {
       outputGeneratorBuildIdentity: output.buildProvenance.outputGeneratorBuildIdentity,
@@ -352,7 +512,13 @@ export function buildAgenticProductionPassport(
         scanId: output.evaluationIdentity.exactScanId,
         commitSha: output.evaluationIdentity.repositoryCommitSha,
       },
-      limitations: ['Passport is a deterministic projection; it is not a runtime observation.'],
+      limitations: [
+        'Passport is a deterministic projection; it is not a runtime observation.',
+        'Passport is not a U6 Decision Receipt and not a U5 disposition; it does not issue, verify, or recompute either.',
+        ...(evaluationSnapshotAt
+          ? []
+          : ['EVALUATION_SNAPSHOT_TIME_NOT_PERSISTED: this projection lacks the persisted evaluation boundary time (fixture/preview path).']),
+      ],
     },
   };
 }

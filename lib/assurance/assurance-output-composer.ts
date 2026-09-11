@@ -43,6 +43,13 @@ import type { Prisma } from '@prisma/client';
 
 const COMPOSER_SCHEMA_VERSION = 'output-0.2.0';
 
+function normalizeEvaluationSnapshotAt(
+  value: Date | string | undefined,
+): string | undefined {
+  if (!value) return undefined;
+  return value instanceof Date ? value.toISOString() : value;
+}
+
 export interface EvaluatedAssuranceOutputIdentity {
   evaluationId: string;
   organizationId: string;
@@ -50,6 +57,13 @@ export interface EvaluatedAssuranceOutputIdentity {
   orchestratorRunId: string;
   exactScanId: string;
   repositoryCommitSha: string | null;
+  /**
+   * Persisted evaluation boundary time (evaluationSnapshotAt). This is the
+   * ONLY timestamp available to derived artifacts — downstream projections
+   * must never substitute wall-clock/render time.
+   *   WALL_CLOCK_TIME != SEMANTIC_ID
+   */
+  evaluationSnapshotAt?: string;
 }
 
 export interface EvaluatedAssuranceOutputBuildProvenance {
@@ -137,7 +151,9 @@ interface ComposeInput {
   evaluation: Pick<
     AssuranceEvaluation,
     'id' | 'organizationId' | 'aiSystemId' | 'orchestratorRunId'
-  >;
+  > & {
+    evaluationSnapshotAt?: Date | string;
+  };
   coverage: PersistedOperationCoverageIntelligence;
   scanId: string;
   commitSha: string | null;
@@ -278,6 +294,7 @@ export function composeAssuranceOutputFromCoverage(
       orchestratorRunId: evaluation.orchestratorRunId,
       exactScanId: scanId,
       repositoryCommitSha: commitSha,
+      evaluationSnapshotAt: normalizeEvaluationSnapshotAt(evaluation.evaluationSnapshotAt),
     },
     buildProvenance: {
       outputGeneratorBuildIdentity: {

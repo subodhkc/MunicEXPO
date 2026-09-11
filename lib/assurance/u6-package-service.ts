@@ -25,6 +25,8 @@ import { projectEvidenceForRun } from '@/lib/decision-pipeline/evidence-projecti
 import { resolvePublicProfileLabel } from './u6-public-profile-label';
 import { getEvaluatedScopeByEvaluationId, getScopeIdByEvaluationId, getScopeDigestByEvaluationId } from './scope-persistence';
 import { EvaluatedScopeBinding, EVALUATED_SCOPE_SCHEMA_VERSION } from './u6-types';
+import type { EvaluatedAssuranceOutput } from './assurance-output-composer';
+import type { PassportU6Lineage } from './agentic-production-passport';
 
 export interface PackageIssueResult {
   status: 'CREATED' | 'IDEMPOTENT' | 'CONFLICT';
@@ -594,6 +596,104 @@ export async function getPublicVerification(
 function buildPublicScopeSummary(pkg: U6Package): string {
   const profileLabel = resolvePublicProfileLabel(pkg.receipt.profileId);
   return `HAIEC Assurance evaluation completed under ${profileLabel}. The public verification confirms the recorded decision and package integrity without exposing private Evidence or operating-envelope identifiers.`;
+}
+
+/**
+ * Passport U6 lineage — shared identity-continuity gate.
+ *
+ *   PACKAGE_EXISTS != PACKAGE_BELONGS_TO_THIS_PASSPORT
+ *   PACKAGE_IDENTITY_MATCH_REQUIRED = YES
+ *
+ * A package for another org / AI system / evaluation / run must never bind —
+ * fail closed, never downgrade to "partial binding".
+ */
+function assertPackageBelongsToPassport(
+  output: EvaluatedAssuranceOutput,
+  pkg: U6Package,
+): void {
+  const id = output.evaluationIdentity;
+  const mismatches: string[] = [];
+  if (pkg.organizationId !== id.organizationId) mismatches.push('organizationId');
+  if (pkg.aiSystemId !== id.aiSystemId) mismatches.push('aiSystemId');
+  if (pkg.assuranceEvaluationId !== id.evaluationId) mismatches.push('assuranceEvaluationId');
+  if (pkg.orchestratorRunId !== id.orchestratorRunId) mismatches.push('orchestratorRunId');
+  if (mismatches.length > 0) {
+    throw new Error(
+      `PASSPORT_U6_IDENTITY_MISMATCH: package ${pkg.packageId} does not share the passport evaluation identity (${mismatches.join(', ')})`,
+    );
+  }
+}
+
+/**
+ * Bind an already-loaded package object to a Passport lineage envelope.
+ * Pure verification can establish INTERNAL CONSISTENCY only —
+ *   PURE_VERIFY != HAIEC_RECORD_VERIFIED.
+ */
+export function buildPassportU6LineageFromPackage(
+  output: EvaluatedAssuranceOutput,
+  pkg: U6Package,
+): PassportU6Lineage {
+  assertPackageBelongsToPassport(output, pkg);
+  const verification = verifyAssurancePackage(pkg);
+  if (!verification.valid) {
+    throw new Error(
+      `PASSPORT_U6_VERIFICATION_FAILED: package ${pkg.packageId} is not internally consistent`,
+    );
+  }
+  return {
+    bindingState: 'BOUND_INTERNAL_CONSISTENCY',
+    packageId: pkg.packageId,
+    semanticPackageDigest: pkg.semanticPackageDigest,
+    semanticReportDigest: pkg.semanticReportDigest,
+    receiptHash: pkg.receiptHash,
+    merkleRoot: pkg.merkleRoot ?? undefined,
+    assuranceEvaluationId: pkg.assuranceEvaluationId,
+    orchestratorRunId: pkg.orchestratorRunId,
+    packageSchemaVersion: pkg.packageSchemaVersion,
+    assuranceMethodologyVersion: pkg.receipt.assuranceMethodologyVersion ?? undefined,
+    limitations: [
+      'Package integrity verified as internally consistent; persistence-bound HAIEC record verification not performed.',
+    ],
+  };
+}
+
+/**
+ * Resolve the canonical U6 lineage envelope for a Passport.
+ *
+ *   NO_LATEST_U6_FALLBACK = YES — an explicit exact packageId is required.
+ *   When none is supplied the Passport is truthfully NOT_BOUND.
+ *
+ * A packageId that does not resolve inside the passport's organization
+ * fails closed without an existence leak (org-scoped lookup only).
+ * When the persisted package verifies, the strongest claim is
+ *   BOUND_VERIFIED_AGAINST_HAIEC_RECORD — package integrity verified
+ *   against the HAIEC record, not certification.
+ */
+export async function resolvePassportU6Lineage(
+  output: EvaluatedAssuranceOutput,
+  u6PackageId?: string,
+): Promise<PassportU6Lineage> {
+  if (!u6PackageId) {
+    return {
+      bindingState: 'NOT_BOUND',
+      limitations: [
+        'This Passport represents the evaluated HAIEC output but is not bound to an issued U6 Decision Receipt/package.',
+        'NO_PACKAGE != PACKAGE_VERIFIED; NO_PACKAGE != VERIFICATION_FAILURE; NO_PACKAGE != CERTIFICATION.',
+      ],
+    };
+  }
+  const loaded = await getAssurancePackage(u6PackageId, output.evaluationIdentity.organizationId);
+  if (!loaded) {
+    throw new Error('PASSPORT_U6_PACKAGE_NOT_FOUND');
+  }
+  const lineage = buildPassportU6LineageFromPackage(output, loaded.package);
+  return {
+    ...lineage,
+    bindingState: 'BOUND_VERIFIED_AGAINST_HAIEC_RECORD',
+    limitations: [
+      'Package integrity verified against the persisted HAIEC record — integrity verification, not certification.',
+    ],
+  };
 }
 
 async function reconstructPackageFromRow(row: any): Promise<U6Package> {
