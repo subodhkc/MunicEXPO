@@ -1,0 +1,285 @@
+/**
+ * Full AI / Agentic Assurance Report (OUTPUT-3).
+ *
+ * A deterministic report projection over the shared evaluated-assurance composer.
+ * It does not create a second evidence path.
+ *
+ * PER_SUBJECT_ARCHETYPE != REPOSITORY_SINGLE_LABEL
+ * MULTI-VALUE_PER_SUBJECT != FIRST_VALUE_COLLAPSE
+ */
+
+import { createHash } from 'crypto';
+import type { EvaluatedAssuranceOutput } from './assurance-output-composer';
+import type { ArchetypeDimensionValue } from '@/lib/ai-inventory/execution-archetype';
+import type { AriCoverageState, AriRelationState } from '@/lib/ai-security/types';
+import type { ActionProofReportSection, AgentReachabilityReportSection, ActionAssuranceReportSection } from './u6-types';
+
+// 0.1.1: `generatedAt` (wall clock) replaced by `evaluationSnapshotAt`
+// (persisted historical boundary) — wall-clock time must not enter hashed
+// artifact bytes. outputGeneratorBuildIdentity.buildTimestamp (process
+// module-load time) removed for the same reason.
+const REPORT_SCHEMA_VERSION = 'report-0.1.1';
+
+function computeReportId(output: EvaluatedAssuranceOutput): string {
+  // WALL_CLOCK_TIME != SEMANTIC_ID
+  const identity = [
+    REPORT_SCHEMA_VERSION,
+    output.evaluationIdentity.organizationId,
+    output.evaluationIdentity.aiSystemId,
+    output.evaluationIdentity.evaluationId,
+    output.evaluationIdentity.orchestratorRunId,
+    output.evaluationIdentity.exactScanId,
+    output.evaluationIdentity.repositoryCommitSha ?? '',
+  ].join(':');
+  return `report-${createHash('sha256').update(identity).digest('hex').slice(0, 32)}`;
+}
+
+type DimensionSummary = Pick<ArchetypeDimensionValue, 'value' | 'state' | 'coverage' | 'evidenceRefs' | 'limitations' | 'sourceRelationIds'>;
+
+interface SubjectOperatingModel {
+  kind: string;
+  agentId: string;
+  displayName?: string;
+  humanInteractionPattern: DimensionSummary[];
+  modality: DimensionSummary[];
+  initiatingPrincipal: DimensionSummary[];
+  triggerMechanism: DimensionSummary[];
+  executionLifecycle: DimensionSummary[];
+  decisionRole: DimensionSummary[];
+  contextInfluence: DimensionSummary[];
+}
+
+export interface AssuranceReport {
+  schemaVersion: string;
+  reportId: string;
+  /**
+   * Persisted evaluation boundary time — the ONLY temporal anchor carried by
+   * derived artifacts. Never wall-clock generation time.
+   *   OUTPUT_GENERATION_TIME != EVALUATION_SNAPSHOT_TIME
+   *   MISSING_HISTORICAL_FACT != CURRENT_TIME
+   */
+  evaluationSnapshotAt: string | null;
+  evaluationIdentity: {
+    organizationId: string;
+    aiSystemId: string;
+    evaluationId: string;
+    orchestratorRunId: string;
+    exactScanId: string;
+    repositoryCommitSha: string | null;
+  };
+  buildProvenance: {
+    outputGeneratorBuildIdentity: {
+      commitSha: string;
+      commitRef: string;
+      packageVersion: string;
+    };
+    analyzerBuildIdentity: {
+      available: boolean;
+      reason: string;
+      captureState?: 'EXACT' | 'PARTIAL' | 'NOT_AVAILABLE';
+      identity?: import('@/lib/ai-security/analyzer-execution-identity').AnalyzerExecutionIdentity;
+      digest?: string;
+    };
+    schemaVersions: Record<string, string>;
+  };
+  sections: {
+    executiveSummary: string;
+    operatingModel: SubjectOperatingModel[];
+    operatingModelSummary: string;
+    agentSurfaces: { kind: string; agentId: string; displayName: string; surface: string; state: AriRelationState; limitations: string[] }[];
+    capabilityExposureLadder: { stage: string; state: string; toolName?: string; limitations: string[] }[];
+    actionConsequencePaths: { toolCandidateId?: string; handlerRef?: string; stages: string[]; state: string; limitations: string[] }[];
+    humanControls: string;
+    context: string;
+    aiSecurityFindings: { finding: string; severity: 'INFO' | 'FRONTIER'; evidence: string }[];
+    actionProof: ActionProofReportSection;
+    reachability: AgentReachabilityReportSection;
+    actionAssurance: ActionAssuranceReportSection;
+    evidenceCoverage: { overall: AriCoverageState; families: { family: string; state: AriCoverageState }[] };
+    runtimeProviderState: { runtime: string; provider: string };
+    artifactProvenance: {
+      schemaVersions: Record<string, string>;
+      evaluationId: string;
+      scanId: string;
+      commitSha: string | null;
+    };
+  };
+  limitations: string[];
+}
+
+function summarizeDimensionValues(values: DimensionSummary[]): string {
+  const unique = [...new Set(values.map((v) => v.value))];
+  return unique.length === 0 ? 'UNKNOWN' : unique.join('+');
+}
+
+function buildSubjectOperatingModels(dimensions: EvaluatedAssuranceOutput['executionArchetype']['dimensions']): Map<string, SubjectOperatingModel> {
+  const bySubject = new Map<string, { model: SubjectOperatingModel; valuesByFacet: Map<string, ArchetypeDimensionValue[]> }>();
+
+  for (const dim of dimensions) {
+    for (const v of dim.values) {
+      const key = `${v.subject.kind}:${v.subject.id}`;
+      const entry = bySubject.get(key) ?? {
+        model: {
+          kind: v.subject.kind,
+          agentId: v.subject.id,
+          displayName: v.subject.displayName,
+          humanInteractionPattern: [],
+          modality: [],
+          initiatingPrincipal: [],
+          triggerMechanism: [],
+          executionLifecycle: [],
+          decisionRole: [],
+          contextInfluence: [],
+        },
+        valuesByFacet: new Map<string, ArchetypeDimensionValue[]>(),
+      };
+      const list = entry.valuesByFacet.get(dim.facet) ?? [];
+      list.push(v);
+      entry.valuesByFacet.set(dim.facet, list);
+      bySubject.set(key, entry);
+    }
+  }
+
+  const sortFn = (a: ArchetypeDimensionValue, b: ArchetypeDimensionValue) => {
+    const byValue = a.value.localeCompare(b.value);
+    if (byValue !== 0) return byValue;
+    const aId = a.sourceRelationIds[0] ?? '';
+    const bId = b.sourceRelationIds[0] ?? '';
+    return aId.localeCompare(bId);
+  };
+
+  const project = (list: ArchetypeDimensionValue[]): DimensionSummary[] =>
+    [...list].sort(sortFn).map((v) => ({
+      value: v.value,
+      state: v.state,
+      coverage: v.coverage,
+      evidenceRefs: v.evidenceRefs,
+      limitations: v.limitations,
+      sourceRelationIds: v.sourceRelationIds,
+    }));
+
+  for (const { model, valuesByFacet } of bySubject.values()) {
+    model.humanInteractionPattern = project(valuesByFacet.get('HUMAN_INTERACTION_PATTERN') ?? []);
+    model.modality = project(valuesByFacet.get('MODALITY') ?? []);
+    model.initiatingPrincipal = project(valuesByFacet.get('INITIATING_PRINCIPAL') ?? []);
+    model.triggerMechanism = project(valuesByFacet.get('TRIGGER_MECHANISM') ?? []);
+    model.executionLifecycle = project(valuesByFacet.get('EXECUTION_LIFECYCLE') ?? []);
+    model.decisionRole = project(valuesByFacet.get('DECISION_ROLE') ?? []);
+    model.contextInfluence = project(valuesByFacet.get('CONTEXT_INFLUENCE') ?? []);
+  }
+
+  const sorted = new Map([...bySubject.entries()].sort((a, b) => a[0].localeCompare(b[0])));
+  return new Map([...sorted.entries()].map(([k, v]) => [k, v.model]));
+}
+
+export function buildAssuranceReportFromOutput(
+  output: EvaluatedAssuranceOutput,
+): AssuranceReport {
+  const ea = output.executionArchetype;
+
+  const operatingModelBySubject = buildSubjectOperatingModels(ea.dimensions);
+  const operatingModel: SubjectOperatingModel[] = Array.from(operatingModelBySubject.values());
+
+  const allLifecycles = operatingModel.flatMap((s) => s.executionLifecycle.map((v) => v.value));
+  const allTriggers = operatingModel.flatMap((s) => s.triggerMechanism.map((v) => v.value));
+  const allHuman = operatingModel.flatMap((s) => s.humanInteractionPattern.map((v) => v.value));
+  const unresolvedCount = operatingModel.reduce(
+    (sum, s) => sum + s.executionLifecycle.filter((v) => v.value === 'UNKNOWN' || v.state === 'UNKNOWN' || v.coverage === 'NOT_ANALYZED').length,
+    0,
+  );
+
+  const operatingModelSummary =
+    `${operatingModel.length} subject(s) identified; ` +
+    `human interaction patterns: ${[...new Set(allHuman)].join('+') || 'UNKNOWN'}; ` +
+    `triggers: ${[...new Set(allTriggers)].join('+') || 'UNKNOWN'}; ` +
+    `lifecycles: ${[...new Set(allLifecycles)].join('+') || 'UNKNOWN'}; ` +
+    `unresolved lifecycle frontiers: ${unresolvedCount}.`;
+
+  const agentSurfaces = ea.dimensions
+    .filter((d) => d.facet === 'HUMAN_INTERACTION_PATTERN' || d.facet === 'MODALITY')
+    .flatMap((d) => d.values.map((v) => ({
+      kind: v.subject.kind,
+      agentId: v.subject.id,
+      displayName: v.subject.displayName ?? 'unknown',
+      surface: `${d.facet}: ${v.value}`,
+      state: v.state,
+      limitations: v.limitations,
+    })));
+
+  const capabilityExposureLadder = ea.consequencePathSummary.flatMap((p) =>
+    p.stages.map((s) => ({
+      stage: `${s.stage}${p.toolCandidateId ? ` (${p.toolCandidateId})` : ''}`,
+      state: s.state,
+      toolName: p.toolCandidateId,
+      limitations: s.limitations,
+    })),
+  );
+
+  const actionConsequencePaths = ea.consequencePathSummary.map((p) => ({
+    toolCandidateId: p.toolCandidateId,
+    handlerRef: p.handlerRef,
+    stages: p.stages.map((s) => `${s.stage} = ${s.state}`),
+    state: p.state,
+    limitations: p.limitations,
+  }));
+
+  const humanControl = ea.humanControlSummary
+    .map((h) => `humanControl=${h.humanControlModel ?? 'n/a'}, commit=${h.consequenceCommitModel ?? 'n/a'}, state=${h.state}`)
+    .join('; ') || 'No human control evidence established.';
+
+  const context = ea.dimensions
+    .filter((d) => d.facet === 'CONTEXT_INFLUENCE')
+    .flatMap((d) => d.values.map((v) => `${v.value} (${v.state})`))
+    .join('; ') || 'No context influence established.';
+
+  const findings = output.evidenceFrontier.frontierItems.map((f) => ({
+    finding: `${f.facet} = ${f.value} is ${f.state}`,
+    severity: 'FRONTIER' as const,
+    evidence: f.reason,
+  }));
+
+  return {
+    schemaVersion: REPORT_SCHEMA_VERSION,
+    reportId: computeReportId(output),
+    evaluationSnapshotAt: output.evaluationIdentity.evaluationSnapshotAt ?? null,
+    evaluationIdentity: output.evaluationIdentity,
+    buildProvenance: {
+      outputGeneratorBuildIdentity: output.buildProvenance.outputGeneratorBuildIdentity,
+      analyzerBuildIdentity: output.buildProvenance.analyzerBuildIdentity,
+      schemaVersions: output.buildProvenance.schemaVersions,
+    },
+    sections: {
+      executiveSummary: `Assurance report for ${output.evaluationIdentity.aiSystemId}. Semantic coverage is ${ea.coverageSummary.overall}. Output is deterministic and does not recompute evidence. Modeled commercial context is OFF.`,
+      operatingModel,
+      operatingModelSummary,
+      agentSurfaces,
+      capabilityExposureLadder,
+      actionConsequencePaths,
+      humanControls: humanControl,
+      context,
+      aiSecurityFindings: findings,
+      actionProof: output.actionProof,
+      reachability: output.reachability,
+      actionAssurance: output.actionAssurance,
+      evidenceCoverage: {
+        overall: ea.coverageSummary.overall,
+        families: Object.entries(ea.coverageSummary.families ?? {}).map(([family, state]) => ({ family, state })),
+      },
+      runtimeProviderState: {
+        runtime: 'NOT_ANALYZED',
+        provider: 'NOT_ANALYZED',
+      },
+      artifactProvenance: {
+        schemaVersions: output.buildProvenance.schemaVersions,
+        evaluationId: output.evaluationIdentity.evaluationId,
+        scanId: output.evaluationIdentity.exactScanId,
+        commitSha: output.evaluationIdentity.repositoryCommitSha,
+      },
+    },
+    limitations: [
+      'Report is a deterministic projection over the shared composer.',
+      'Unknown is not failure; SOURCE_GAP is not risk.',
+      'Modeled commercial context is disabled for technical assurance.',
+    ],
+  };
+}

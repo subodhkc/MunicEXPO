@@ -108,6 +108,7 @@ export async function buildActionProofReportSection(
       };
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const scan = await (prisma as any).ai_security_scans.findFirst({
       where: { scanId: run.staticScanId, organizationId: run.organizationId },
       select: { scanId: true, commitSha: true, aiSystemId: true, operationCoverageIntelligence: true },
@@ -146,49 +147,61 @@ export async function buildActionProofReportSection(
     } catch {
       return { availability: 'NOT_AVAILABLE', unavailableReason: 'EVALUATED_SNAPSHOT_INVALID', scanId: run.staticScanId, commitSha: scan.commitSha ?? null };
     }
-    const validationError = validatePersistedSnapshot(data);
-    if (validationError || data.authorityPlaneInvariants?.LIKELY_PROMOTES_CANONICAL_AUTHORITY === true) {
-      return { availability: 'NOT_AVAILABLE', unavailableReason: 'EVALUATED_SNAPSHOT_INVALID', scanId: run.staticScanId, commitSha: scan.commitSha ?? null };
-    }
 
-    // Scan-local projection — bounded to the evaluated scan by construction.
-    const projection = buildActionProofTraceProjection({
-      scanId: scan.scanId,
-      toolCandidates: data.toolCandidates || [],
-      toolRegistrationRelations: data.toolRegistrationRelations,
-      pythonToolModelExposureRelations: data.pythonToolModelExposureRelations,
-      pythonToolDispatchRelations: data.pythonToolDispatchRelations,
-      toolImplementationRelations: data.toolImplementationRelations,
-      handlerOperationRelations: data.handlerOperationRelations,
-      handlerOperationCoverage: data.handlerOperationCoverage,
-      operationArgumentProvenanceRelations: data.operationArgumentProvenanceRelations,
-      argumentProvenanceCoverage: data.argumentProvenanceCoverage,
-      actionContextBindingRelations: data.actionContextBindingRelations,
-      actionContextBindingCoverage: data.actionContextBindingCoverage,
-      actionConfirmationMediationRelations: data.actionConfirmationMediationRelations,
-      pythonToolExposureCoverage: data.pythonToolExposureCoverage,
-      extractionCompletion: data.extractionCompletion,
-      extractionLimitations: data.extractionLimitations,
-    });
-
-    const coverageLimitations: string[] = [...(data.extractionLimitations ?? [])];
-    if (data.extractionCompletion === 'NOT_COMPLETED') {
-      coverageLimitations.push(
-        'Repository extraction did not complete — local trace facts may be established while repository-wide proof scope remains incomplete.',
-      );
-    }
-
-    return {
-      availability: 'ESTABLISHED',
-      scanId: scan.scanId,
-      commitSha: scan.commitSha ?? null,
-      summary: projection.summary,
-      traces: projection.traces.slice(0, MAX_TRACES_IN_SECTION).map(summarizeTrace),
-      tracesShown: Math.min(projection.traces.length, MAX_TRACES_IN_SECTION),
-      totalTraces: projection.traces.length,
-      coverageLimitations,
-    };
+    return buildActionProofReportSectionFromSnapshot(data, scan.scanId, scan.commitSha ?? null);
   } catch {
     return unavailable('SECTION_BUILD_FAILED');
   }
+}
+
+/**
+ * Build the Action Proof section from an already-loaded, validated coverage
+ * snapshot. No database access.
+ */
+export function buildActionProofReportSectionFromSnapshot(
+  data: PersistedOperationCoverageIntelligence,
+  scanId: string,
+  commitSha: string | null,
+): ActionProofReportSection {
+  const validationError = validatePersistedSnapshot(data);
+  if (validationError || data.authorityPlaneInvariants?.LIKELY_PROMOTES_CANONICAL_AUTHORITY === true) {
+    return { availability: 'NOT_AVAILABLE', unavailableReason: 'EVALUATED_SNAPSHOT_INVALID', scanId, commitSha };
+  }
+
+  const projection = buildActionProofTraceProjection({
+    scanId,
+    toolCandidates: data.toolCandidates || [],
+    toolRegistrationRelations: data.toolRegistrationRelations,
+    pythonToolModelExposureRelations: data.pythonToolModelExposureRelations,
+    pythonToolDispatchRelations: data.pythonToolDispatchRelations,
+    toolImplementationRelations: data.toolImplementationRelations,
+    handlerOperationRelations: data.handlerOperationRelations,
+    handlerOperationCoverage: data.handlerOperationCoverage,
+    operationArgumentProvenanceRelations: data.operationArgumentProvenanceRelations,
+    argumentProvenanceCoverage: data.argumentProvenanceCoverage,
+    actionContextBindingRelations: data.actionContextBindingRelations,
+    actionContextBindingCoverage: data.actionContextBindingCoverage,
+    actionConfirmationMediationRelations: data.actionConfirmationMediationRelations,
+    pythonToolExposureCoverage: data.pythonToolExposureCoverage,
+    extractionCompletion: data.extractionCompletion,
+    extractionLimitations: data.extractionLimitations,
+  });
+
+  const coverageLimitations: string[] = [...(data.extractionLimitations ?? [])];
+  if (data.extractionCompletion === 'NOT_COMPLETED') {
+    coverageLimitations.push(
+      'Repository extraction did not complete — local trace facts may be established while repository-wide proof scope remains incomplete.',
+    );
+  }
+
+  return {
+    availability: 'ESTABLISHED',
+    scanId,
+    commitSha,
+    summary: projection.summary,
+    traces: projection.traces.slice(0, MAX_TRACES_IN_SECTION).map(summarizeTrace),
+    tracesShown: Math.min(projection.traces.length, MAX_TRACES_IN_SECTION),
+    totalTraces: projection.traces.length,
+    coverageLimitations,
+  };
 }

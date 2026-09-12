@@ -14,16 +14,28 @@
  */
 
 import { prisma } from '@/lib/prisma';
+import type { Prisma } from '@prisma/client';
 import {
   validatePersistedSnapshot,
   type PersistedOperationCoverageIntelligence,
 } from '@/lib/ai-security/operation-coverage-read';
 import type { AssuranceEvaluation } from './types';
+import type { AnalyzerExecutionIdentity } from '@/lib/ai-security/analyzer-execution-identity';
 
 export interface EvaluatedScanResult {
   scanId: string;
   commitSha: string | null;
   data: PersistedOperationCoverageIntelligence;
+  /** Persisted rule execution truth for this exact scan, when available. */
+  rulesEvaluated?: Prisma.JsonValue;
+  /**
+   * AEI-1: the canonical persisted analyzer execution identity bound to this
+   * exact historical scan. Carried verbatim from the persisted snapshot —
+   * absent on legacy snapshots and NEVER reconstructed from current
+   * environment state.
+   *   LOCK: CURRENT_ENVIRONMENT_IDENTITY != HISTORICAL_SCAN_IDENTITY
+   */
+  analyzerExecutionIdentity?: AnalyzerExecutionIdentity;
 }
 
 export type EvaluatedScanUnavailableReason =
@@ -71,7 +83,7 @@ export async function loadEvaluatedOperationCoverage(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const scan = await (prisma as any).ai_security_scans.findFirst({
     where: { scanId: run.staticScanId },
-    select: { scanId: true, commitSha: true, organizationId: true, aiSystemId: true, operationCoverageIntelligence: true },
+    select: { scanId: true, commitSha: true, organizationId: true, aiSystemId: true, operationCoverageIntelligence: true, rulesEvaluated: true },
   });
 
   if (!scan) {
@@ -172,5 +184,9 @@ export async function loadEvaluatedOperationCoverage(
     scanId: scan.scanId,
     commitSha: scan.commitSha ?? null,
     data,
+    rulesEvaluated: scan.rulesEvaluated,
+    // AEI-1: the persisted analyzer identity is carried verbatim inside data;
+    // surfaced explicitly for provenance consumers.
+    analyzerExecutionIdentity: data.analyzerExecutionIdentity,
   };
 }

@@ -1,0 +1,293 @@
+/**
+ * Consequence Delta service — canonical entry point.
+ *
+ * Resolves two persisted COMPLETED Assurance evaluations of the SAME AI
+ * system, loads each exact evaluated operation-coverage snapshot through the
+ * canonical evaluated-scan loader, qualifies scope + analyzer comparability,
+ * and returns a deterministic ConsequenceDelta.
+ *
+ * LOCKS:
+ *   NO_LATEST_FALLBACK — never substitutes current sources for evaluations.
+ *   NO_STATIC_REANALYSIS — read-side only; no mutation.
+ *   CROSS_ORG / CROSS_SYSTEM => FAIL CLOSED.
+ *   MISSING_ANALYZER_IDENTITY != ANALYZER_MATCH — partial comparability is
+ *   disclosed through comparisonContext, never silently inferred.
+ */
+
+import { prisma } from '@/lib/prisma';
+import { getAssuranceEvaluationById } from './persistence';
+import { loadEvaluatedOperationCoverage } from './u6-scan-loader';
+import { getEvaluatedScopeByEvaluationId } from './scope-persistence';
+import { composeAssuranceOutputFromCoverage } from './assurance-output-composer';
+import { gatherAnalyzerBuildIdentity } from './analyzer-build-inventory';
+import { compareAnalyzerExecutionIdentities } from '@/lib/ai-security/analyzer-execution-identity';
+import type { AssuranceEvaluation } from './types';
+import {
+  buildConsequenceDelta,
+  type ConsequenceDelta,
+  type ConsequenceDeltaUnavailableReason,
+  type DeltaComparisonContext,
+  type DeltaAnalyzerComparability,
+} from './consequence-delta';
+
+export interface BuildDeltaForEvaluationsInput {
+  baselineEvaluationId: string;
+  candidateEvaluationId: string;
+  organizationId: string;
+  aiSystemId: string;
+}
+
+function notAvailable(
+  reason: ConsequenceDeltaUnavailableReason,
+): ConsequenceDelta {
+  return {
+    schemaVersion: 'consequence-delta-1.0.0',
+    deltaId: '',
+    availability: 'NOT_AVAILABLE',
+    unavailableReason: reason,
+    items: [],
+    coverage: [],
+    limitations: [],
+  };
+}
+
+async function loadOwnership(evaluationId: string) {
+  return prisma.assurance_evaluations.findUnique({
+    where: { id: evaluationId },
+    select: {
+      id: true,
+      organizationId: true,
+      aiSystemId: true,
+      evaluationStatus: true,
+      evaluationSnapshotAt: true,
+    },
+  });
+}
+
+export async function buildConsequenceDeltaForEvaluations(
+  input: BuildDeltaForEvaluationsInput,
+): Promise<ConsequenceDelta> {
+  const {
+    baselineEvaluationId,
+    candidateEvaluationId,
+    organizationId,
+    aiSystemId,
+  } = input;
+
+  // Direction is caller-defined: baseline is the comparison REFERENCE, not
+  // the chronologically older evaluation. A→B, B→A, and A→A are all valid;
+  // A→A deterministically yields a zero-change delta. Chronology remains a
+  // displayed evidence fact in comparisonContext, never a gate.
+  //   COMPARISON_DIRECTION = CALLER_DEFINED
+  //   OLDER_TO_NEWER_REQUIRED = NO
+  const sameEvaluation = baselineEvaluationId === candidateEvaluationId;
+
+  const baselineOwnership = await loadOwnership(baselineEvaluationId);
+  if (!baselineOwnership) return notAvailable('BASELINE_EVALUATION_NOT_FOUND');
+  const candidateOwnership = sameEvaluation
+    ? baselineOwnership
+    : await loadOwnership(candidateEvaluationId);
+  if (!candidateOwnership) return notAvailable('CANDIDATE_EVALUATION_NOT_FOUND');
+
+  // 3/4/5. Org + system ownership — fail closed on any mismatch.
+  if (
+    baselineOwnership.organizationId !== organizationId ||
+    candidateOwnership.organizationId !== organizationId
+  ) {
+    return notAvailable('CROSS_ORGANIZATION_COMPARISON');
+  }
+  if (
+    baselineOwnership.aiSystemId !== aiSystemId ||
+    candidateOwnership.aiSystemId !== aiSystemId ||
+    baselineOwnership.aiSystemId !== candidateOwnership.aiSystemId
+  ) {
+    return notAvailable('CROSS_AI_SYSTEM_COMPARISON');
+  }
+
+  // 7A. Only COMPLETED evaluations are authoritative comparison inputs.
+  if (baselineOwnership.evaluationStatus !== 'COMPLETED') {
+    return notAvailable('BASELINE_EVALUATION_NOT_COMPLETED');
+  }
+  if (candidateOwnership.evaluationStatus !== 'COMPLETED') {
+    return notAvailable('CANDIDATE_EVALUATION_NOT_COMPLETED');
+  }
+
+  // 7. Full reconstruction through the canonical owner (org-scoped).
+  const [baseline, candidate] = await Promise.all([
+    getAssuranceEvaluationById(baselineEvaluationId, organizationId),
+    getAssuranceEvaluationById(candidateEvaluationId, organizationId),
+  ]);
+  if (!baseline) return notAvailable('BASELINE_EVALUATION_NOT_FOUND');
+  if (!candidate) return notAvailable('CANDIDATE_EVALUATION_NOT_FOUND');
+
+  // 7C. Evaluated-scope comparability through the canonical scope owner.
+  const [baselineScope, candidateScope] = await Promise.all([
+    getEvaluatedScopeByEvaluationId(baseline.id, organizationId).catch(() => null),
+    getEvaluatedScopeByEvaluationId(candidate.id, organizationId).catch(() => null),
+  ]);
+
+  const scopeComparison: DeltaComparisonContext['scopeComparison'] = {
+    state:
+      baselineScope && candidateScope
+        ? baselineScope.scopeDigest === candidateScope.scopeDigest ? 'SAME' : 'CHANGED'
+        : 'NOT_AVAILABLE',
+    baselineScopeSchemaVersion: baselineScope?.scopeSchemaVersion,
+    candidateScopeSchemaVersion: candidateScope?.scopeSchemaVersion,
+    baselineScopeDigest: baselineScope?.scopeDigest,
+    candidateScopeDigest: candidateScope?.scopeDigest,
+    limitations:
+      baselineScope && candidateScope
+        ? baselineScope.scopeDigest === candidateScope.scopeDigest ? [] : [
+            'Evaluated scope differs between baseline and candidate; absence/addition claims are gated to comparable coverage.',
+          ]
+        : [
+            'Evaluated scope snapshot is not persisted for one or both evaluations (legacy); scope comparability is not established.',
+          ],
+  };
+
+  // 8. Exact evaluated snapshots through the canonical evaluated-scan loader.
+  const [baselineCoverage, candidateCoverage] = await Promise.all([
+    loadEvaluatedOperationCoverage(baseline),
+    loadEvaluatedOperationCoverage(candidate),
+  ]);
+
+  if ('availability' in baselineCoverage) {
+    return {
+      ...notAvailable('BASELINE_SNAPSHOT_NOT_AVAILABLE'),
+      limitations: [baselineCoverage.unavailableReason],
+    };
+  }
+  if ('availability' in candidateCoverage) {
+    return {
+      ...notAvailable('CANDIDATE_SNAPSHOT_NOT_AVAILABLE'),
+      limitations: [candidateCoverage.unavailableReason],
+    };
+  }
+
+  // Analyzer build comparability through the canonical inventory owner.
+  // EXACT_ANALYZER_BUILD_IDENTITY_AVAILABLE stays false while the build
+  // identity is not persisted — partial comparability is disclosed, never
+  // silently inferred (§57.8).
+  const analyzerComparability: DeltaAnalyzerComparability = (() => {
+    const baselineIdentity = gatherAnalyzerBuildIdentity(
+      composeAssuranceOutputFromCoverage({
+        evaluation: baseline,
+        coverage: baselineCoverage.data,
+        scanId: baselineCoverage.scanId,
+        commitSha: baselineCoverage.commitSha,
+      }),
+    );
+    const candidateIdentity = gatherAnalyzerBuildIdentity(
+      composeAssuranceOutputFromCoverage({
+        evaluation: candidate,
+        coverage: candidateCoverage.data,
+        scanId: candidateCoverage.scanId,
+        commitSha: candidateCoverage.commitSha,
+      }),
+    );
+    // P5/AEI-1: EXACT requires actual comparable exact analyzer execution
+    // identities from the canonical persisted owner — not merely an
+    // availability boolean. When both snapshots carry a persisted
+    // AnalyzerExecutionIdentity, comparability resolves against the persisted
+    // executed-component identity sets: EXACT only when both capture EXACT
+    // and the canonical identity digests are equal; a known identity conflict
+    // is NOT_COMPARABLE; otherwise PARTIAL. Legacy snapshots without a
+    // persisted identity keep the pre-AEI fragment semantics — PARTIAL when
+    // known fragments are equal, never EXACT.
+    //   EXACT_AVAILABLE_BOOLEAN != EXACT_IDENTITY_EQUALITY
+    //   ABSENT_IDENTITY != CONFLICT
+    //   LEGACY_SNAPSHOT_NEVER_EXACT_COMPARABLE
+    const identityComparison = compareAnalyzerExecutionIdentities(
+      baselineIdentity.identity,
+      candidateIdentity.identity,
+    );
+    const exact = identityComparison.state === 'EXACT';
+    // PRODUCER_ID_EQUAL + SCHEMA_VERSION_EQUAL + PRODUCER_VERSION_DIFFERENT
+    // != EQUIVALENT_ANALYZER_PROVENANCE_FRAGMENTS — producer version is part
+    // of the canonical provenance fragment equality.
+    const fragmentsEqual =
+      baselineIdentity.knownFragments.coverageSchemaVersion ===
+        candidateIdentity.knownFragments.coverageSchemaVersion &&
+      baselineIdentity.knownFragments.archetypeProducerId ===
+        candidateIdentity.knownFragments.archetypeProducerId &&
+      baselineIdentity.knownFragments.archetypeProducerVersion ===
+        candidateIdentity.knownFragments.archetypeProducerVersion &&
+      baselineIdentity.knownFragments.archetypeSchemaVersion ===
+        candidateIdentity.knownFragments.archetypeSchemaVersion;
+    return {
+      state:
+        identityComparison.state === 'EXACT'
+          ? 'EXACT'
+          : identityComparison.state === 'NOT_COMPARABLE'
+            ? 'NOT_COMPARABLE'
+            : fragmentsEqual
+              ? 'PARTIAL'
+              : 'NOT_COMPARABLE',
+      exactAnalyzerBuildIdentityAvailable: exact,
+      knownFragments: {
+        baselineCoverageSchemaVersion: baselineIdentity.knownFragments.coverageSchemaVersion,
+        candidateCoverageSchemaVersion: candidateIdentity.knownFragments.coverageSchemaVersion,
+        baselineArchetypeProducerId: baselineIdentity.knownFragments.archetypeProducerId,
+        candidateArchetypeProducerId: candidateIdentity.knownFragments.archetypeProducerId,
+        baselineArchetypeProducerVersion: baselineIdentity.knownFragments.archetypeProducerVersion,
+        candidateArchetypeProducerVersion: candidateIdentity.knownFragments.archetypeProducerVersion,
+        baselineArchetypeSchemaVersion: baselineIdentity.knownFragments.archetypeSchemaVersion,
+        candidateArchetypeSchemaVersion: candidateIdentity.knownFragments.archetypeSchemaVersion,
+      },
+      limitations: [
+        ...identityComparison.conflicts,
+        ...(exact
+          ? []
+          : [
+              'Exact analyzer build identity is not persisted for one or both evaluations; analyzer equivalence is not claimed.',
+              ...baselineIdentity.gaps,
+            ]),
+        ...(!fragmentsEqual
+          ? ['Known analyzer provenance fragments differ between evaluations; comparison state is degraded.']
+          : []),
+      ],
+    };
+  })();
+
+  const comparisonContext: DeltaComparisonContext = {
+    baselineEvaluationSnapshotAt: baseline.evaluationSnapshotAt.toISOString(),
+    candidateEvaluationSnapshotAt: candidate.evaluationSnapshotAt.toISOString(),
+    scopeComparison,
+    baselineAssuranceMethodologyVersion: baseline.assuranceMethodologyVersion,
+    candidateAssuranceMethodologyVersion: candidate.assuranceMethodologyVersion,
+    analyzerComparability,
+  };
+
+  const toSnapshotIdentity = (
+    evaluation: AssuranceEvaluation,
+    scan: { scanId: string; commitSha: string | null; data: { schemaVersion: string } },
+    scope: typeof baselineScope,
+  ) => ({
+    evaluationId: evaluation.id,
+    orchestratorRunId: evaluation.orchestratorRunId,
+    scanId: scan.scanId,
+    commitSha: scan.commitSha,
+    operationCoverageSchemaVersion: scan.data.schemaVersion,
+    evaluatedScopeSchemaVersion: scope?.scopeSchemaVersion,
+    evaluatedScopeDigest: scope?.scopeDigest,
+    organizationId: evaluation.organizationId,
+    aiSystemId: evaluation.aiSystemId,
+  });
+
+  // 11/12. Pure deterministic Delta build — no mutation.
+  return buildConsequenceDelta({
+    baseline: {
+      identity: toSnapshotIdentity(baseline, baselineCoverage, baselineScope),
+      snapshot: baselineCoverage.data,
+    },
+    candidate: {
+      identity: toSnapshotIdentity(candidate, candidateCoverage, candidateScope),
+      snapshot: candidateCoverage.data,
+    },
+    comparisonContext,
+    limitations: [
+      ...scopeComparison.limitations,
+      ...analyzerComparability.limitations,
+    ],
+  });
+}

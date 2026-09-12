@@ -45,6 +45,7 @@
  */
 
 import { prisma } from '@/lib/prisma';
+import { createHash } from 'crypto';
 import { verifyAISystemOrgBinding } from '@/lib/org-context';
 import { listConnectedAssets } from '@/lib/ai-inventory/connected-assets';
 import { readApplicationAuthorizationForSystem } from '@/lib/ai-security/application-authorization-read';
@@ -1045,6 +1046,137 @@ export async function buildTopologyProjection(
     currentPolicy,
     evaluatedBasis,
     actionProofBasis,
+    lenses: SUPPORTED_MAP_LENSES,
+    zoomLevels: SUPPORTED_SEMANTIC_ZOOM_LEVELS,
+  };
+}
+
+/**
+ * Build an exact evaluated-basis topology projection from a single persisted
+ * operation-coverage snapshot. No current sources, no fallback, no reanalysis.
+ *
+ * LOCKS:
+ *   CURRENT_COMPOSITE_MAP != HISTORICAL_SCAN_SNAPSHOT
+ *   CURRENT_SOURCE_BASIS != EVALUATED_BASIS
+ *   EVALUATED_BASIS == EXACT_PERSISTED_SNAPSHOT
+ */
+export function buildEvaluatedTopologyProjection(
+  coverage: PersistedOperationCoverageIntelligence,
+  provenance: {
+    evaluationId: string;
+    scanId: string;
+    repositoryCommitSha: string | null;
+    organizationId: string;
+    aiSystemId: string;
+    aiSystemName?: string;
+  },
+): TopologyProjectionResult {
+  // Defensive exact-scan guard before any composition.
+  if (coverage.scanId !== provenance.scanId) {
+    return {
+      projectionSchemaVersion: TOPOLOGY_PROJECTION_SCHEMA_VERSION,
+      sourceVersion: TOPOLOGY_PROJECTION_VERSION,
+      projectionScope: 'ASSURANCE_EVALUATION',
+      organizationId: provenance.organizationId,
+      aiSystemId: provenance.aiSystemId,
+      aiSystemName: provenance.aiSystemName ?? provenance.aiSystemId,
+      scanId: provenance.scanId,
+      primaryTimeBasis: 'EVALUATED_SCOPE',
+      projectionHash: 'unavailable',
+      coverage: 'NOT_ASSESSED',
+      mapAvailability: 'SOURCE_GAP',
+      limitations: [
+        'EVALUATED_SCAN_IDENTITY_MISMATCH: coverage scanId does not match provenance scanId.',
+      ],
+      nodes: [],
+      edges: [],
+      scanProvenance: {
+        scanId: provenance.scanId,
+        commitSha: provenance.repositoryCommitSha,
+        scannerVersion: null,
+        scannedAt: null,
+      },
+      evaluatedBasis: {
+        state: 'NOT_AVAILABLE',
+        evaluationId: provenance.evaluationId,
+        evaluationSnapshotAt: null,
+        disposition: null,
+      },
+      lenses: SUPPORTED_MAP_LENSES,
+      zoomLevels: SUPPORTED_SEMANTIC_ZOOM_LEVELS,
+    };
+  }
+
+  const aiSystemNodeId = stableNodeId('ai_system', [provenance.scanId, provenance.aiSystemId]);
+
+  // Build canonical ARI topology nodes/edges from the exact snapshot.
+  const ari = buildAriTopologyProjection(coverage, provenance.scanId, aiSystemNodeId);
+
+  // The ARI projection does not emit the root AI system node; add it explicitly.
+  const aiSystemNode: TopologyNode = {
+    id: aiSystemNodeId,
+    label: provenance.aiSystemName ?? provenance.aiSystemId,
+    kind: 'ai_execution',
+    subType: 'ai_system',
+    aiReachable: true,
+    availability: 'AVAILABLE',
+    limitations: ['AI_SYSTEM_IDENTITY != EVALUATED_AGENT_RUNTIME'],
+    scanId: provenance.scanId,
+    agentName: provenance.aiSystemName,
+  };
+
+  const nodes: TopologyNode[] = [aiSystemNode, ...ari.nodes];
+  const edges: TopologyEdge[] = ari.edges;
+
+  // Deterministic projection hash over canonical node/edge IDs.
+  const hashInput = [
+    provenance.evaluationId,
+    provenance.scanId,
+    provenance.repositoryCommitSha ?? '',
+    ...nodes.map((n) => n.id).sort(),
+    ...edges.map((e) => e.id).sort(),
+  ].join('\n');
+  const projectionHash = `eval-${createHash('sha256').update(hashInput).digest('hex').slice(0, 32)}`;
+
+  const coverageState: TopologyProjectionResult['coverage'] =
+    nodes.some((n) => n.availability !== 'AVAILABLE') ? 'PARTIAL' : 'COMPLETE';
+
+  const mapAvailability: NodeAvailability =
+    nodes.some((n) => n.availability === 'SOURCE_GAP') ? 'SOURCE_GAP'
+    : nodes.some((n) => n.availability !== 'AVAILABLE') ? 'PARTIAL'
+    : 'AVAILABLE';
+
+  return {
+    projectionSchemaVersion: TOPOLOGY_PROJECTION_SCHEMA_VERSION,
+    sourceVersion: TOPOLOGY_PROJECTION_VERSION,
+    projectionScope: 'ASSURANCE_EVALUATION',
+    organizationId: provenance.organizationId,
+    aiSystemId: provenance.aiSystemId,
+    aiSystemName: provenance.aiSystemName ?? provenance.aiSystemId,
+    scanId: provenance.scanId,
+    primaryTimeBasis: 'EVALUATED_SCOPE',
+    projectionHash,
+    coverage: coverageState,
+    mapAvailability,
+    limitations: [
+      ...ari.limitations,
+      'Evaluated-basis projection uses only the exact persisted operation-coverage snapshot.',
+      'Current-only sources are intentionally excluded from historical evaluations.',
+    ],
+    nodes,
+    edges,
+    scanProvenance: {
+      scanId: provenance.scanId,
+      commitSha: provenance.repositoryCommitSha,
+      scannerVersion: null,
+      scannedAt: null,
+    },
+    evaluatedBasis: {
+      state: 'AVAILABLE',
+      evaluationId: provenance.evaluationId,
+      evaluationSnapshotAt: null,
+      disposition: null,
+    },
     lenses: SUPPORTED_MAP_LENSES,
     zoomLevels: SUPPORTED_SEMANTIC_ZOOM_LEVELS,
   };

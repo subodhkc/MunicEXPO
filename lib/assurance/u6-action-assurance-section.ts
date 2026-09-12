@@ -1129,20 +1129,21 @@ export async function buildActionAssuranceReportSection(
       commitSha: result.commitSha,
     });
 
-    if (readModel.availability === 'NOT_AVAILABLE') {
-      return {
-        availability: 'NOT_AVAILABLE',
-        unavailableReason: mapAriUnavailableReason(readModel.unavailableReason),
-        scanId: readModel.scanId,
-        commitSha: readModel.commitSha,
-      };
-    }
-
-    return buildActionAssuranceSectionFromReadModel(readModel, result.data, {
-      scanId: result.scanId,
-      commitSha: result.commitSha,
-    }, projectedEvidence ?? [], runContext);
+    return buildActionAssuranceReportSectionFromSnapshot(readModel, result.data, result.scanId, result.commitSha);
   } catch {
     return unavailable('SECTION_BUILD_FAILED');
   }
+}
+
+/**
+ * Build the Action Assurance section from an already-built
+ * AgentReachabilityReadModel and validated coverage snapshot. No database access.
+ */
+export function buildActionAssuranceReportSectionFromSnapshot(
+  readModel: AgentReachabilityReadModel,
+  data: PersistedOperationCoverageIntelligence,
+  scanId: string,
+  commitSha: string | null,
+): ActionAssuranceReportSection {
+  return buildActionAssuranceSectionFromReadModel(readModel, data, { scanId, commitSha }, [], undefined);
 }

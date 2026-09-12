@@ -56,7 +56,12 @@ describe('PK0 Source & Tenant Continuity', () => {
     const source = read('app/api/ai-security/scan/route.ts');
     expect(source).toContain("prisma.$transaction(async (tx)");
     expect(source).toContain("throw new Error('INTENT_LINKAGE_FAILED')");
-    expect(source.indexOf('INTENT_LINKAGE_FAILED')).toBeLessThan(source.indexOf('triggerModalScannerWithRetry'));
+    // The trigger lives in lib/ai-security/modal-scanner-trigger.ts — the
+    // invariant is that intent linkage precedes the CALL site, so anchor on
+    // the invocation (with '(') rather than the import declaration.
+    expect(source.indexOf('INTENT_LINKAGE_FAILED')).toBeLessThan(
+      source.indexOf('triggerModalScannerWithRetry(')
+    );
   });
 
   it('propagates the resolved organization into authorization', () => {
@@ -86,7 +91,10 @@ describe('PK0 Source & Tenant Continuity', () => {
     const source = read('app/api/ai-security/scan/route.ts');
     expect(source).toContain('isRepositoryPrivate(repositoryUrl)');
     expect(source).toContain('if (isPrivateRepo === true)');
-    expect(source).toContain('github_token: githubToken');
+    // The token now flows through the extracted trigger module — the worker
+    // payload construction lives there.
+    const trigger = read('lib/ai-security/modal-scanner-trigger.ts');
+    expect(trigger).toContain('github_token: githubToken');
   });
 
   it('preserves downstream exact scan identity contracts', () => {
