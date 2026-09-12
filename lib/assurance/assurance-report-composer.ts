@@ -14,7 +14,11 @@ import type { ArchetypeDimensionValue } from '@/lib/ai-inventory/execution-arche
 import type { AriCoverageState, AriRelationState } from '@/lib/ai-security/types';
 import type { ActionProofReportSection, AgentReachabilityReportSection, ActionAssuranceReportSection } from './u6-types';
 
-const REPORT_SCHEMA_VERSION = 'report-0.1.0';
+// 0.1.1: `generatedAt` (wall clock) replaced by `evaluationSnapshotAt`
+// (persisted historical boundary) — wall-clock time must not enter hashed
+// artifact bytes. outputGeneratorBuildIdentity.buildTimestamp (process
+// module-load time) removed for the same reason.
+const REPORT_SCHEMA_VERSION = 'report-0.1.1';
 
 function computeReportId(output: EvaluatedAssuranceOutput): string {
   // WALL_CLOCK_TIME != SEMANTIC_ID
@@ -48,7 +52,13 @@ interface SubjectOperatingModel {
 export interface AssuranceReport {
   schemaVersion: string;
   reportId: string;
-  generatedAt: string;
+  /**
+   * Persisted evaluation boundary time — the ONLY temporal anchor carried by
+   * derived artifacts. Never wall-clock generation time.
+   *   OUTPUT_GENERATION_TIME != EVALUATION_SNAPSHOT_TIME
+   *   MISSING_HISTORICAL_FACT != CURRENT_TIME
+   */
+  evaluationSnapshotAt: string | null;
   evaluationIdentity: {
     organizationId: string;
     aiSystemId: string;
@@ -61,7 +71,6 @@ export interface AssuranceReport {
     outputGeneratorBuildIdentity: {
       commitSha: string;
       commitRef: string;
-      buildTimestamp: string;
       packageVersion: string;
     };
     analyzerBuildIdentity: {
@@ -232,7 +241,7 @@ export function buildAssuranceReportFromOutput(
   return {
     schemaVersion: REPORT_SCHEMA_VERSION,
     reportId: computeReportId(output),
-    generatedAt: new Date().toISOString(),
+    evaluationSnapshotAt: output.evaluationIdentity.evaluationSnapshotAt ?? null,
     evaluationIdentity: output.evaluationIdentity,
     buildProvenance: {
       outputGeneratorBuildIdentity: output.buildProvenance.outputGeneratorBuildIdentity,

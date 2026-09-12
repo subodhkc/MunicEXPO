@@ -95,10 +95,7 @@ function buildBundleFromOutput(
   const passport = buildAgenticProductionPassport(output, passportContext);
   const report = buildAssuranceReportFromOutput(output);
 
-  const machineJson = buildMachineReadableAssuranceOutput(
-    output,
-    output.buildProvenance.outputGeneratorBuildIdentity.buildTimestamp,
-  );
+  const machineJson = buildMachineReadableAssuranceOutput(output);
 
   const topology = buildEvaluatedTopologyProjection(coverage, {
     evaluationId,
@@ -128,7 +125,7 @@ function buildBundleFromOutput(
     repositoryCommit: commitSha,
     outputGeneratorBuildCommit: output.buildProvenance.outputGeneratorBuildIdentity.commitSha,
     analyzerBuildAvailable: output.buildProvenance.analyzerBuildIdentity.available,
-    generatedTimestamp: output.buildProvenance.outputGeneratorBuildIdentity.buildTimestamp,
+    evaluationSnapshotAt: output.evaluationIdentity.evaluationSnapshotAt ?? null,
   });
 
   return {

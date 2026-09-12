@@ -21,14 +21,21 @@ export interface ArtifactManifestEntry {
   analyzerBuildAvailable: boolean;
   publicationState: ArtifactPublicationState;
   publicationTransitionReceipt?: string;
-  generatedTimestamp: string;
+  /**
+   * Persisted evaluation boundary the artifact projects. Never wall-clock
+   * generation time — hashed bytes must be reproducible for identical
+   * persisted inputs.
+   *   OUTPUT_GENERATION_TIME != EVALUATION_SNAPSHOT_TIME
+   */
+  evaluationSnapshotAt: string | null;
   byteSize: number;
   sha256: string;
 }
 
 export interface ArtifactManifest {
   manifestSchemaVersion: string;
-  generatedAt: string;
+  /** Persisted evaluation boundary — deterministic across regeneration. */
+  evaluationSnapshotAt: string | null;
   evaluationId: string;
   scanId: string;
   repositoryCommit: string | null;
@@ -55,7 +62,7 @@ export function buildArtifactManifest(
     repositoryCommit: string | null;
     outputGeneratorBuildCommit: string;
     analyzerBuildAvailable: boolean;
-    generatedTimestamp: string;
+    evaluationSnapshotAt: string | null;
   },
 ): ArtifactManifest {
   const entries: ArtifactManifestEntry[] = artifacts.map((a) => ({
@@ -68,14 +75,14 @@ export function buildArtifactManifest(
     outputGeneratorBuildCommit: input.outputGeneratorBuildCommit,
     analyzerBuildAvailable: input.analyzerBuildAvailable,
     publicationState: 'PRIVATE_GENERATED',
-    generatedTimestamp: input.generatedTimestamp,
+    evaluationSnapshotAt: input.evaluationSnapshotAt,
     byteSize: a.bytes.length,
     sha256: computeArtifactSha256(a.bytes),
   }));
 
   return {
-    manifestSchemaVersion: 'artifact-0.1.0',
-    generatedAt: input.generatedTimestamp,
+    manifestSchemaVersion: 'artifact-0.1.1',
+    evaluationSnapshotAt: input.evaluationSnapshotAt,
     evaluationId: input.evaluationId,
     scanId: input.scanId,
     repositoryCommit: input.repositoryCommit,
@@ -95,7 +102,8 @@ export function buildArtifactManifest(
  */
 export interface MachineReadableAssuranceOutput {
   schemaVersion: string;
-  generatedAt: string;
+  /** Persisted evaluation boundary — never wall-clock generation time. */
+  evaluationSnapshotAt: string | null;
   evaluationIdentity: {
     evaluationId: string;
     organizationId: string;
@@ -108,7 +116,6 @@ export interface MachineReadableAssuranceOutput {
     outputGeneratorBuildIdentity: {
       commitSha: string;
       commitRef: string;
-      buildTimestamp: string;
       packageVersion: string;
     };
     analyzerBuildIdentity: {
@@ -172,13 +179,14 @@ export interface MachineReadableAssuranceOutput {
 
 export function buildMachineReadableAssuranceOutput(
   output: EvaluatedAssuranceOutput,
-  generatedAt: string,
 ): MachineReadableAssuranceOutput {
   const frontierItems = output.evidenceFrontier.frontierItems ?? [];
 
   return {
-    schemaVersion: 'machine-readable-0.1.0',
-    generatedAt,
+    // 0.1.1: generatedAt (process-time) replaced by persisted
+    // evaluationSnapshotAt; buildTimestamp removed from generator identity.
+    schemaVersion: 'machine-readable-0.1.1',
+    evaluationSnapshotAt: output.evaluationIdentity.evaluationSnapshotAt ?? null,
     evaluationIdentity: output.evaluationIdentity,
     buildProvenance: output.buildProvenance,
     executionArchetype: {

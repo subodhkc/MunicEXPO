@@ -75,7 +75,6 @@ export interface EvaluatedAssuranceOutputBuildProvenance {
   outputGeneratorBuildIdentity: {
     commitSha: string;
     commitRef: string;
-    buildTimestamp: string;
     packageVersion: string;
   };
   /**
@@ -336,9 +335,12 @@ export function composeAssuranceOutputFromCoverage(
     },
     buildProvenance: {
       outputGeneratorBuildIdentity: {
+        // PROCESS_START_TIME != BUILD_IDENTITY_INPUT — the module-load
+        // timestamp is not a deterministic build fact and must not enter
+        // hashed artifact bytes. Persisted evaluationSnapshotAt is the only
+        // temporal anchor for derived artifacts.
         commitSha: buildIdentity.commitSha,
         commitRef: buildIdentity.commitRef,
-        buildTimestamp: buildIdentity.buildTimestamp,
         packageVersion: buildIdentity.packageVersion,
       },
       analyzerBuildIdentity: {
