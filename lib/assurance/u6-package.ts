@@ -262,10 +262,27 @@ export function verifyAssurancePackage(pkg: U6Package): PackageVerificationResul
      pkg.receipt.operatingEnvelopeVersion === pkg.report.operatingEnvelope.envelopeVersion &&
      pkg.receipt.operatingEnvelopeDigest === pkg.report.operatingEnvelope.envelopeDigest);
 
-  // Authority source label binding
+  // Authority source label binding.
+  //
+  // NO_ENVELOPE != INVALID_PACKAGE: when the report carries no
+  // operatingEnvelope section, the canonical authority-source truth is
+  // UNKNOWN — the same flattening the receipt applies
+  // (report section ?? evaluation label ?? 'UNKNOWN'). An absent report
+  // envelope label therefore compares as 'UNKNOWN', not as an undefined
+  // inconsistency. UNKNOWN != ABSENT and remains explicit.
+  //
+  // The receipt label is the canonical flattened authority fact; all three
+  // carriers (package, report envelope section, receipt) must agree whenever
+  // the package carries the field. A package claiming a KNOWN authority
+  // while the canonical facts say UNKNOWN (or vice versa) fails closed.
+  // Legacy packages whose package-level authoritySourceLabel is absent keep
+  // their historical verification semantics (the check is skipped).
+  const reportAuthoritySourceLabel =
+    pkg.report.operatingEnvelope?.authoritySourceLabel ?? 'UNKNOWN';
   checks.authoritySourceBindingValid =
     pkg.authoritySourceLabel === undefined ||
-    pkg.authoritySourceLabel === pkg.report.operatingEnvelope?.authoritySourceLabel;
+    (pkg.authoritySourceLabel === reportAuthoritySourceLabel &&
+     pkg.authoritySourceLabel === pkg.receipt.authoritySourceLabel);
 
   // Build identity binding — canonical comparison, not JSON.stringify (Part 9)
   checks.buildIdentityValid =
