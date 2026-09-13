@@ -636,14 +636,49 @@ export type FivePlaneComparisonState =
   | 'NOT_EVALUATED';
 
 /**
+ * FP-EMPTY-1.1: explicit participation classification for every
+ * PlaneAvailabilityStatus. A status counts as "plane pipeline participated"
+ * ONLY when the semantic owner (buildPlaneAvailability) emits it after the
+ * qualifying-fact pipeline actually ran for that plane:
+ *
+ *   PRESENT                          → ran and produced qualifying facts
+ *   EVALUATED_NO_QUALIFYING_FACTS    → ran; zero qualifying facts produced
+ *
+ * Non-participating statuses — the plane was NOT evaluated by the
+ * qualifying-fact pipeline:
+ *
+ *   NOT_PROVIDED                     → no qualifying evidence supplied
+ *   NOT_EVALUATED                    → producer participated but Capability
+ *                                      Core did not report this dimension
+ *   NOT_SUPPORTED_BY_CURRENT_PRODUCER → the participating producer cannot
+ *                                      evaluate this plane (reserved status;
+ *                                      no current producer emits it)
+ *   SYNTHETIC_REFERENCE              → synthetic reference data; must not
+ *                                      silently imply production evaluation
+ *   unknown / absent status          → non-participating (fail closed)
+ *
+ *   LOCK: NOT_EVALUATED != NO_QUALIFYING_COMPARISONS
+ *   LOCK: UNSUPPORTED_BY_PRODUCER != SUCCESSFUL_ZERO_MATCH
+ *   LOCK: SYNTHETIC_REFERENCE != PRODUCTION_EVALUATION
+ *   LOCK: UNKNOWN_STATUS != PARTICIPATION
+ */
+const PARTICIPATING_PLANE_STATUSES: ReadonlySet<string> = new Set([
+  'PRESENT',
+  'EVALUATED_NO_QUALIFYING_FACTS',
+]);
+
+/**
  * Single owner for the comparison-availability derivation. Used identically
  * at evaluation time and for historical persisted records that predate the
  * explicit field.
  *   - EVALUATED: at least one comparison record exists.
- *   - NO_QUALIFYING_COMPARISONS: the plane pipeline ran (some plane has a
- *     non-NOT_PROVIDED availability status) but produced zero comparisons.
- *   - NOT_EVALUATED: no comparisons and no plane participation evidence —
- *     every plane NOT_PROVIDED / absent.
+ *   - NO_QUALIFYING_COMPARISONS: zero comparisons AND at least one plane
+ *     shows the qualifying-fact pipeline ran (participating status).
+ *   - NOT_EVALUATED: zero comparisons AND no plane shows participation —
+ *     every plane is NOT_PROVIDED / NOT_EVALUATED /
+ *     NOT_SUPPORTED_BY_CURRENT_PRODUCER / SYNTHETIC_REFERENCE / absent.
+ * Precedence: EVALUATED > NO_QUALIFYING_COMPARISONS > NOT_EVALUATED.
+ * A participating plane in a mixed set dominates — the pipeline did run.
  */
 export function deriveFivePlaneComparisonState(input: {
   comparisons?: unknown[] | null;
@@ -651,7 +686,7 @@ export function deriveFivePlaneComparisonState(input: {
 }): FivePlaneComparisonState {
   if (Array.isArray(input.comparisons) && input.comparisons.length > 0) return 'EVALUATED';
   const pipelineRan = input.planeAvailability?.some(
-    p => typeof p?.status === 'string' && p.status !== 'NOT_PROVIDED',
+    p => typeof p?.status === 'string' && PARTICIPATING_PLANE_STATUSES.has(p.status),
   );
   return pipelineRan ? 'NO_QUALIFYING_COMPARISONS' : 'NOT_EVALUATED';
 }
@@ -807,8 +842,13 @@ export interface AssuranceEvaluationV1_1 extends AssuranceEvaluation {
   claimPackVersions: Record<string, string>;
   rulePackVersions: Record<string, string>;
   applicableClaimKeys?: string[];
-  /** Deterministic overall five-plane comparator verdict (Section 10) */
-  fivePlaneOverallVerdict?: ProfileVerdict;
+  /**
+   * Deterministic overall five-plane comparator verdict (Section 10).
+   * FP-EMPTY-1.1: null on reconstructed/persisted records whose comparison
+   * set is empty — an empty comparison set has no verdict. Evaluation-time
+   * records always carry the comparator's reduction output.
+   */
+  fivePlaneOverallVerdict?: ProfileVerdict | null;
   /** FP-EMPTY-1: explicit comparison availability; comparisons==[] is never ALLOW */
   fivePlaneComparisonState?: FivePlaneComparisonState;
   planeResults?: FivePlaneResult[];

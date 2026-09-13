@@ -353,7 +353,11 @@ function reconstructEvaluation(record: any): AssuranceEvaluation {
       applicableClaimKeys: binding.applicableClaimKeys as string[] ?? [],
       claimPackVersions: binding.claimPackVersions as Record<string, string> ?? {},
       rulePackVersions: binding.rulePackVersions as Record<string, string> ?? {},
-      fivePlaneOverallVerdict: (binding.fivePlaneResult as any)?.overallVerdict ?? 'REVIEW',
+      // FP-EMPTY-1.1: an empty comparison set reconstructs to null verdict —
+      // never a latent REVIEW/ALLOW available to future consumers.
+      fivePlaneOverallVerdict: ((binding.fivePlaneResult as any)?.comparisons ?? []).length > 0
+        ? ((binding.fivePlaneResult as any)?.overallVerdict ?? 'REVIEW')
+        : null,
       // FP-EMPTY-1: persisted state wins; historical rows without the field
       // derive it from comparison count + plane availability.
       fivePlaneComparisonState: (binding.fivePlaneResult as any)?.comparisonState
