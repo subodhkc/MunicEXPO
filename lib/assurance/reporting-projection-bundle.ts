@@ -6,9 +6,9 @@
  *              -> SAME TRUTH EVERYWHERE
  *
  * This is a semantic projection owner, not an analyzer or assurance engine.
- * It converts the canonical EvaluatedAssuranceOutput into a stable,
- * audience-profile-agnostic Evidence Bundle and binds every generated
- * artifact to that bundle through a Report Projection Manifest.
+ * It converts the canonical EvaluatedAssuranceOutput + persisted coverage
+ * into a stable, audience-profile-agnostic Evidence Bundle and binds every
+ * generated artifact to that bundle through a Report Projection Manifest.
  *
  * Invariants:
  *   PROJECTION != ANALYSIS
@@ -18,12 +18,19 @@
  *   CROSS_EVALUATION_COMPOSITION = REJECT
  *   DISPLAY_ELIGIBILITY != EVIDENCE_STATE
  *   REDACTION != EVIDENCE_STATE_CHANGE
+ *   REGISTERED_TOOL != REQUESTED_AUTHORITY
+ *   BUILD_IDENTITY_AVAILABLE != PRODUCER_COMPLETED
+ *   NO_TRUNCATION_FACT != TRUNCATION_FALSE
+ *   NO_STALE_FACT != EVIDENCE_FRESH
+ *   NOT_APPLICABLE != UNSUPPORTED
+ *   SUBJECT_ID != EVIDENCE_ID
  */
 
 import { createHash } from 'crypto';
 import type { EvaluatedAssuranceOutput } from './assurance-output-composer';
 import type { ArtifactManifest } from './assurance-artifact-manifest';
-import type { AssuranceDisposition } from './types';
+import type { AssuranceDisposition, AssuranceEvaluation } from './types';
+import type { PersistedOperationCoverageIntelligence } from '@/lib/ai-security/operation-coverage-read';
 
 /**
  * Deterministic canonical JSON serialization for semantic digests.
@@ -47,10 +54,18 @@ export function computeSemanticDigest(input: unknown): string {
 /** Evidence authority plane with bounded states. */
 export type EvidenceAuthorityState = 'ESTABLISHED' | 'PARTIAL' | 'UNKNOWN' | 'NOT_ASSESSED' | 'UNSUPPORTED' | 'NOT_APPLICABLE';
 
+/** Integrity dimension truth state. */
+export type IntegrityDimensionState = 'TRUNCATED' | 'NOT_TRUNCATED' | 'FRESH' | 'STALE' | 'UNKNOWN' | 'NOT_ASSESSED';
+
+/** Producer completion state from canonical extraction outcome. */
+export type ProducerCompletionState = 'COMPLETED' | 'PARTIAL' | 'FAILED' | 'TIMEOUT' | 'UNSUPPORTED' | 'NOT_RUN' | 'NOT_ASSESSED';
+
 /** A single canonical evidence reference suitable for rendering. */
 export interface EvidenceReference {
-  /** Canonical relation / evidence identity. */
-  evidenceId: string;
+  /** Canonical relation IDs that established this evidence. */
+  relationIds: string[];
+  /** Canonical Evidence Core evidence IDs, when bound. */
+  evidenceRefs: string[];
   /** Producer that established this evidence. */
   producerId?: string;
   /** Authority class (e.g., source, runtime, policy). */
@@ -69,6 +84,7 @@ export interface EvidenceReference {
 
 /** Bounded action consequence evidence for one capability path. */
 export interface EvidenceActionPath {
+  /** Derived projection identity — not a canonical relation. */
   pathId: string;
   toolCandidateId?: string;
   registrationRelationId?: string;
@@ -87,6 +103,8 @@ export interface EvidenceActionPath {
     codeCapable: EvidenceAuthorityState;
     observed: EvidenceAuthorityState;
   };
+  /** Exact canonical five-plane join state for this path. */
+  planeJoin: 'JOINED' | 'NOT_JOINED' | 'NOT_AVAILABLE';
   /** Adverse / conflicting evidence for this path. */
   adverseEvidence: EvidenceReference[];
   /** Protections / controls observed for this path. */
@@ -106,12 +124,17 @@ export interface EvidenceFrontierProjection {
 }
 
 export interface EvaluationIntegrityProjection {
-  producerCompletion: 'COMPLETED' | 'PARTIAL' | 'FAILED' | 'TIMEOUT' | 'UNSUPPORTED' | 'NOT_RUN';
-  sourceTruncation: boolean;
-  graphTruncation: boolean;
+  /** Canonical producer/extraction completion state; NOT build identity. */
+  producerCompletion: ProducerCompletionState;
+  /** Whether source truncation is proven by persisted coverage. */
+  sourceTruncationState: IntegrityDimensionState;
+  /** Whether graph truncation is proven by persisted coverage. */
+  graphTruncationState: IntegrityDimensionState;
+  /** Whether evidence freshness is proven by canonical source. */
+  freshnessState: IntegrityDimensionState;
   analysisLimitations: string[];
   unsupportedAnalyzers: string[];
-  staleEvidence: boolean;
+  notAssessedAnalyzers: string[];
   mixedVersionLimitations: string[];
 }
 
@@ -143,15 +166,29 @@ export interface AssuranceEvidenceBundleV1 {
   };
   /** Deterministic digest of the canonical semantic bundle. */
   bundleDigest: string;
-  /** Canonical U5 bounded disposition. */
+  /** Canonical U5 bounded disposition, only when bound from the exact evaluation. */
   disposition: AssuranceDisposition | 'UNKNOWN';
-  dispositionBasis: string;
+  dispositionSource: 'CANONICAL_U5' | 'NOT_AVAILABLE';
+  dispositionAvailability: 'BOUND' | 'NOT_BOUND';
+  dispositionMethodologyVersion?: string;
   dispositionLimitations: string[];
   /** Action Assurance / authority-consequence reconciliation summary. */
   actionAssurance: {
     availability: 'ESTABLISHED' | 'PARTIAL' | 'NOT_AVAILABLE';
     surfaces?: unknown[];
     frontierCount: number;
+    limitations: string[];
+  };
+  /** Action Proof section (canonical). */
+  actionProof: {
+    availability: 'ESTABLISHED' | 'PARTIAL' | 'NOT_AVAILABLE';
+    limitations: string[];
+  };
+  /** Agent Reachability section (canonical). */
+  reachability: {
+    availability: 'ESTABLISHED' | 'PARTIAL' | 'NOT_AVAILABLE';
+    agentCount: number;
+    relationCount: number;
     limitations: string[];
   };
   /** Selected action/consequence paths with bounded plane states. */
@@ -196,6 +233,21 @@ export interface ReportProjectionArtifactEntry {
 }
 
 /**
+ * Minimal caller-owned facts about one projected artifact.
+ * Identity fields are attached by the manifest builder from the bundle.
+ */
+export interface ProjectedArtifactInput {
+  artifactType: string;
+  name: string;
+  schemaVersion: string;
+  artifactDigest: string;
+  profileId?: string;
+  profileVersion?: string;
+  rendererId?: string;
+  rendererVersion?: string;
+}
+
+/**
  * AA-PROJECTION-1: Report Projection Manifest V1.
  *
  * Provenance binding every generated artifact to one exact Evaluation,
@@ -221,23 +273,20 @@ export interface BuildAssuranceEvidenceBundleInput {
   output: EvaluatedAssuranceOutput;
   /** Canonical artifact manifest produced by the bundle builder. */
   artifactManifest: ArtifactManifest;
+  /** Persisted coverage intelligence for the exact evaluated scan. */
+  coverage: PersistedOperationCoverageIntelligence;
+  /** Optional canonical evaluation carrying U5 disposition and methodology. */
+  canonicalEvaluation?: Pick<AssuranceEvaluation, 'disposition' | 'assuranceMethodologyVersion'>;
   /** Optional reachability/topology/constellation digests if already computed. */
   topologyProjectionDigest?: string;
   reachabilityDigest?: string;
   constellationDigest?: string;
 }
 
-function pickDisposition(): AssuranceDisposition | 'UNKNOWN' {
-  // U5 disposition is produced by the canonical Assurance Decision Engine and
-  // is not part of the EvaluatedAssuranceOutput projection. The bundle does
-  // not fabricate a disposition; consumers that require it must bind the
-  // canonical Decision Receipt for the same evaluation.
-  return 'UNKNOWN';
-}
-
 function toEvidenceAuthorityState(state: string, coverage?: string): EvidenceAuthorityState {
   if (state === 'NOT_ANALYZED') return 'NOT_ASSESSED';
-  if (state === 'UNSUPPORTED' || state === 'NOT_APPLICABLE') return 'UNSUPPORTED';
+  if (state === 'UNSUPPORTED') return 'UNSUPPORTED';
+  if (state === 'NOT_APPLICABLE') return 'NOT_APPLICABLE';
   if (state === 'UNKNOWN' && coverage === 'NOT_ANALYZED') return 'NOT_ASSESSED';
   if (state === 'UNKNOWN' && coverage === 'UNSUPPORTED') return 'UNSUPPORTED';
   switch (state) {
@@ -259,7 +308,8 @@ function evidenceRefsFromArchetype(output: EvaluatedAssuranceOutput): EvidenceRe
   for (const dim of output.executionArchetype.dimensions) {
     for (const v of dim.values) {
       refs.push({
-        evidenceId: v.subject.id,
+        relationIds: v.sourceRelationIds,
+        evidenceRefs: v.evidenceRefs,
         authorityClass: 'SOURCE',
         state: toEvidenceAuthorityState(v.state, v.coverage),
         coverage: v.coverage,
@@ -273,29 +323,76 @@ function evidenceRefsFromArchetype(output: EvaluatedAssuranceOutput): EvidenceRe
 }
 
 function actionPathsFromArchetype(output: EvaluatedAssuranceOutput): EvidenceActionPath[] {
-  return output.executionArchetype.consequencePathSummary.map((p) => ({
-    pathId: `${p.toolCandidateId ?? 'unknown'}:${p.handlerRef ?? 'unknown'}:${p.consequenceId ?? 'unknown'}`,
-    toolCandidateId: p.toolCandidateId,
-    handlerRef: p.handlerRef,
-    downstreamOperationIds: p.stages.filter((s) => s.stage === 'CONSEQUENCE' && s.targetId).map((s) => s.relationId),
-    sinkTargetIds: p.stages.filter((s) => s.stage === 'CONSEQUENCE' && s.targetId).map((s) => s.targetId ?? s.relationId),
-    planes: {
-      requested: 'ESTABLISHED',
-      policyAuthorized: 'NOT_ASSESSED',
-      effectivelyGranted: 'NOT_ASSESSED',
-      codeCapable: toEvidenceAuthorityState(p.state),
-      observed: 'NOT_ASSESSED',
-    },
-    adverseEvidence: [],
-    protectiveControls: [],
-    limitations: p.limitations,
-  }));
+  return output.executionArchetype.consequencePathSummary.map((p) => {
+    const downstreamOperationIds = p.stages.filter((s) => s.stage === 'CONSEQUENCE' && s.targetId).map((s) => s.relationId);
+    const sinkTargetIds = p.stages.filter((s) => s.stage === 'CONSEQUENCE' && s.targetId).map((s) => s.targetId ?? s.relationId);
+    return {
+      pathId: computeSemanticDigest({
+        toolCandidateId: p.toolCandidateId,
+        handlerRef: p.handlerRef,
+        consequenceId: p.consequenceId,
+        downstreamOperationIds,
+        sinkTargetIds,
+      }),
+      toolCandidateId: p.toolCandidateId,
+      handlerRef: p.handlerRef,
+      downstreamOperationIds,
+      sinkTargetIds,
+      planes: {
+        requested: 'NOT_ASSESSED',
+        policyAuthorized: 'NOT_ASSESSED',
+        effectivelyGranted: 'NOT_ASSESSED',
+        codeCapable: toEvidenceAuthorityState(p.state, p.coverage),
+        observed: 'NOT_ASSESSED',
+      },
+      planeJoin: 'NOT_JOINED',
+      adverseEvidence: [],
+      protectiveControls: [],
+      limitations: p.limitations,
+    };
+  });
+}
+
+function producerCompletionFromCoverage(coverage: PersistedOperationCoverageIntelligence): ProducerCompletionState {
+  if (coverage.extractionCompletion === 'COMPLETED') return 'COMPLETED';
+  if (coverage.extractionCompletion === 'NOT_COMPLETED') return 'PARTIAL';
+  return 'NOT_ASSESSED';
+}
+
+function sourceTruncationFromCoverage(coverage: PersistedOperationCoverageIntelligence): IntegrityDimensionState {
+  const repo = coverage.repositoryAnalysisCoverage;
+  if (!repo) return 'NOT_ASSESSED';
+  if (repo.payloadLimitReached || repo.fileCountLimitReached) return 'TRUNCATED';
+  return 'NOT_TRUNCATED';
+}
+
+function graphTruncationFromCoverage(): IntegrityDimensionState {
+  return 'NOT_ASSESSED';
+}
+
+function freshnessFromCoverage(): IntegrityDimensionState {
+  return 'NOT_ASSESSED';
 }
 
 export function buildAssuranceEvidenceBundleV1(input: BuildAssuranceEvidenceBundleInput): AssuranceEvidenceBundleV1 {
-  const { output, artifactManifest, topologyProjectionDigest = '', reachabilityDigest = '', constellationDigest = '' } = input;
-  void artifactManifest;
+  const { output, artifactManifest, coverage, canonicalEvaluation, topologyProjectionDigest = '', reachabilityDigest = '', constellationDigest = '' } = input;
   const id = output.evaluationIdentity;
+
+  // Fail closed on ArtifactManifest / evaluation identity mismatch.
+  if (artifactManifest.evaluationId !== id.evaluationId) {
+    throw new Error('CROSS_EVALUATION_COMPOSITION: artifactManifest evaluationId mismatch');
+  }
+  if (artifactManifest.scanId !== id.exactScanId) {
+    throw new Error('CROSS_EVALUATION_COMPOSITION: artifactManifest scanId mismatch');
+  }
+  if (
+    artifactManifest.repositoryCommit !== null &&
+    id.repositoryCommitSha !== null &&
+    artifactManifest.repositoryCommit !== id.repositoryCommitSha
+  ) {
+    throw new Error('CROSS_EVALUATION_COMPOSITION: artifactManifest repositoryCommit mismatch');
+  }
+
   const evidenceReferences = evidenceRefsFromArchetype(output);
   const actionPaths = actionPathsFromArchetype(output);
   const evidenceFrontier = output.evidenceFrontier.frontierItems.map((f) => ({
@@ -310,7 +407,15 @@ export function buildAssuranceEvidenceBundleV1(input: BuildAssuranceEvidenceBund
   }));
 
   const aa = output.actionAssurance;
-  const bundle: AssuranceEvidenceBundleV1 = {
+  const ap = output.actionProof;
+  const ar = output.reachability;
+
+  const disposition = canonicalEvaluation?.disposition ?? 'UNKNOWN';
+  const dispositionSource: AssuranceEvidenceBundleV1['dispositionSource'] = canonicalEvaluation?.disposition ? 'CANONICAL_U5' : 'NOT_AVAILABLE';
+  const dispositionAvailability: AssuranceEvidenceBundleV1['dispositionAvailability'] = canonicalEvaluation?.disposition ? 'BOUND' : 'NOT_BOUND';
+  const dispositionMethodologyVersion = canonicalEvaluation?.assuranceMethodologyVersion;
+
+  const bundlePayload: Omit<AssuranceEvidenceBundleV1, 'bundleDigest'> = {
     schemaVersion: 'assurance-evidence-bundle-1.0.0',
     evaluationIdentity: {
       evaluationId: id.evaluationId,
@@ -321,31 +426,46 @@ export function buildAssuranceEvidenceBundleV1(input: BuildAssuranceEvidenceBund
       repositoryCommitSha: id.repositoryCommitSha,
       evaluationSnapshotAt: id.evaluationSnapshotAt ?? null,
     },
-    bundleDigest: '', // computed below after bundle content is stable
-    disposition: pickDisposition(),
-    dispositionBasis: 'Canonical U5 disposition projected from actionAssurance section.',
+    disposition,
+    dispositionSource,
+    dispositionAvailability,
+    dispositionMethodologyVersion,
     dispositionLimitations: [
       'Disposition is bounded to the evaluated scope and available evidence.',
       'UNKNOWN or missing disposition is not a pass.',
+      'The bundle never recomputes U5; it binds the canonical evaluation disposition when available.',
     ],
     actionAssurance: {
       availability: aa.availability,
-      surfaces: (aa as { surfaces?: unknown[] }).surfaces,
+      surfaces: aa.surfaces,
       frontierCount: aa.summary?.frontierCount ?? 0,
       limitations: aa.coverageLimitations ?? [],
+    },
+    actionProof: {
+      availability: ap.availability,
+      limitations: ap.coverageLimitations ?? [],
+    },
+    reachability: {
+      availability: ar.availability,
+      agentCount: ar.summary?.agentCount ?? 0,
+      relationCount: ar.summary?.relationshipCount ?? 0,
+      limitations: ar.coverageLimitations ?? [],
     },
     actionPaths,
     evidenceReferences,
     evidenceFrontier,
     evaluationIntegrity: {
-      producerCompletion: output.buildProvenance.analyzerBuildIdentity.available ? 'COMPLETED' : 'PARTIAL',
-      sourceTruncation: false,
-      graphTruncation: false,
+      producerCompletion: producerCompletionFromCoverage(coverage),
+      sourceTruncationState: sourceTruncationFromCoverage(coverage),
+      graphTruncationState: graphTruncationFromCoverage(),
+      freshnessState: freshnessFromCoverage(),
       analysisLimitations: output.evidenceFrontier.limitations,
       unsupportedAnalyzers: output.evidenceFrontier.ariFamilyFrontiers
-        .filter((f) => f.state === 'UNSUPPORTED' || f.state === 'NOT_ANALYZED')
+        .filter((f) => f.state === 'UNSUPPORTED')
         .map((f) => f.family),
-      staleEvidence: false,
+      notAssessedAnalyzers: output.evidenceFrontier.ariFamilyFrontiers
+        .filter((f) => f.state === 'NOT_ANALYZED')
+        .map((f) => f.family),
       mixedVersionLimitations: [],
     },
     materialChange: {
@@ -364,7 +484,10 @@ export function buildAssuranceEvidenceBundleV1(input: BuildAssuranceEvidenceBund
     ],
   };
 
-  bundle.bundleDigest = computeSemanticDigest(bundle);
+  const bundle: AssuranceEvidenceBundleV1 = {
+    ...bundlePayload,
+    bundleDigest: computeSemanticDigest(bundlePayload),
+  };
   return bundle;
 }
 
@@ -378,8 +501,8 @@ export interface ReportProjectionProfile {
 export interface BuildReportProjectionManifestInput {
   bundle: AssuranceEvidenceBundleV1;
   artifactManifest: ArtifactManifest;
-  /** All projected artifacts with their profile/renderer identities. */
-  projectedArtifacts: (ReportProjectionArtifactEntry & { bytes?: Buffer })[];
+  /** Minimal artifact facts; identity is bound from the bundle. */
+  projectedArtifacts: ProjectedArtifactInput[];
   profile: ReportProjectionProfile;
   assuranceMethodologyVersion: string;
   projectionProfileVersion: string;
@@ -387,17 +510,25 @@ export interface BuildReportProjectionManifestInput {
 }
 
 export function buildReportProjectionManifestV1(input: BuildReportProjectionManifestInput): ReportProjectionManifestV1 {
-  const { bundle, projectedArtifacts, profile, assuranceMethodologyVersion, projectionProfileVersion, rendererRegistryVersion } = input;
-  const artifacts = projectedArtifacts.map((a) => ({
+  const { bundle, artifactManifest, projectedArtifacts, profile, assuranceMethodologyVersion, projectionProfileVersion, rendererRegistryVersion } = input;
+
+  if (artifactManifest.evaluationId !== bundle.evaluationIdentity.evaluationId) {
+    throw new Error('CROSS_EVALUATION_COMPOSITION: artifactManifest evaluationId mismatch');
+  }
+  if (artifactManifest.scanId !== bundle.evaluationIdentity.exactScanId) {
+    throw new Error('CROSS_EVALUATION_COMPOSITION: artifactManifest scanId mismatch');
+  }
+
+  const artifacts: ReportProjectionArtifactEntry[] = projectedArtifacts.map((a) => ({
     artifactType: a.artifactType,
     name: a.name,
     schemaVersion: a.schemaVersion,
     evidenceBundleDigest: bundle.bundleDigest,
     artifactDigest: a.artifactDigest,
-    profileId: profile.profileId,
-    profileVersion: profile.profileVersion,
-    rendererId: profile.rendererId,
-    rendererVersion: profile.rendererVersion,
+    profileId: a.profileId ?? profile.profileId,
+    profileVersion: a.profileVersion ?? profile.profileVersion,
+    rendererId: a.rendererId ?? profile.rendererId,
+    rendererVersion: a.rendererVersion ?? profile.rendererVersion,
     evaluationId: bundle.evaluationIdentity.evaluationId,
     exactScanId: bundle.evaluationIdentity.exactScanId,
     repositoryCommitSha: bundle.evaluationIdentity.repositoryCommitSha,
@@ -422,6 +553,14 @@ export function buildReportProjectionManifestV1(input: BuildReportProjectionMani
     ...manifest,
     manifestDigest: computeSemanticDigest(manifest),
   };
+}
+
+/**
+ * Verify a bundle digest by recomputing the semantic payload and comparing.
+ */
+export function verifyAssuranceEvidenceBundleDigest(bundle: AssuranceEvidenceBundleV1): boolean {
+  const { bundleDigest, ...payload } = bundle;
+  return computeSemanticDigest(payload) === bundleDigest;
 }
 
 /**

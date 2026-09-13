@@ -96,6 +96,7 @@ function buildBundleFromOutput(
   aiSystemName?: string,
   readModel?: AgentReachabilityReadModel,
   passportContext?: PassportBuildContext,
+  canonicalEvaluation?: AssuranceEvaluation,
 ): AssuranceOutputBundle {
   const evaluationId = output.evaluationIdentity.evaluationId;
   const scanId = output.evaluationIdentity.exactScanId;
@@ -146,24 +147,28 @@ function buildBundleFromOutput(
   const evidenceBundle = buildAssuranceEvidenceBundleV1({
     output,
     artifactManifest: manifest,
+    coverage,
+    canonicalEvaluation,
     topologyProjectionDigest: topologyDigest,
     reachabilityDigest,
     constellationDigest,
   });
 
+  const artifactProfile: Record<string, { profileId: string; rendererId: string }> = {
+    'passport': { profileId: 'passport-semantic-projection', rendererId: 'agentic-production-passport' },
+    'report': { profileId: 'report-semantic-projection', rendererId: 'assurance-report-composer' },
+    'machine-readable': { profileId: 'machine-semantic-projection', rendererId: 'assurance-artifact-manifest' },
+    'constellation-svg': { profileId: 'constellation-projection', rendererId: 'constellation-export' },
+    'constellation-json': { profileId: 'constellation-projection', rendererId: 'constellation-presentation-projection' },
+  };
+
   const projectedArtifacts = artifacts.map((a) => ({
-    artifactType: a.artifactType as ReportProjectionManifestV1['artifacts'][number]['artifactType'],
+    artifactType: a.artifactType,
     name: a.name,
     schemaVersion: a.schemaVersion,
-    evidenceBundleDigest: evidenceBundle.bundleDigest,
     artifactDigest: computeArtifactSha256(a.bytes),
-    profileId: 'default',
-    profileVersion: '1.0.0',
-    rendererId: 'server-bundle-composer',
-    rendererVersion: '1.0.0',
-    evaluationId,
-    exactScanId: scanId,
-    repositoryCommitSha: commitSha,
+    profileId: artifactProfile[a.artifactType]?.profileId,
+    rendererId: artifactProfile[a.artifactType]?.rendererId,
   }));
 
   const projectionManifest = buildReportProjectionManifestV1({
@@ -253,7 +258,7 @@ export async function buildAssuranceOutputBundle(
       }
     : undefined;
 
-  const bundle = buildBundleFromOutput(output, loaded.data, aiSystemName, readModel, passportContext);
+  const bundle = buildBundleFromOutput(output, loaded.data, aiSystemName, readModel, passportContext, evaluation);
 
   return { availability: bundle.availability, bundle };
 }
