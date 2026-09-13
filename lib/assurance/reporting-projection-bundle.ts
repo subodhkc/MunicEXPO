@@ -166,6 +166,8 @@ export interface AssuranceEvidenceBundleV1 {
   };
   /** Deterministic digest of the canonical semantic bundle. */
   bundleDigest: string;
+  /** Canonical build provenance for the evaluated output. */
+  buildProvenance: EvaluatedAssuranceOutput['buildProvenance'];
   /** Canonical U5 bounded disposition, only when bound from the exact evaluation. */
   disposition: AssuranceDisposition | 'UNKNOWN';
   dispositionSource: 'CANONICAL_U5' | 'NOT_AVAILABLE';
@@ -466,6 +468,7 @@ export function buildAssuranceEvidenceBundleV1(input: BuildAssuranceEvidenceBund
       repositoryCommitSha: id.repositoryCommitSha,
       evaluationSnapshotAt: id.evaluationSnapshotAt ?? null,
     },
+    buildProvenance: output.buildProvenance,
     disposition,
     dispositionSource,
     dispositionAvailability,
