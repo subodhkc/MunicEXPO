@@ -619,6 +619,43 @@ export type CapabilityComparisonResult =
 
 export type ProfileVerdict = 'INVALID_EVIDENCE' | 'BLOCK' | 'REVIEW' | 'ALLOW';
 
+/**
+ * FP-EMPTY-1: canonical five-plane comparison availability state.
+ * A ProfileVerdict is only meaningful when at least one capability
+ * comparison exists; an empty comparison set is an evaluation-state fact,
+ * never an ALLOW result.
+ *   LOCK: ZERO_COMPARISONS != ALLOW
+ *   LOCK: EMPTY_SET_REDUCTION_IDENTITY != CUSTOMER_VERDICT
+ *   LOCK: NOT_EVALUATED != PASS
+ *   LOCK: NO_CAPABILITY_FACTS != ALIGNED
+ *   LOCK: FIVE_PLANE_COMPARISON != U5_DISPOSITION
+ */
+export type FivePlaneComparisonState =
+  | 'EVALUATED'
+  | 'NO_QUALIFYING_COMPARISONS'
+  | 'NOT_EVALUATED';
+
+/**
+ * Single owner for the comparison-availability derivation. Used identically
+ * at evaluation time and for historical persisted records that predate the
+ * explicit field.
+ *   - EVALUATED: at least one comparison record exists.
+ *   - NO_QUALIFYING_COMPARISONS: the plane pipeline ran (some plane has a
+ *     non-NOT_PROVIDED availability status) but produced zero comparisons.
+ *   - NOT_EVALUATED: no comparisons and no plane participation evidence —
+ *     every plane NOT_PROVIDED / absent.
+ */
+export function deriveFivePlaneComparisonState(input: {
+  comparisons?: unknown[] | null;
+  planeAvailability?: { status?: string | null }[] | null;
+}): FivePlaneComparisonState {
+  if (Array.isArray(input.comparisons) && input.comparisons.length > 0) return 'EVALUATED';
+  const pipelineRan = input.planeAvailability?.some(
+    p => typeof p?.status === 'string' && p.status !== 'NOT_PROVIDED',
+  );
+  return pipelineRan ? 'NO_QUALIFYING_COMPARISONS' : 'NOT_EVALUATED';
+}
+
 // ─── B20/B22: State/Path/Sequence rules ──────────────────────────────────────
 
 export type RuleType = 'STATE_RULE' | 'PATH_RULE' | 'SEQUENCE_RULE';
@@ -772,6 +809,8 @@ export interface AssuranceEvaluationV1_1 extends AssuranceEvaluation {
   applicableClaimKeys?: string[];
   /** Deterministic overall five-plane comparator verdict (Section 10) */
   fivePlaneOverallVerdict?: ProfileVerdict;
+  /** FP-EMPTY-1: explicit comparison availability; comparisons==[] is never ALLOW */
+  fivePlaneComparisonState?: FivePlaneComparisonState;
   planeResults?: FivePlaneResult[];
   fivePlaneComparisons?: CapabilityComparisonRecord[];
   /** U6: actual five-plane capability facts used by comparator */
@@ -1221,5 +1260,12 @@ export interface PersistedFivePlaneResult {
     capable: CapabilityFact[];
     observed: CapabilityFact[];
   };
-  overallVerdict: ProfileVerdict;
+  /** FP-EMPTY-1: explicit comparison availability. Absent on historical records — derive via deriveFivePlaneComparisonState. */
+  comparisonState?: FivePlaneComparisonState;
+  /**
+   * FP-EMPTY-1: null when comparisons is empty. An empty comparison set has
+   * no verdict; historical records may still carry the old reduction-floor
+   * 'ALLOW' — consumers must honor comparisonState/comparisons length.
+   */
+  overallVerdict: ProfileVerdict | null;
 }

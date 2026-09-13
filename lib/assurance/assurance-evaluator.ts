@@ -28,6 +28,7 @@ import {
   CapabilityComparisonRecord,
   ProfileVerdict,
   FivePlaneResult,
+  deriveFivePlaneComparisonState,
   EvidenceMemberRole,
   EpistemicClass,
 } from './types';
@@ -209,6 +210,17 @@ export function evaluateAssurance(params: {
     capabilityFacts,
   });
 
+  // FP-EMPTY-1: explicit comparison availability. Zero comparisons is a
+  // state, never an ALLOW — overallVerdict above remains the comparator's
+  // reduction output for hash/history compatibility only.
+  const evaluationPlaneAvailability = capabilityFacts
+    ? buildPlaneAvailability(capabilityFacts, availableProducerIds, projectedEvidence)
+    : undefined;
+  const fivePlaneComparisonState = deriveFivePlaneComparisonState({
+    comparisons: fivePlaneComparisons,
+    planeAvailability: evaluationPlaneAvailability,
+  });
+
   // A3: Compute deterministic output hash
   const outputHash = computeOutputHash(
     claimResults,
@@ -255,9 +267,10 @@ export function evaluateAssurance(params: {
     rulePackVersions: resolvedProfile.effectiveRulePackVersions,
     applicableClaimKeys: effectiveApplicableClaimKeys,
     fivePlaneOverallVerdict,
+    fivePlaneComparisonState,
     fivePlaneComparisons,
     capabilityFacts,
-    planeAvailability: capabilityFacts ? buildPlaneAvailability(capabilityFacts, availableProducerIds, projectedEvidence) : undefined,
+    planeAvailability: evaluationPlaneAvailability,
   };
 
   return evaluation;
@@ -344,6 +357,7 @@ function buildUnavailableEvaluation(params: {
     rulePackVersions: {},
     applicableClaimKeys: [],
     fivePlaneOverallVerdict: 'REVIEW',
+    fivePlaneComparisonState: 'NOT_EVALUATED',
     planeResults: [],
     fivePlaneComparisons: [],
     capabilityFacts: {

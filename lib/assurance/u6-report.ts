@@ -17,14 +17,13 @@ import {
   ClaimEvaluationResult,
   ClaimState,
   PlaneAvailability,
+  deriveFivePlaneComparisonState,
 } from './types';
 import { CONTROL_CLAIM_CATALOG } from './claim-catalog';
 import type { DecisionEvidenceProjection } from '@/lib/decision-pipeline/evidence-projection';
 import {
   U6_REPORT_SCHEMA_VERSION,
-  U6_REPORT_SCHEMA_VERSION_PX,
-  U6_REPORT_SCHEMA_VERSION_ARI,
-  U6_REPORT_SCHEMA_VERSION_S6,
+  U6_REPORT_SCHEMA_VERSION_FP,
   U6_BUNDLE_SCHEMA_VERSION,
   U6_RECEIPT_SCHEMA_VERSION,
   BuildIdentity,
@@ -85,17 +84,13 @@ export function buildUnifiedAssuranceReport(
   const evidenceCoverage = buildProducerCoverageFromEvidence(projectedEvidence);
   const limitations = buildLimitations(evaluation, projectedEvidence, v1_1.planeAvailability ?? [], buildIdentity);
 
-  const hasActionAssurance = !!(actionAssurance);
-  const hasAriReportSection = !!(agentReachability || evaluationIntegrity);
-  const hasActionProof = !!actionProof;
   const report: UnifiedAssuranceReport = {
-    // S6 / ARI-P0 / PX-FINAL: additive report section versioning.
-    // S6 Action Assurance -> 1.4.0; ARI -> 1.3.0; PX -> 1.2.0; none -> 1.0.0.
-    reportVersion: hasActionAssurance
-      ? U6_REPORT_SCHEMA_VERSION_S6
-      : (hasAriReportSection
-          ? U6_REPORT_SCHEMA_VERSION_ARI
-          : (hasActionProof ? U6_REPORT_SCHEMA_VERSION_PX : U6_REPORT_SCHEMA_VERSION)),
+    // FP-EMPTY-1: fivePlaneAnalysis is always present and now carries
+    // comparisonState + a nullable overallVerdict, so every new report is
+    // schema 1.5.0 regardless of which additive sections exist.
+    // Historical 1.0.0-1.4.0 reports keep their persisted version and verify
+    // under their own digests — persisted bytes are never rewritten.
+    reportVersion: U6_REPORT_SCHEMA_VERSION_FP,
     reportId: `${evaluation.id}:report`,
     assuranceEvaluationId: evaluation.id,
     organizationId: evaluation.organizationId,
@@ -494,14 +489,21 @@ function buildFivePlaneReport(v1_1: AssuranceEvaluationV1_1): FivePlaneReportSec
   const facts = v1_1.capabilityFacts ?? { requested: [], policy: [], granted: [], capable: [], observed: [] };
   const availability = v1_1.planeAvailability ?? buildDefaultPlaneAvailabilityReport();
 
+  const comparisons = v1_1.fivePlaneComparisons || [];
+  const comparisonState = v1_1.fivePlaneComparisonState
+    ?? deriveFivePlaneComparisonState({ comparisons, planeAvailability: v1_1.planeAvailability });
+
   return {
     requested: facts.requested.map(f => mapCapabilityFactToReport(f)),
     policyAuthorized: facts.policy.map(f => mapCapabilityFactToReport(f)),
     effectivelyGranted: facts.granted.map(f => mapCapabilityFactToReport(f)),
     codeCapable: facts.capable.map(f => mapCapabilityFactToReport(f)),
     observed: facts.observed.map(f => mapCapabilityFactToReport(f)),
-    comparisons: v1_1.fivePlaneComparisons || [],
-    overallVerdict: v1_1.fivePlaneOverallVerdict ?? 'REVIEW',
+    comparisons,
+    comparisonState,
+    // FP-EMPTY-1: an empty comparison set has no verdict — never ALLOW.
+    // The comparator verdict is subordinate to the canonical U5 disposition.
+    overallVerdict: comparisons.length > 0 ? (v1_1.fivePlaneOverallVerdict ?? 'REVIEW') : null,
     availability,
   };
 }
