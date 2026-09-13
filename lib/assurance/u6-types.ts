@@ -5,7 +5,7 @@
  * Consumes U5 methodology 1.1 AssuranceEvaluation.
  */
 
-import { AssuranceDisposition, ClaimState, CapabilityComparisonRecord, CapabilityFact, PlaneAvailability, ProfileVerdict } from './types';
+import { AssuranceDisposition, ClaimState, CapabilityComparisonRecord, CapabilityFact, FivePlaneComparisonState, PlaneAvailability, ProfileVerdict } from './types';
 import type { FindingRef } from '@/lib/evidence/evidence-contract';
 
 export const U6_REPORT_SCHEMA_VERSION = '1.0.0' as const;
@@ -36,6 +36,12 @@ export const U6_REPORT_SCHEMA_VERSION_ARI = '1.3.0' as const;
 // S6: additive Action Assurance / Agentic Assurance customer-facing projection section.
 // Packages with this section use report schema 1.4.0; receipt/bundle/verification semantics unchanged.
 export const U6_REPORT_SCHEMA_VERSION_S6 = '1.4.0' as const;
+
+// FP-EMPTY-1: the always-present fivePlaneAnalysis section gains
+// comparisonState and overallVerdict becomes nullable (empty comparison set
+// has no verdict — never ALLOW). Every NEW report uses 1.5.0; historical
+// packages keep their persisted version and verify under their own digests.
+export const U6_REPORT_SCHEMA_VERSION_FP = '1.5.0' as const;
 
 /**
  * G3-R1: Evaluated Scope binding committed into the canonical Decision Receipt.
@@ -808,7 +814,17 @@ export interface FivePlaneReportSection {
   codeCapable: PlaneReportItem[];
   observed: PlaneReportItem[];
   comparisons: CapabilityComparisonRecord[];
-  overallVerdict: ProfileVerdict;
+  /**
+   * FP-EMPTY-1: explicit comparison availability. When comparisons is empty
+   * this is NO_QUALIFYING_COMPARISONS or NOT_EVALUATED — never an ALLOW.
+   */
+  comparisonState: FivePlaneComparisonState;
+  /**
+   * Comparator verdict — only meaningful when comparisons is non-empty.
+   * Null when there is nothing to verdict. Subordinate to the canonical U5
+   * disposition; it is not a second decision authority.
+   */
+  overallVerdict: ProfileVerdict | null;
   availability: PlaneAvailability[];
 }
 

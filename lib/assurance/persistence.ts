@@ -26,6 +26,7 @@ import {
   PersistenceResult,
   PersistedFivePlaneResult,
   PlaneAvailability,
+  deriveFivePlaneComparisonState,
   ASSURANCE_METHODOLOGY_VERSION_1_1,
 } from './types';
 import { EvaluatedScopeSnapshot } from './u6-types';
@@ -237,7 +238,12 @@ function buildPersistedFivePlaneResult(evaluation: AssuranceEvaluationV1_1): Per
     })),
     planeAvailability: evaluation.planeAvailability ?? buildDefaultPlaneAvailability(),
     capabilityFacts: capFacts,
-    overallVerdict: evaluation.fivePlaneOverallVerdict ?? 'REVIEW',
+    // FP-EMPTY-1: explicit comparison availability; zero comparisons has no verdict.
+    comparisonState: evaluation.fivePlaneComparisonState ?? deriveFivePlaneComparisonState({
+      comparisons,
+      planeAvailability: evaluation.planeAvailability,
+    }),
+    overallVerdict: comparisons.length > 0 ? (evaluation.fivePlaneOverallVerdict ?? 'REVIEW') : null,
   };
 }
 
@@ -347,7 +353,18 @@ function reconstructEvaluation(record: any): AssuranceEvaluation {
       applicableClaimKeys: binding.applicableClaimKeys as string[] ?? [],
       claimPackVersions: binding.claimPackVersions as Record<string, string> ?? {},
       rulePackVersions: binding.rulePackVersions as Record<string, string> ?? {},
-      fivePlaneOverallVerdict: (binding.fivePlaneResult as any)?.overallVerdict ?? 'REVIEW',
+      // FP-EMPTY-1.1: an empty comparison set reconstructs to null verdict —
+      // never a latent REVIEW/ALLOW available to future consumers.
+      fivePlaneOverallVerdict: ((binding.fivePlaneResult as any)?.comparisons ?? []).length > 0
+        ? ((binding.fivePlaneResult as any)?.overallVerdict ?? 'REVIEW')
+        : null,
+      // FP-EMPTY-1: persisted state wins; historical rows without the field
+      // derive it from comparison count + plane availability.
+      fivePlaneComparisonState: (binding.fivePlaneResult as any)?.comparisonState
+        ?? deriveFivePlaneComparisonState({
+          comparisons: (binding.fivePlaneResult as any)?.comparisons,
+          planeAvailability: (binding.fivePlaneResult as any)?.planeAvailability,
+        }),
       fivePlaneComparisons: (binding.fivePlaneResult as any)?.comparisons ?? [],
       planeAvailability: (binding.fivePlaneResult as any)?.planeAvailability ?? buildDefaultPlaneAvailability(),
       capabilityFacts: (binding.fivePlaneResult as any)?.capabilityFacts ?? {

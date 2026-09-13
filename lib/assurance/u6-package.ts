@@ -27,11 +27,7 @@ import {
   U6_VERIFICATION_SCHEMA_VERSION_G3,
   U6_RECEIPT_SCHEMA_VERSION,
   U6_RECEIPT_SCHEMA_VERSION_G3,
-  U6_REPORT_SCHEMA_VERSION,
-  U6_REPORT_SCHEMA_VERSION_G3,
-  U6_REPORT_SCHEMA_VERSION_PX,
-  U6_REPORT_SCHEMA_VERSION_ARI,
-  U6_REPORT_SCHEMA_VERSION_S6,
+  U6_REPORT_SCHEMA_VERSION_FP,
   BuildIdentity,
   DeploymentIdentity,
   U6Package,
@@ -112,13 +108,10 @@ export function buildAssuranceVerificationPackage(
   const hasAriReportSection = !!(context.agentReachability || context.evaluationIntegrity);
   const hasActionProof = !!context.actionProof;
   const receiptSchemaVersion = hasScopeBinding ? U6_RECEIPT_SCHEMA_VERSION_G3 : U6_RECEIPT_SCHEMA_VERSION;
-  const reportSchemaVersion = hasActionAssurance
-    ? U6_REPORT_SCHEMA_VERSION_S6
-    : (hasAriReportSection
-        ? U6_REPORT_SCHEMA_VERSION_ARI
-        : (hasActionProof
-            ? U6_REPORT_SCHEMA_VERSION_PX
-            : (hasScopeBinding ? U6_REPORT_SCHEMA_VERSION_G3 : U6_REPORT_SCHEMA_VERSION)));
+  // FP-EMPTY-1: every new report is schema 1.5.0 — the always-present
+  // fivePlaneAnalysis section now carries comparisonState + a nullable
+  // overallVerdict. Older tier constants remain for historical reads.
+  const reportSchemaVersion = U6_REPORT_SCHEMA_VERSION_FP;
   const verificationSchemaVersion = context.verificationSchemaVersion ??
     (hasScopeBinding ? U6_VERIFICATION_SCHEMA_VERSION_G3 : U6_VERIFICATION_SCHEMA_VERSION);
 
