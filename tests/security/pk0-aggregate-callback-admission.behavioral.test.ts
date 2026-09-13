@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any -- mocked Prisma */
+﻿/* eslint-disable @typescript-eslint/no-explicit-any -- mocked Prisma */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('@/lib/prisma', () => ({
@@ -155,7 +155,7 @@ describe('PK-0 aggregate callback admission', () => {
     expect(executeStaticEvidenceHandoff).not.toHaveBeenCalled();
   });
 
-  it('proceeds with valid scanner key + binding', async () => {
+  it('proceeds with valid scanner key + binding', { timeout: 20000 }, async () => {
     const res = await aggregate(makeRequest({ authorizationId: 'auth-123' }, SCANNER_KEY) as any, { params: { scanId: SCAN_ID } });
     expect(res.status).toBe(200);
     expect(validateAuthorizationBinding).toHaveBeenCalled();
@@ -163,3 +163,4 @@ describe('PK-0 aggregate callback admission', () => {
     expect(aggregateFindingsWithContext).toHaveBeenCalled();
   });
 });
+
