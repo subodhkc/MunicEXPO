@@ -58,7 +58,7 @@ export type EvidenceAuthorityState = 'ESTABLISHED' | 'PARTIAL' | 'UNKNOWN' | 'NO
 export type IntegrityDimensionState = 'TRUNCATED' | 'NOT_TRUNCATED' | 'FRESH' | 'STALE' | 'UNKNOWN' | 'NOT_ASSESSED';
 
 /** Producer completion state from canonical extraction outcome. */
-export type ProducerCompletionState = 'COMPLETED' | 'PARTIAL' | 'FAILED' | 'TIMEOUT' | 'UNSUPPORTED' | 'NOT_RUN' | 'NOT_ASSESSED';
+export type ProducerCompletionState = 'COMPLETED' | 'NOT_COMPLETED' | 'PARTIAL' | 'FAILED' | 'TIMEOUT' | 'UNSUPPORTED' | 'NOT_RUN' | 'NOT_ASSESSED';
 
 /** A single canonical evidence reference suitable for rendering. */
 export interface EvidenceReference {
@@ -216,8 +216,10 @@ export interface ReportProjectionArtifactEntry {
   artifactType: 'report' | 'passport' | 'machine-readable' | 'constellation-svg' | 'constellation-json' | 'evidence-bundle' | 'decision-receipt' | 'html' | 'pdf' | string;
   name: string;
   schemaVersion: string;
-  /** Semantic bundle digest this artifact is derived from. */
+  /** Semantic bundle digest for the same evaluation package. */
   evidenceBundleDigest: string;
+  /** Whether the artifact semantics were derived from the evidence bundle or merely share the same evaluation. */
+  semanticRelationToEvidenceBundle: 'DERIVED_FROM_EVIDENCE_BUNDLE' | 'SAME_EVALUATION_SIBLING';
   /** Exact artifact byte digest. */
   artifactDigest: string;
   /** Profile identity for audience-specific projection. */
@@ -241,6 +243,8 @@ export interface ProjectedArtifactInput {
   name: string;
   schemaVersion: string;
   artifactDigest: string;
+  /** Caller-owned claim that this artifact was projected from the bundle. */
+  semanticRelationToEvidenceBundle?: 'DERIVED_FROM_EVIDENCE_BUNDLE' | 'SAME_EVALUATION_SIBLING';
   profileId?: string;
   profileVersion?: string;
   rendererId?: string;
@@ -258,11 +262,14 @@ export interface ReportProjectionManifestV1 {
   evaluationIdentity: AssuranceEvidenceBundleV1['evaluationIdentity'];
   evidenceBundleDigest: string;
   evidenceBundleSchemaVersion: string;
-  /** U5 methodology / version where already available. */
-  assuranceMethodologyVersion: string;
-  /** Projection / profile / renderer versions. */
+  /** Canonical U5 methodology/version when bound; null when not bound. */
+  assuranceMethodologyVersion: string | null;
+  assuranceMethodologyAvailability: 'BOUND' | 'NOT_BOUND';
+  /** Projection / profile / renderer contract versions. */
   projectionProfileVersion: string;
   rendererRegistryVersion: string;
+  /** Whether a qualified renderer registry exists for these artifact types. */
+  rendererRegistryAvailability: 'QUALIFIED' | 'NOT_YET_QUALIFIED';
   artifacts: ReportProjectionArtifactEntry[];
   /** Deterministic digest of this manifest (excludes itself). */
   manifestDigest: string;
@@ -275,8 +282,8 @@ export interface BuildAssuranceEvidenceBundleInput {
   artifactManifest: ArtifactManifest;
   /** Persisted coverage intelligence for the exact evaluated scan. */
   coverage: PersistedOperationCoverageIntelligence;
-  /** Optional canonical evaluation carrying U5 disposition and methodology. */
-  canonicalEvaluation?: Pick<AssuranceEvaluation, 'disposition' | 'assuranceMethodologyVersion'>;
+  /** Optional canonical evaluation carrying exact U5 identity + disposition + methodology. */
+  canonicalEvaluation?: Pick<AssuranceEvaluation, 'id' | 'organizationId' | 'aiSystemId' | 'orchestratorRunId' | 'disposition' | 'assuranceMethodologyVersion'> & { evaluationSnapshotAt?: Date | string };
   /** Optional reachability/topology/constellation digests if already computed. */
   topologyProjectionDigest?: string;
   reachabilityDigest?: string;
@@ -355,7 +362,7 @@ function actionPathsFromArchetype(output: EvaluatedAssuranceOutput): EvidenceAct
 
 function producerCompletionFromCoverage(coverage: PersistedOperationCoverageIntelligence): ProducerCompletionState {
   if (coverage.extractionCompletion === 'COMPLETED') return 'COMPLETED';
-  if (coverage.extractionCompletion === 'NOT_COMPLETED') return 'PARTIAL';
+  if (coverage.extractionCompletion === 'NOT_COMPLETED') return 'NOT_COMPLETED';
   return 'NOT_ASSESSED';
 }
 
@@ -392,6 +399,44 @@ export function buildAssuranceEvidenceBundleV1(input: BuildAssuranceEvidenceBund
   ) {
     throw new Error('CROSS_EVALUATION_COMPOSITION: artifactManifest repositoryCommit mismatch');
   }
+  if (
+    artifactManifest.evaluationSnapshotAt !== null &&
+    id.evaluationSnapshotAt !== undefined &&
+    artifactManifest.evaluationSnapshotAt !== id.evaluationSnapshotAt
+  ) {
+    throw new Error('CROSS_EVALUATION_COMPOSITION: artifactManifest evaluationSnapshotAt mismatch');
+  }
+
+  // U5 disposition may only be bound when the canonical evaluation identity
+  // proves it belongs to the exact same evaluation.
+  let disposition: AssuranceDisposition | 'UNKNOWN' = 'UNKNOWN';
+  let dispositionSource: AssuranceEvidenceBundleV1['dispositionSource'] = 'NOT_AVAILABLE';
+  let dispositionAvailability: AssuranceEvidenceBundleV1['dispositionAvailability'] = 'NOT_BOUND';
+  let dispositionMethodologyVersion: string | undefined;
+  if (canonicalEvaluation) {
+    if (canonicalEvaluation.id !== id.evaluationId) {
+      throw new Error('CROSS_EVALUATION_COMPOSITION: canonicalEvaluation id mismatch');
+    }
+    if (canonicalEvaluation.organizationId !== id.organizationId) {
+      throw new Error('CROSS_EVALUATION_COMPOSITION: canonicalEvaluation organizationId mismatch');
+    }
+    if (canonicalEvaluation.aiSystemId !== id.aiSystemId) {
+      throw new Error('CROSS_EVALUATION_COMPOSITION: canonicalEvaluation aiSystemId mismatch');
+    }
+    if (canonicalEvaluation.orchestratorRunId !== id.orchestratorRunId) {
+      throw new Error('CROSS_EVALUATION_COMPOSITION: canonicalEvaluation orchestratorRunId mismatch');
+    }
+    const canonicalSnapshotAt = canonicalEvaluation.evaluationSnapshotAt instanceof Date
+      ? canonicalEvaluation.evaluationSnapshotAt.toISOString()
+      : canonicalEvaluation.evaluationSnapshotAt;
+    if (canonicalSnapshotAt !== undefined && id.evaluationSnapshotAt !== undefined && canonicalSnapshotAt !== id.evaluationSnapshotAt) {
+      throw new Error('CROSS_EVALUATION_COMPOSITION: canonicalEvaluation evaluationSnapshotAt mismatch');
+    }
+    disposition = canonicalEvaluation.disposition;
+    dispositionSource = 'CANONICAL_U5';
+    dispositionAvailability = 'BOUND';
+    dispositionMethodologyVersion = canonicalEvaluation.assuranceMethodologyVersion;
+  }
 
   const evidenceReferences = evidenceRefsFromArchetype(output);
   const actionPaths = actionPathsFromArchetype(output);
@@ -409,11 +454,6 @@ export function buildAssuranceEvidenceBundleV1(input: BuildAssuranceEvidenceBund
   const aa = output.actionAssurance;
   const ap = output.actionProof;
   const ar = output.reachability;
-
-  const disposition = canonicalEvaluation?.disposition ?? 'UNKNOWN';
-  const dispositionSource: AssuranceEvidenceBundleV1['dispositionSource'] = canonicalEvaluation?.disposition ? 'CANONICAL_U5' : 'NOT_AVAILABLE';
-  const dispositionAvailability: AssuranceEvidenceBundleV1['dispositionAvailability'] = canonicalEvaluation?.disposition ? 'BOUND' : 'NOT_BOUND';
-  const dispositionMethodologyVersion = canonicalEvaluation?.assuranceMethodologyVersion;
 
   const bundlePayload: Omit<AssuranceEvidenceBundleV1, 'bundleDigest'> = {
     schemaVersion: 'assurance-evidence-bundle-1.0.0',
@@ -504,13 +544,13 @@ export interface BuildReportProjectionManifestInput {
   /** Minimal artifact facts; identity is bound from the bundle. */
   projectedArtifacts: ProjectedArtifactInput[];
   profile: ReportProjectionProfile;
-  assuranceMethodologyVersion: string;
   projectionProfileVersion: string;
   rendererRegistryVersion: string;
+  rendererRegistryAvailability?: 'QUALIFIED' | 'NOT_YET_QUALIFIED';
 }
 
 export function buildReportProjectionManifestV1(input: BuildReportProjectionManifestInput): ReportProjectionManifestV1 {
-  const { bundle, artifactManifest, projectedArtifacts, profile, assuranceMethodologyVersion, projectionProfileVersion, rendererRegistryVersion } = input;
+  const { bundle, artifactManifest, projectedArtifacts, profile, projectionProfileVersion, rendererRegistryVersion, rendererRegistryAvailability = 'NOT_YET_QUALIFIED' } = input;
 
   if (artifactManifest.evaluationId !== bundle.evaluationIdentity.evaluationId) {
     throw new Error('CROSS_EVALUATION_COMPOSITION: artifactManifest evaluationId mismatch');
@@ -524,6 +564,7 @@ export function buildReportProjectionManifestV1(input: BuildReportProjectionMani
     name: a.name,
     schemaVersion: a.schemaVersion,
     evidenceBundleDigest: bundle.bundleDigest,
+    semanticRelationToEvidenceBundle: a.semanticRelationToEvidenceBundle ?? 'SAME_EVALUATION_SIBLING',
     artifactDigest: a.artifactDigest,
     profileId: a.profileId ?? profile.profileId,
     profileVersion: a.profileVersion ?? profile.profileVersion,
@@ -539,13 +580,16 @@ export function buildReportProjectionManifestV1(input: BuildReportProjectionMani
     evaluationIdentity: bundle.evaluationIdentity,
     evidenceBundleDigest: bundle.bundleDigest,
     evidenceBundleSchemaVersion: bundle.schemaVersion,
-    assuranceMethodologyVersion,
+    assuranceMethodologyVersion: bundle.dispositionMethodologyVersion ?? null,
+    assuranceMethodologyAvailability: bundle.dispositionAvailability === 'BOUND' ? 'BOUND' : 'NOT_BOUND',
     projectionProfileVersion,
     rendererRegistryVersion,
+    rendererRegistryAvailability,
     artifacts,
     limitations: [
       'Manifest binds provenance only; it does not calculate U5 or reconcile evidence.',
       'Artifact digests are over generated bytes for this profile and renderer.',
+      'SAME_EVALUATION_SIBLING != DERIVED_FROM_EVIDENCE_BUNDLE.',
     ],
   };
 

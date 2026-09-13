@@ -44,6 +44,7 @@ import {
   type AssuranceEvidenceBundleV1,
   type ReportProjectionManifestV1,
 } from './reporting-projection-bundle';
+import { assertRequiredBundleDomainsPresent } from './reporting-consumption-contract';
 
 export interface AssuranceOutputBundle {
   availability: 'ESTABLISHED' | 'PARTIAL' | 'NOT_AVAILABLE';
@@ -153,6 +154,8 @@ function buildBundleFromOutput(
     reachabilityDigest,
     constellationDigest,
   });
+  // Production composition seam: required canonical domains must be represented.
+  assertRequiredBundleDomainsPresent(evidenceBundle);
 
   const artifactProfile: Record<string, { profileId: string; rendererId: string }> = {
     'passport': { profileId: 'passport-semantic-projection', rendererId: 'agentic-production-passport' },
@@ -167,6 +170,7 @@ function buildBundleFromOutput(
     name: a.name,
     schemaVersion: a.schemaVersion,
     artifactDigest: computeArtifactSha256(a.bytes),
+    semanticRelationToEvidenceBundle: 'SAME_EVALUATION_SIBLING' as const,
     profileId: artifactProfile[a.artifactType]?.profileId,
     rendererId: artifactProfile[a.artifactType]?.rendererId,
   }));
@@ -176,7 +180,6 @@ function buildBundleFromOutput(
     artifactManifest: manifest,
     projectedArtifacts,
     profile: { profileId: 'default', profileVersion: '1.0.0', rendererId: 'server-bundle-composer', rendererVersion: '1.0.0' },
-    assuranceMethodologyVersion: 'u5-2.0.0',
     projectionProfileVersion: 'report-projection-default-1.0.0',
     rendererRegistryVersion: 'renderer-registry-1.0.0',
   });
