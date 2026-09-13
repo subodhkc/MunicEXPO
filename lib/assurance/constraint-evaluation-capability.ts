@@ -209,7 +209,7 @@ export const CONSTRAINT_EVALUATION_CAPABILITY_MATRIX: Record<
     relevantPlanes: ['POLICY_AUTHORIZED', 'OBSERVED'],
     requiredFactDimensions: ['capabilityFacts.observed.scope'],
     implementationOwner: 'verifyEnvelopeAgainstProfileSchema() + isWithinEnvelope() (OBSERVED only)',
-    limitation: 'isWithinEnvelope() uses observed fact.scope as the current region surrogate — there is no dedicated structured region fact dimension yet (OPERATIONAL_SCOPE != DEDICATED_REGION_FACT). Only called on OBSERVED facts, not CODE_CAPABLE. A nonmatching/unknown scope can cause the region check to fail and produce an outside-envelope result. If constraints.regions is absent, the check is skipped. This is a current implementation limitation, not a U5 fix.',
+    limitation: 'isWithinEnvelope() uses observed fact.scope as the current region surrogate — there is no dedicated structured region fact dimension yet (OPERATIONAL_SCOPE != DEDICATED_REGION_FACT). Only called on OBSERVED facts, not CODE_CAPABLE. A nonmatching/unknown scope can cause the region check to fail and produce an outside-envelope result. If constraints.regions is absent, the check is skipped. This is a current implementation limitation, not an Assurance Engine fix.',
   },
 
   r1Services: {
@@ -231,7 +231,7 @@ export const CONSTRAINT_EVALUATION_CAPABILITY_MATRIX: Record<
     relevantPlanes: ['POLICY_AUTHORIZED', 'OBSERVED'],
     requiredFactDimensions: ['capabilityFacts.observed.targetCount'],
     implementationOwner: 'verifyEnvelopeAgainstProfileSchema() (profile max) + projectPolicyFacts() (targetCount) + isWithinEnvelope() (OBSERVED only)',
-    limitation: 'CRITICAL U5 LIMITATION: isWithinEnvelope() checks observed fact.targetCount against maxTargetCount. If fact.targetCount is absent, it falls back to regex-parsing fact.scope. If no match, the check is SKIPPED and isWithinEnvelope returns true — no contradiction is emitted. Absence of targetCount must NOT be interpreted as the constraint being satisfied. Only called on OBSERVED facts.',
+    limitation: 'CRITICAL LIMITATION (Assurance Engine): isWithinEnvelope() checks observed fact.targetCount against maxTargetCount. If fact.targetCount is absent, it falls back to regex-parsing fact.scope. If no match, the check is SKIPPED and isWithinEnvelope returns true — no contradiction is emitted. Absence of targetCount must NOT be interpreted as the constraint being satisfied. Only called on OBSERVED facts.',
   },
 
   maxChangeMagnitude: {
@@ -242,7 +242,7 @@ export const CONSTRAINT_EVALUATION_CAPABILITY_MATRIX: Record<
     relevantPlanes: ['POLICY_AUTHORIZED', 'OBSERVED'],
     requiredFactDimensions: ['capabilityFacts.observed.changeMagnitude'],
     implementationOwner: 'verifyEnvelopeAgainstProfileSchema() (profile max) + projectPolicyFacts() (changeMagnitude) + isWithinEnvelope() (OBSERVED only)',
-    limitation: 'CRITICAL U5 LIMITATION: isWithinEnvelope() checks observed fact.changeMagnitude against maxChangeMagnitude. If fact.changeMagnitude is absent, it falls back to regex-parsing fact.scope. If no match, the check is SKIPPED and isWithinEnvelope returns true — no contradiction is emitted. Absence of changeMagnitude must NOT be interpreted as the constraint being satisfied. Only called on OBSERVED facts.',
+    limitation: 'CRITICAL LIMITATION (Assurance Engine): isWithinEnvelope() checks observed fact.changeMagnitude against maxChangeMagnitude. If fact.changeMagnitude is absent, it falls back to regex-parsing fact.scope. If no match, the check is SKIPPED and isWithinEnvelope returns true — no contradiction is emitted. Absence of changeMagnitude must NOT be interpreted as the constraint being satisfied. Only called on OBSERVED facts.',
   },
 
   approvalRequirements: {
@@ -286,7 +286,7 @@ export const CONSTRAINT_EVALUATION_CAPABILITY_MATRIX: Record<
     relevantPlanes: ['POLICY_AUTHORIZED', 'OBSERVED'],
     requiredFactDimensions: ['capabilityFacts.observed.environment'],
     implementationOwner: 'verifyEnvelopeAgainstProfileSchema() (profile subset) + projectPolicyFacts() (allowedEnvironments[0] → environment) + isWithinEnvelope() (OBSERVED only)',
-    limitation: 'CRITICAL U5 LIMITATION: isWithinEnvelope() checks observed fact.environment against allowedEnvironments. If fact.environment is absent, the check is SKIPPED and isWithinEnvelope returns true — no contradiction is emitted. Absence of environment must NOT be interpreted as the constraint being satisfied. Only called on OBSERVED facts.',
+    limitation: 'CRITICAL LIMITATION (Assurance Engine): isWithinEnvelope() checks observed fact.environment against allowedEnvironments. If fact.environment is absent, the check is SKIPPED and isWithinEnvelope returns true — no contradiction is emitted. Absence of environment must NOT be interpreted as the constraint being satisfied. Only called on OBSERVED facts.',
   },
 
   prohibitedDataClasses: {
@@ -297,7 +297,7 @@ export const CONSTRAINT_EVALUATION_CAPABILITY_MATRIX: Record<
     relevantPlanes: ['POLICY_AUTHORIZED', 'OBSERVED'],
     requiredFactDimensions: ['capabilityFacts.observed.dataClass'],
     implementationOwner: 'verifyEnvelopeAgainstProfileSchema() (prohibited check) + isWithinEnvelope() (OBSERVED only)',
-    limitation: 'CRITICAL U5 LIMITATION: isWithinEnvelope() checks if observed fact.dataClass is in prohibitedDataClasses. If fact.dataClass is absent, the check is SKIPPED and isWithinEnvelope returns true — no contradiction is emitted. Absence of dataClass must NOT be interpreted as the constraint being satisfied. Only called on OBSERVED facts.',
+    limitation: 'CRITICAL LIMITATION (Assurance Engine): isWithinEnvelope() checks if observed fact.dataClass is in prohibitedDataClasses. If fact.dataClass is absent, the check is SKIPPED and isWithinEnvelope returns true — no contradiction is emitted. Absence of dataClass must NOT be interpreted as the constraint being satisfied. Only called on OBSERVED facts.',
   },
 };
 

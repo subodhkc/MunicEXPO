@@ -680,7 +680,7 @@ export async function resolvePassportU6Lineage(
       bindingState: 'NOT_BOUND',
       publicationState: 'NOT_ASSESSED',
       limitations: [
-        'This Passport represents the evaluated HAIEC output but is not bound to an issued U6 Decision Receipt/package.',
+        'This Passport represents the evaluated HAIEC output but is not bound to an issued Decision Receipt / Assurance Package.',
         'NO_PACKAGE != PACKAGE_VERIFIED; NO_PACKAGE != VERIFICATION_FAILURE; NO_PACKAGE != CERTIFICATION.',
       ],
     };
