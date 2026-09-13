@@ -498,7 +498,7 @@ export function buildAgenticProductionPassport(
     bindingState: 'NOT_BOUND',
     publicationState: 'NOT_ASSESSED',
     limitations: [
-      'This Passport represents the evaluated HAIEC output but is not bound to an issued U6 Decision Receipt/package.',
+      'This Passport represents the evaluated HAIEC output but is not bound to an issued Decision Receipt / Assurance Package.',
       'NO_PACKAGE != PACKAGE_VERIFIED; NO_PACKAGE != VERIFICATION_FAILURE; NO_PACKAGE != CERTIFICATION.',
     ],
   };
@@ -558,7 +558,7 @@ export function buildAgenticProductionPassport(
       limitations: [
         'Passport is a deterministic projection; it is not a runtime observation.',
         'Output-generator identity is bound by source/build identifiers. Process-instance initialization time is intentionally excluded from canonical Passport bytes.',
-        'Passport is not a U6 Decision Receipt and not a U5 disposition; it does not issue, verify, or recompute either.',
+        'Passport is not a Decision Receipt and not an Assurance Engine disposition; it does not issue, verify, or recompute either.',
         ...(evaluationSnapshotAt
           ? []
           : ['EVALUATION_SNAPSHOT_TIME_NOT_PERSISTED: this projection lacks the persisted evaluation boundary time (fixture/preview path).']),
