@@ -31,12 +31,19 @@ import {
 import type { ConsequenceDelta } from './consequence-delta';
 import { buildAssuranceReportFromOutput } from './assurance-report-composer';
 import { buildMachineReadableAssuranceOutput } from './assurance-artifact-manifest';
-import { buildArtifactManifest } from './assurance-artifact-manifest';
+import { buildArtifactManifest, computeArtifactSha256 } from './assurance-artifact-manifest';
 import { buildEvaluatedTopologyProjection } from '@/lib/topology/topology-projector';
 import { buildAgentReachabilityReadModel, type AgentReachabilityReadModel } from '@/lib/ai-inventory/agent-reachability-read-model';
 import { buildConstellationProjection } from '@/lib/topology/constellation-presentation-projection';
 import { buildConstellationExport } from '@/lib/topology/constellation-export';
 import type { ArtifactManifest } from './assurance-artifact-manifest';
+import {
+  buildAssuranceEvidenceBundleV1,
+  buildReportProjectionManifestV1,
+  computeSemanticDigest,
+  type AssuranceEvidenceBundleV1,
+  type ReportProjectionManifestV1,
+} from './reporting-projection-bundle';
 
 export interface AssuranceOutputBundle {
   availability: 'ESTABLISHED' | 'PARTIAL' | 'NOT_AVAILABLE';
@@ -50,6 +57,10 @@ export interface AssuranceOutputBundle {
   constellation: ReturnType<typeof buildConstellationProjection>;
   constellationSvg: string;
   manifest: ArtifactManifest;
+  /** AA-PROJECTION-1: versioned semantic evidence bundle for all projections. */
+  evidenceBundle: AssuranceEvidenceBundleV1;
+  /** AA-PROJECTION-1: provenance manifest binding all artifacts to the bundle. */
+  projectionManifest: ReportProjectionManifestV1;
   reasons?: string[];
 }
 
@@ -128,6 +139,43 @@ function buildBundleFromOutput(
     evaluationSnapshotAt: output.evaluationIdentity.evaluationSnapshotAt ?? null,
   });
 
+  const topologyDigest = computeSemanticDigest(topology);
+  const reachabilityDigest = computeSemanticDigest(reachability);
+  const constellationDigest = computeSemanticDigest(constellation);
+
+  const evidenceBundle = buildAssuranceEvidenceBundleV1({
+    output,
+    artifactManifest: manifest,
+    topologyProjectionDigest: topologyDigest,
+    reachabilityDigest,
+    constellationDigest,
+  });
+
+  const projectedArtifacts = artifacts.map((a) => ({
+    artifactType: a.artifactType as ReportProjectionManifestV1['artifacts'][number]['artifactType'],
+    name: a.name,
+    schemaVersion: a.schemaVersion,
+    evidenceBundleDigest: evidenceBundle.bundleDigest,
+    artifactDigest: computeArtifactSha256(a.bytes),
+    profileId: 'default',
+    profileVersion: '1.0.0',
+    rendererId: 'server-bundle-composer',
+    rendererVersion: '1.0.0',
+    evaluationId,
+    exactScanId: scanId,
+    repositoryCommitSha: commitSha,
+  }));
+
+  const projectionManifest = buildReportProjectionManifestV1({
+    bundle: evidenceBundle,
+    artifactManifest: manifest,
+    projectedArtifacts,
+    profile: { profileId: 'default', profileVersion: '1.0.0', rendererId: 'server-bundle-composer', rendererVersion: '1.0.0' },
+    assuranceMethodologyVersion: 'u5-2.0.0',
+    projectionProfileVersion: 'report-projection-default-1.0.0',
+    rendererRegistryVersion: 'renderer-registry-1.0.0',
+  });
+
   return {
     availability: topology.mapAvailability === 'AVAILABLE' ? 'ESTABLISHED' : 'PARTIAL',
     evaluationId,
@@ -140,6 +188,8 @@ function buildBundleFromOutput(
     constellation,
     constellationSvg: constellationExport.svg,
     manifest,
+    evidenceBundle,
+    projectionManifest,
   };
 }
 
