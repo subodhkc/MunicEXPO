@@ -31,12 +31,20 @@ import {
 import type { ConsequenceDelta } from './consequence-delta';
 import { buildAssuranceReportFromOutput } from './assurance-report-composer';
 import { buildMachineReadableAssuranceOutput } from './assurance-artifact-manifest';
-import { buildArtifactManifest } from './assurance-artifact-manifest';
+import { buildArtifactManifest, computeArtifactSha256 } from './assurance-artifact-manifest';
 import { buildEvaluatedTopologyProjection } from '@/lib/topology/topology-projector';
 import { buildAgentReachabilityReadModel, type AgentReachabilityReadModel } from '@/lib/ai-inventory/agent-reachability-read-model';
 import { buildConstellationProjection } from '@/lib/topology/constellation-presentation-projection';
 import { buildConstellationExport } from '@/lib/topology/constellation-export';
 import type { ArtifactManifest } from './assurance-artifact-manifest';
+import {
+  buildAssuranceEvidenceBundleV1,
+  buildReportProjectionManifestV1,
+  computeSemanticDigest,
+  type AssuranceEvidenceBundleV1,
+  type ReportProjectionManifestV1,
+} from './reporting-projection-bundle';
+import { assertRequiredBundleDomainsPresent } from './reporting-consumption-contract';
 
 export interface AssuranceOutputBundle {
   availability: 'ESTABLISHED' | 'PARTIAL' | 'NOT_AVAILABLE';
@@ -50,6 +58,10 @@ export interface AssuranceOutputBundle {
   constellation: ReturnType<typeof buildConstellationProjection>;
   constellationSvg: string;
   manifest: ArtifactManifest;
+  /** AA-PROJECTION-1: versioned semantic evidence bundle for all projections. */
+  evidenceBundle: AssuranceEvidenceBundleV1;
+  /** AA-PROJECTION-1: provenance manifest binding all artifacts to the bundle. */
+  projectionManifest: ReportProjectionManifestV1;
   reasons?: string[];
 }
 
@@ -85,6 +97,7 @@ function buildBundleFromOutput(
   aiSystemName?: string,
   readModel?: AgentReachabilityReadModel,
   passportContext?: PassportBuildContext,
+  canonicalEvaluation?: AssuranceEvaluation,
 ): AssuranceOutputBundle {
   const evaluationId = output.evaluationIdentity.evaluationId;
   const scanId = output.evaluationIdentity.exactScanId;
@@ -128,6 +141,49 @@ function buildBundleFromOutput(
     evaluationSnapshotAt: output.evaluationIdentity.evaluationSnapshotAt ?? null,
   });
 
+  const topologyDigest = computeSemanticDigest(topology);
+  const reachabilityDigest = computeSemanticDigest(reachability);
+  const constellationDigest = computeSemanticDigest(constellation);
+
+  const evidenceBundle = buildAssuranceEvidenceBundleV1({
+    output,
+    artifactManifest: manifest,
+    coverage,
+    canonicalEvaluation,
+    topologyProjectionDigest: topologyDigest,
+    reachabilityDigest,
+    constellationDigest,
+  });
+  // Production composition seam: required canonical domains must be represented.
+  assertRequiredBundleDomainsPresent(evidenceBundle);
+
+  const artifactProfile: Record<string, { profileId: string; rendererId: string }> = {
+    'passport': { profileId: 'passport-semantic-projection', rendererId: 'agentic-production-passport' },
+    'report': { profileId: 'report-semantic-projection', rendererId: 'assurance-report-composer' },
+    'machine-readable': { profileId: 'machine-semantic-projection', rendererId: 'assurance-artifact-manifest' },
+    'constellation-svg': { profileId: 'constellation-projection', rendererId: 'constellation-export' },
+    'constellation-json': { profileId: 'constellation-projection', rendererId: 'constellation-presentation-projection' },
+  };
+
+  const projectedArtifacts = artifacts.map((a) => ({
+    artifactType: a.artifactType,
+    name: a.name,
+    schemaVersion: a.schemaVersion,
+    artifactDigest: computeArtifactSha256(a.bytes),
+    semanticRelationToEvidenceBundle: 'SAME_EVALUATION_SIBLING' as const,
+    profileId: artifactProfile[a.artifactType]?.profileId,
+    rendererId: artifactProfile[a.artifactType]?.rendererId,
+  }));
+
+  const projectionManifest = buildReportProjectionManifestV1({
+    bundle: evidenceBundle,
+    artifactManifest: manifest,
+    projectedArtifacts,
+    profile: { profileId: 'default', profileVersion: '1.0.0', rendererId: 'server-bundle-composer', rendererVersion: '1.0.0' },
+    projectionProfileVersion: 'report-projection-default-1.0.0',
+    rendererRegistryVersion: 'renderer-registry-1.0.0',
+  });
+
   return {
     availability: topology.mapAvailability === 'AVAILABLE' ? 'ESTABLISHED' : 'PARTIAL',
     evaluationId,
@@ -140,6 +196,8 @@ function buildBundleFromOutput(
     constellation,
     constellationSvg: constellationExport.svg,
     manifest,
+    evidenceBundle,
+    projectionManifest,
   };
 }
 
@@ -203,7 +261,7 @@ export async function buildAssuranceOutputBundle(
       }
     : undefined;
 
-  const bundle = buildBundleFromOutput(output, loaded.data, aiSystemName, readModel, passportContext);
+  const bundle = buildBundleFromOutput(output, loaded.data, aiSystemName, readModel, passportContext, evaluation);
 
   return { availability: bundle.availability, bundle };
 }
