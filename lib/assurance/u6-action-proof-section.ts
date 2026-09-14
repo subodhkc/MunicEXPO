@@ -30,6 +30,7 @@ import {
 } from '@/lib/ai-security/operation-coverage-read';
 import {
   buildActionProofTraceProjection,
+  ACTION_PROOF_TRACE_STAGE_ORDER,
   type ActionProofTrace,
 } from '@/lib/ai-inventory/action-proof-trace';
 import type { AssuranceEvaluation } from './types';
@@ -37,6 +38,101 @@ import type { ActionProofReportSection } from './u6-types';
 
 /** Presentation cap — detailed traces remain referenced by ID, not dumped. */
 const MAX_TRACES_IN_SECTION = 12;
+
+/**
+ * AA-FLAGSHIP-HARDENING-1: deterministic evidence-value ordering for the
+ * customer trace sample. Replaces positional first-N selection, which
+ * surfaced whichever traces happened to be first in projection order
+ * (arbitrary source-file order), regardless of evidentiary strength.
+ *
+ * Ranking answers: "what is the strongest real proof HAIEC established?"
+ * Stage states only — no risk scoring, no invented conclusions.
+ *
+ *   STRONGER_EVIDENCE_FIRST != STRONGER_ASSURANCE_CLAIM
+ *   SAMPLE_SELECTION != U5_DECISION_INPUT
+ *   INPUT_ORDER != EVIDENCE_VALUE
+ */
+const TRACE_STATE_WEIGHT: Record<string, number> = {
+  ESTABLISHED: 4,
+  CONDITIONAL: 3,
+  PARTIAL: 3,
+  DECLARED_ONLY: 2,
+  NOT_REQUIRED_DECLARED: 2,
+  CANDIDATE: 1,
+  UNKNOWN: 0,
+  NOT_ANALYZED: 0,
+  UNSUPPORTED: 0,
+  NOT_APPLICABLE: 0,
+};
+
+const TRACE_STAGE_ORDER_INDEX = new Map<string, number>(
+  ACTION_PROOF_TRACE_STAGE_ORDER.map((s, i) => [s, i]),
+);
+
+function traceEvidenceScore(t: ActionProofTrace): number {
+  const w = (s: string) => TRACE_STATE_WEIGHT[s] ?? 0;
+  return (
+    w(t.consequence.state) * 8 +
+    w(t.implementation.state) * 4 +
+    w(t.modelExposure.state) * 3 +
+    w(t.modelRequest.state) * 2 +
+    w(t.dispatch.state) * 2 +
+    w(t.registration.state) +
+    w(t.contextBinding.state) +
+    w(t.argumentProvenance.state) +
+    w(t.confirmation.state) +
+    (t.consequenceTarget?.resourceTarget ? 1 : 0)
+  );
+}
+
+function traceCompare(a: ActionProofTrace, b: ActionProofTrace): number {
+  const scoreDelta = traceEvidenceScore(b) - traceEvidenceScore(a);
+  if (scoreDelta !== 0) return scoreDelta;
+  // Deeper proof frontier = the trace proved further along the chain.
+  const fa = TRACE_STAGE_ORDER_INDEX.get(a.proofFrontier.stage) ?? TRACE_STAGE_ORDER_INDEX.size;
+  const fb = TRACE_STAGE_ORDER_INDEX.get(b.proofFrontier.stage) ?? TRACE_STAGE_ORDER_INDEX.size;
+  if (fa !== fb) return fb - fa;
+  return a.id.localeCompare(b.id);
+}
+
+/**
+ * Diversity key for the customer sample — capability name + concrete
+ * consequence resource. Prefer covering distinct (capability, target) pairs
+ * before repeating near-identical consequences.
+ */
+function traceDiversityKey(t: ActionProofTrace): string {
+  return `${t.tool.name ?? t.tool.toolCandidateId}|${t.consequenceTarget?.resourceTarget ?? t.consequenceTarget?.api ?? '-'}`;
+}
+
+/**
+ * Evidence-first selection with representative diversity:
+ *   1. rank all traces by evidentiary strength (deterministic, stable,
+ *      input-order independent — ties break on canonical trace id);
+ *   2. first pass: highest-ranked trace per distinct (capability, target) pair;
+ *   3. second pass: fill remaining slots in rank order.
+ * Diversity never outranks evidence strength — it only orders selection
+ * among already-ranked candidates.
+ */
+export function selectActionProofTraces(
+  traces: ActionProofTrace[],
+  limit: number = MAX_TRACES_IN_SECTION,
+): ActionProofTrace[] {
+  const ranked = [...traces].sort(traceCompare);
+  const seen = new Set<string>();
+  const selected: ActionProofTrace[] = [];
+  for (const t of ranked) {
+    if (selected.length >= limit) break;
+    const key = traceDiversityKey(t);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    selected.push(t);
+  }
+  for (const t of ranked) {
+    if (selected.length >= limit) break;
+    if (!selected.includes(t)) selected.push(t);
+  }
+  return selected;
+}
 
 function summarizeTrace(t: ActionProofTrace): NonNullable<ActionProofReportSection['traces']>[number] {
   const stageStates: Record<string, string> = {
@@ -199,7 +295,7 @@ export function buildActionProofReportSectionFromSnapshot(
     scanId,
     commitSha,
     summary: projection.summary,
-    traces: projection.traces.slice(0, MAX_TRACES_IN_SECTION).map(summarizeTrace),
+    traces: selectActionProofTraces(projection.traces, MAX_TRACES_IN_SECTION).map(summarizeTrace),
     tracesShown: Math.min(projection.traces.length, MAX_TRACES_IN_SECTION),
     totalTraces: projection.traces.length,
     coverageLimitations,

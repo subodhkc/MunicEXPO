@@ -1043,10 +1043,25 @@ export function buildActionAssuranceSectionFromReadModel(
       ],
       surfacesShown: 0,
       totalSurfaces: MAX_SURFACES,
+      // No evaluated coverage — no path-level truth exists to report.
+      pathLevelCodeCapability: undefined,
     };
   }
 
   const surfaces = buildAllSurfaces(readModel, data, projectedEvidence, runContext);
+
+  // AA-FLAGSHIP-HARDENING-1: path-level code-capability truth in the same
+  // grain the reporting bundle's actionPaths carry — handler-operation
+  // relation state maps to path-level CODE_CAPABLE via the canonical
+  // state mapping (ESTABLISHED -> ESTABLISHED; CANDIDATE -> PARTIAL;
+  // everything else -> UNKNOWN/NOT_ASSESSED).
+  const handlerOps = data.handlerOperationRelations ?? [];
+  const pathLevelCodeCapability = {
+    totalActionPaths: handlerOps.length,
+    codeCapableEstablishedPaths: handlerOps.filter((r) => r.state === 'ESTABLISHED').length,
+    codeCapablePartialPaths: handlerOps.filter((r) => r.state === 'CANDIDATE').length,
+  };
+
   const agentCount = readModel.agents.total;
   const relationCount = surfaces.reduce((sum, s) => sum + (s.relationCount ?? 0), 0);
   const frontierCount = surfaces.filter(
@@ -1069,6 +1084,7 @@ export function buildActionAssuranceSectionFromReadModel(
     coverageLimitations: readModel.frontiers.items.map((f) => `${f.dimension}: ${f.reason}`).slice(0, 16),
     surfacesShown: surfaces.length,
     totalSurfaces: MAX_SURFACES,
+    pathLevelCodeCapability,
   };
 }
 

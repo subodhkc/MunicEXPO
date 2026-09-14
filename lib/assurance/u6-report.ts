@@ -121,7 +121,7 @@ export function buildUnifiedAssuranceReport(
     dispositionExplanation: buildDispositionExplanation(evaluation),
     claimSummary,
     claimResults,
-    fivePlaneAnalysis: buildFivePlaneReport(v1_1),
+    fivePlaneAnalysis: buildFivePlaneReport(v1_1, actionAssurance?.pathLevelCodeCapability),
     evidenceCoverage,
     limitations,
     frameworkAlignment: buildFrameworkAlignment(evaluation.claimResults),
@@ -332,7 +332,7 @@ export function publicVerification(receipt: AssuranceDecisionReceipt): PublicVer
     reportSchemaVersion: U6_REPORT_SCHEMA_VERSION,
     profileLabel: receipt.profileId,
     profileVersion: receipt.profileVersion,
-    scopeSummary: `Assurance under profile ${receipt.profileId} with envelope ${receipt.operatingEnvelopeId ?? 'none'}`,
+    scopeSummary: `Assurance under profile ${receipt.profileId}${receipt.operatingEnvelopeId ? ` with envelope ${receipt.operatingEnvelopeId}` : '; no approved operating envelope was established for this evaluation'}`,
     receiptHash: receipt.receiptHash,
     merkleRoot: receipt.evidenceMerkleRoot,
     merkleStatus: receipt.merkleStatus,
@@ -485,15 +485,55 @@ function buildClaimSummary(claimResults: ClaimEvaluationResult[]): ClaimSummaryI
   }));
 }
 
-function buildFivePlaneReport(v1_1: AssuranceEvaluationV1_1): FivePlaneReportSection {
+/**
+ * AA-FLAGSHIP-HARDENING-1: path-level code-capability truth carried in from
+ * the same evaluation's Action Assurance section (derived from the evaluated
+ * snapshot's handler-operation relations — the same grain the reporting
+ * bundle's actionPaths carry).
+ */
+export interface PathLevelCodeCapability {
+  totalActionPaths: number;
+  codeCapableEstablishedPaths: number;
+  codeCapablePartialPaths: number;
+}
+
+function buildFivePlaneReport(
+  v1_1: AssuranceEvaluationV1_1,
+  pathLevelCodeCapability?: PathLevelCodeCapability,
+): FivePlaneReportSection {
   const facts = v1_1.capabilityFacts ?? { requested: [], policy: [], granted: [], capable: [], observed: [] };
-  const availability = v1_1.planeAvailability ?? buildDefaultPlaneAvailabilityReport();
+  const persistedAvailability = v1_1.planeAvailability ?? buildDefaultPlaneAvailabilityReport();
 
   const comparisons = v1_1.fivePlaneComparisons || [];
   const comparisonState = v1_1.fivePlaneComparisonState
     ?? deriveFivePlaneComparisonState({ comparisons, planeAvailability: v1_1.planeAvailability });
 
-  return {
+  // AA-FLAGSHIP-HARDENING-1 — cross-surface consistency:
+  // The CODE_CAPABLE plane entry in this section reports the U5
+  // capability-comparison input grain. When the same evaluation's Action
+  // Assurance establishes path-level code capability, the availability
+  // explanation must name the narrower grain rather than implying
+  // "no code capability exists".
+  //
+  //   ABSENT_COMPARISON_INPUT != ABSENT_CODE_CAPABILITY
+  //   PATH_LEVEL_CODE_CAPABILITY != U5_CAPABILITY_COMPARISON_FACT
+  //   CROSS_SURFACE_SEMANTIC_CONTRADICTION = INVALID_REPORT_PROJECTION
+  const establishedPaths = pathLevelCodeCapability?.codeCapableEstablishedPaths ?? 0;
+  const availability = persistedAvailability.map(entry => {
+    if (entry.plane !== 'CODE_CAPABLE') return entry;
+    if (entry.status === 'PRESENT') return entry;
+    if (establishedPaths === 0) return entry;
+    return {
+      ...entry,
+      explanation:
+        `No qualifying capability-comparison fact was joined into the U5 five-plane comparison set for this plane. ` +
+        `Separately, path-level code capability is established on ${establishedPaths} of ` +
+        `${pathLevelCodeCapability!.totalActionPaths} evaluated action path(s) in the same evaluation — ` +
+        `see the Action Assurance section.`,
+    };
+  });
+
+  const section: FivePlaneReportSection = {
     requested: facts.requested.map(f => mapCapabilityFactToReport(f)),
     policyAuthorized: facts.policy.map(f => mapCapabilityFactToReport(f)),
     effectivelyGranted: facts.granted.map(f => mapCapabilityFactToReport(f)),
@@ -505,7 +545,43 @@ function buildFivePlaneReport(v1_1: AssuranceEvaluationV1_1): FivePlaneReportSec
     // The comparator verdict is subordinate to the canonical U5 disposition.
     overallVerdict: comparisons.length > 0 ? (v1_1.fivePlaneOverallVerdict ?? 'REVIEW') : null,
     availability,
+    ...(pathLevelCodeCapability
+      ? {
+          pathLevelCodeCapability: {
+            establishedPathCount: pathLevelCodeCapability.codeCapableEstablishedPaths,
+            partialPathCount: pathLevelCodeCapability.codeCapablePartialPaths,
+            totalPathCount: pathLevelCodeCapability.totalActionPaths,
+          },
+        }
+      : {}),
   };
+
+  assertFivePlaneConsistency(section);
+  return section;
+}
+
+/**
+ * AA-FLAGSHIP-HARDENING-1: report-projection invariant.
+ * When the same evaluation carries established path-level code capability,
+ * no plane availability entry may assert an unqualified absence of code
+ * capability. Fail closed — an inconsistent projection must not ship.
+ */
+export function assertFivePlaneConsistency(section: FivePlaneReportSection): void {
+  const established = section.pathLevelCodeCapability?.establishedPathCount ?? 0;
+  if (established === 0) return;
+  const entry = section.availability.find(a => a.plane === 'CODE_CAPABLE');
+  if (!entry?.explanation) return;
+  const assertsAbsence =
+    /no qualifying capability/i.test(entry.explanation) ||
+    /no code capability/i.test(entry.explanation) ||
+    /capability (evidence|fact) was (provided|produced)/i.test(entry.explanation);
+  const qualified = /path-level code capability/i.test(entry.explanation);
+  if (assertsAbsence && !qualified) {
+    throw new Error(
+      'CROSS_SURFACE_SEMANTIC_CONTRADICTION: five-plane CODE_CAPABLE availability ' +
+      'asserts absence while the same evaluation carries established path-level code capability',
+    );
+  }
 }
 
 function mapCapabilityFactToReport(f: CapabilityFact): PlaneReportItem {
@@ -559,7 +635,7 @@ function buildEnvelopeSection(v1_1: AssuranceEvaluationV1_1, authoritySourceLabe
 }
 
 function buildScopeStatement(evaluation: AssuranceEvaluation, v1_1: AssuranceEvaluationV1_1): string {
-  return `Assurance evaluated within the scope of profile ${v1_1.profileId} and operating envelope ${v1_1.operatingEnvelopeId ?? 'none'} at ${evaluation.evaluationSnapshotAt.toISOString()}.`;
+  return `Assurance evaluated within the scope of profile ${v1_1.profileId}${v1_1.operatingEnvelopeId ? ` and operating envelope ${v1_1.operatingEnvelopeId}` : '; no approved operating envelope was established for this evaluation'} at ${evaluation.evaluationSnapshotAt.toISOString()}.`;
 }
 
 function buildProducerCoverageFromEvidence(projectedEvidence: DecisionEvidenceProjection[]): ProducerCoverageItem[] {

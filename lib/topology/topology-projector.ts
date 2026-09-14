@@ -211,7 +211,7 @@ export async function buildTopologyProjection(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const aiSystem = await (prisma as any).ai_systems.findFirst({
     where: { id: aiSystemId, organizationId },
-    select: { id: true, name: true, systemType: true, provider: true, description: true },
+    select: { id: true, name: true, systemType: true, provider: true },
   });
   if (!aiSystem) return null;
 
