@@ -38,7 +38,7 @@ function PlaneStrip({ paths }: { paths: AssuranceEvidenceBundleV1['actionPaths']
  * Resolves exact evidence/action-path references; never re-analyzes.
  */
 function InspectProof({ bundle, section }: { bundle: AssuranceEvidenceBundleV1; section: AssuranceReportSection }) {
-  const refs = [...(section.evidenceRefs ?? []), ...(section.actionPathRefs ?? [])];
+  const refs = [...new Set([...(section.proofRefs ?? section.evidenceRefs ?? []), ...(section.actionPathRefs ?? [])])].sort();
   if (refs.length === 0) {
     return <p className="mt-2 text-xs text-slate-500">No qualifying evidence reference is bound to this statement.</p>;
   }
@@ -65,7 +65,34 @@ function InspectProof({ bundle, section }: { bundle: AssuranceEvidenceBundleV1; 
                     Relations: {[p.registrationRelationId, p.modelExposureRelationId, p.dispatchRelationId, p.toolImplementationRelationId].filter(Boolean).join(', ')}
                   </p>
                 )}
+                {p.downstreamOperationIds.length > 0 && (
+                  <p className="mt-1 font-mono break-all text-slate-500">Downstream operation references: {p.downstreamOperationIds.join(', ')}</p>
+                )}
+                {p.sinkTargetIds.length > 0 && (
+                  <p className="mt-1 font-mono break-all text-slate-500">Target references: {p.sinkTargetIds.join(', ')}</p>
+                )}
                 {p.limitations.length > 0 && <p className="mt-1 italic text-slate-500">Limitations: {p.limitations.join('; ')}</p>}
+              </li>
+            );
+          }
+          if (resolved.u5Member) {
+            const m = resolved.u5Member;
+            return (
+              <li key={ref} className="rounded bg-white p-2">
+                <p className="font-mono break-all">U5 evidence {m.evidenceId}</p>
+                <p className="mt-1 text-slate-600">
+                  Claim {m.claimKey} — {m.claimState} · role {m.role} · class {m.epistemicClass} · producer {m.producerId}
+                </p>
+                {m.role === 'EXCLUDED' && (
+                  <p className="mt-1 italic text-amber-700">
+                    Excluded{ m.exclusionReason ? ` — ${m.exclusionReason}` : ''}. Excluded evidence is not positive support.
+                  </p>
+                )}
+                {resolved.evidence && (
+                  <p className="mt-1 text-slate-600">
+                    Also bound as {resolved.evidence.facet}:{resolved.evidence.subjectId} — {STATE_LABEL[resolved.evidence.state] ?? resolved.evidence.state}.
+                  </p>
+                )}
               </li>
             );
           }

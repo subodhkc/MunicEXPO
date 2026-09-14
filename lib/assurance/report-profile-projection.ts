@@ -19,7 +19,7 @@
 
 import type { AssuranceEvidenceBundleV1, EvidenceAuthorityState, EvidenceActionPath, EvidenceReference } from './reporting-projection-bundle';
 import type { ArtifactManifest } from './assurance-artifact-manifest';
-import type { ClaimEvaluationResult, ClaimReasonCode, ClaimState } from './types';
+import type { ClaimEvaluationResult, ClaimReasonCode, ClaimState, EvidenceMemberRole, EpistemicClass } from './types';
 
 export type AssuranceReportProfile = 'executive' | 'technical' | 'auditor' | 'machine';
 
@@ -29,6 +29,9 @@ export interface AssuranceReportSection {
   summary: string;
   items?: string[];
   limitations?: string[];
+  /** Exact inspectable identities: canonical evidence IDs + relation IDs. */
+  proofRefs?: string[];
+  /** Canonical evidence IDs (retained for consumers that distinguish them). */
   evidenceRefs?: string[];
   actionPathRefs?: string[];
   /** Bounded counts when presentation selection truncates a canonical set. */
@@ -189,6 +192,17 @@ function decisionBasisItems(bundle: AssuranceEvidenceBundleV1, profile: Assuranc
   );
 }
 
+/** Exact proof references — canonical evidence IDs + relation IDs, deduped and stable. */
+function proofRefsFor(refs: EvidenceReference[]): string[] {
+  return [...new Set(refs.flatMap((r) => [...r.evidenceRefs, ...r.relationIds]))].sort();
+}
+
+/** Exact U5 evidence-set member IDs across bound claim results — deduped and stable. */
+function u5EvidenceIds(bundle: AssuranceEvidenceBundleV1): string[] {
+  const claims = bundle.u5DecisionBasis.claimResults ?? [];
+  return [...new Set(claims.flatMap((c) => (c.evidenceSet?.members ?? []).map((m) => m.evidenceId)))].sort();
+}
+
 function summarizePlanes(paths: EvidenceActionPath[]): string {
   if (paths.length === 0) return 'No action paths were evaluated in this bundle.';
   const counts = paths.reduce<Record<string, number>>((acc, p) => {
@@ -305,6 +319,8 @@ export function projectAssuranceReportProfile(
       title: 'Decision Basis',
       summary: dispositionBasisSummary(bundle),
       items: decisionBasisItems(bundle, profile),
+      // CLAIM → EVIDENCE_SET_MEMBER: exact canonical U5 evidence IDs, all roles.
+      proofRefs: u5EvidenceIds(bundle),
     },
     {
       key: 'actionAssurance',
@@ -315,9 +331,13 @@ export function projectAssuranceReportProfile(
     {
       key: 'fivePlanes',
       title: 'Five Authority / Action Planes',
-      summary: summarizePlanes(bundle.actionPaths),
-      items: bundle.actionPaths.map((p) => `Path ${p.pathId.slice(0, 16)}…: requested ${STATE_LABEL[p.planes.requested]}, authorized ${STATE_LABEL[p.planes.policyAuthorized]}, granted ${STATE_LABEL[p.planes.effectivelyGranted]}, capable ${STATE_LABEL[p.planes.codeCapable]}, observed ${STATE_LABEL[p.planes.observed]}`),
-      actionPathRefs: bundle.actionPaths.map((p) => p.pathId),
+      // Summary truthfully covers the full evaluated population; displayed
+      // items obey the profile's deterministic selection.
+      summary: `${summarizePlanes(bundle.actionPaths)} Full-population summary across all ${bundle.actionPaths.length} evaluated path(s); individual paths below are the profile-selected set.`,
+      items: selectedPaths.map((p) => `Path ${p.pathId.slice(0, 16)}…: requested ${STATE_LABEL[p.planes.requested]}, authorized ${STATE_LABEL[p.planes.policyAuthorized]}, granted ${STATE_LABEL[p.planes.effectivelyGranted]}, capable ${STATE_LABEL[p.planes.codeCapable]}, observed ${STATE_LABEL[p.planes.observed]}`),
+      actionPathRefs: selectedPaths.map((p) => p.pathId),
+      totalCount: bundle.actionPaths.length,
+      displayedCount: selectedPaths.length,
     },
     {
       key: 'materialMismatch',
@@ -345,6 +365,7 @@ export function projectAssuranceReportProfile(
       title: 'Evidence Coverage & Frontier',
       summary: frontierSummary(bundle),
       items: bundle.evidenceFrontier.map((f) => `${f.facet}:${f.subjectId} — ${STATE_LABEL[f.state]} (${f.reasonCode})`),
+      proofRefs: proofRefsFor(bundle.evidenceReferences),
       evidenceRefs: bundle.evidenceReferences.flatMap((r) => r.evidenceRefs),
       limitations: bundle.evaluationIntegrity.analysisLimitations,
     },
@@ -360,7 +381,10 @@ export function projectAssuranceReportProfile(
     {
       key: 'constellation',
       title: 'System Constellation',
-      summary: `Projection anchors: topology ${bundle.constellationAnchors.topologyProjectionDigest ? 'bound' : 'not bound'}, reachability ${bundle.constellationAnchors.reachabilityDigest ? 'bound' : 'not bound'}, constellation ${bundle.constellationAnchors.constellationDigest ? 'bound' : 'not bound'}.`,
+      summary:
+        profile === 'executive'
+          ? 'A same-evaluation System Constellation projection is bound to this report for causal context. Exact path-level navigation is not available in this report version.'
+          : `A same-evaluation System Constellation projection is bound to this report for causal context. Exact path-level navigation is not available in this report version. Projection anchors: topology ${bundle.constellationAnchors.topologyProjectionDigest || 'not bound'}, reachability ${bundle.constellationAnchors.reachabilityDigest || 'not bound'}, constellation ${bundle.constellationAnchors.constellationDigest || 'not bound'}.`,
     },
   ];
 
@@ -380,6 +404,7 @@ export function projectAssuranceReportProfile(
         `U5 reason codes: ${bundle.u5DecisionBasis.reasonCodes?.join(', ') || 'not bound'}`,
         `Bundle digest: ${bundle.bundleDigest}`,
       ],
+      proofRefs: proofRefsFor(bundle.evidenceReferences),
       evidenceRefs: bundle.evidenceReferences.flatMap((r) => r.evidenceRefs),
       limitations: bundle.limitations,
     });
@@ -401,21 +426,65 @@ export function projectAssuranceReportProfile(
   };
 }
 
-/** Resolve an exact evidence/action-path reference for Inspect Proof. */
+/**
+ * Resolve an exact proof reference for Inspect Proof.
+ *
+ * A valid proof reference resolves ONLY through an explicitly supported exact
+ * identity: pathId, canonical evidenceId, relationId, or a canonical U5
+ * evidence-set member evidenceId.
+ *
+ *   SUBJECT_ID != EVIDENCE_ID
+ *   SUBJECT_ID != RELATION_ID
+ *   DISPLAY_SUBJECT != PROOF_REFERENCE
+ *   CLAIM -> EVIDENCE_SET_MEMBER uses exact canonical IDs only.
+ */
+export interface U5EvidenceMemberProof {
+  claimKey: string;
+  claimState: ClaimState;
+  evidenceId: string;
+  role: EvidenceMemberRole;
+  epistemicClass: EpistemicClass;
+  producerId: string;
+  exclusionReason?: string;
+}
+
 export interface ProofReferenceResolution {
   ref: string;
-  kind: 'EVIDENCE' | 'ACTION_PATH' | 'UNRESOLVED';
+  kind: 'EVIDENCE' | 'U5_EVIDENCE_MEMBER' | 'ACTION_PATH' | 'UNRESOLVED';
   evidence?: EvidenceReference;
   path?: EvidenceActionPath;
+  /** Canonical U5 role context when the ID is an evidence-set member. */
+  u5Member?: U5EvidenceMemberProof;
+}
+
+function findU5EvidenceMember(bundle: AssuranceEvidenceBundleV1, evidenceId: string): U5EvidenceMemberProof | undefined {
+  for (const c of bundle.u5DecisionBasis.claimResults ?? []) {
+    const m = (c.evidenceSet?.members ?? []).find((member) => member.evidenceId === evidenceId);
+    if (m) {
+      return {
+        claimKey: c.claimKey,
+        claimState: c.claimState,
+        evidenceId: m.evidenceId,
+        role: m.role,
+        epistemicClass: m.epistemicClass,
+        producerId: m.producerId,
+        exclusionReason: m.exclusionReason,
+      };
+    }
+  }
+  return undefined;
 }
 
 export function resolveProofReference(bundle: AssuranceEvidenceBundleV1, ref: string): ProofReferenceResolution {
   const path = bundle.actionPaths.find((p) => p.pathId === ref);
   if (path) return { ref, kind: 'ACTION_PATH', path };
   const evidence = bundle.evidenceReferences.find(
-    (r) => r.evidenceRefs.includes(ref) || r.relationIds.includes(ref) || r.subjectId === ref,
+    (r) => r.evidenceRefs.includes(ref) || r.relationIds.includes(ref),
   );
-  if (evidence) return { ref, kind: 'EVIDENCE', evidence };
+  const u5Member = findU5EvidenceMember(bundle, ref);
+  // Prefer the richer exact record while retaining canonical U5 role context.
+  if (evidence) return { ref, kind: 'EVIDENCE', evidence, u5Member };
+  if (u5Member) return { ref, kind: 'U5_EVIDENCE_MEMBER', u5Member };
   return { ref, kind: 'UNRESOLVED' };
 }
 
@@ -491,12 +560,42 @@ function sectionHtml(section: AssuranceReportSection): string {
 }
 
 /**
+ * Compact deterministic path table — exact bundle facts only.
+ * Missing components render bounded 'not established'/'not bound'; nothing is
+ * inferred about provider operations the bundle does not establish.
+ */
+function pathTableHtml(paths: EvidenceActionPath[]): string {
+  if (paths.length === 0) return '';
+  const cell = (v: string | undefined, missing: string) =>
+    `<td class="mono">${escapeHtml(v && v.length > 0 ? v : missing)}</td>`;
+  const rows = paths.map((p) => `<tr>
+    ${cell(p.toolCandidateId, 'not established')}
+    ${cell(p.handlerRef, 'not bound')}
+    ${cell(p.downstreamOperationIds.join(', '), 'not established')}
+    ${cell(p.sinkTargetIds.join(', '), 'not bound')}
+    <td>${STATE_LABEL[p.planes.requested]}</td>
+    <td>${STATE_LABEL[p.planes.policyAuthorized]}</td>
+    <td>${STATE_LABEL[p.planes.effectivelyGranted]}</td>
+    <td>${STATE_LABEL[p.planes.codeCapable]}</td>
+    <td>${STATE_LABEL[p.planes.observed]}</td>
+  </tr>`).join('');
+  return `<table><tr><th>Tool</th><th>Handler</th><th>Operation refs</th><th>Target refs</th><th>Requested</th><th>Policy</th><th>Granted</th><th>Capable</th><th>Observed</th></tr>${rows}</table>`;
+}
+
+/**
  * Build the flagship Assurance PDF HTML from a profile projection.
  * This is the HTML that the PDF renderer consumes; it is a pure projection.
  */
 export function buildAssurancePdfHtml(bundle: AssuranceEvidenceBundleV1, profile: AssuranceReportProfile = 'executive'): string {
   const projection = projectAssuranceReportProfile(bundle, profile);
+  // EXECUTIVE_WEB_SELECTED_PATH_SET == EXECUTIVE_PDF_SELECTED_PATH_SET:
+  // the PDF renders the same deterministic profile selection as the web surface.
+  const selectedPaths = selectActionPathsForProfile(bundle.actionPaths, profile);
   const decisionClass = projection.disposition === 'ALLOW' ? 'allow' : projection.disposition === 'BLOCK' ? 'block' : 'review';
+  const sectionsHtml = projection.sections.map((s) => {
+    const table = s.key === 'fivePlanes' || s.key === 'selectedPaths' ? pathTableHtml(selectedPaths) : '';
+    return sectionHtml(s) + table;
+  }).join('');
   return `<!doctype html><html><head><meta charset="utf-8"><title>HAIEC Assurance Report</title><style>
     body{font-family:system-ui,-apple-system,sans-serif;color:#0f172a;margin:0;padding:24px}
     .banner{border-bottom:2px solid #0f172a;padding-bottom:16px;margin-bottom:24px}
@@ -521,7 +620,7 @@ export function buildAssurancePdfHtml(bundle: AssuranceEvidenceBundleV1, profile
       <p>${escapeHtml(projection.evaluationIdentity.aiSystemId)} · Evaluation ${escapeHtml(projection.evaluationIdentity.evaluationId)} · ${escapeHtml(projection.evaluationIdentity.evaluationSnapshotAt ?? 'snapshot not bound')}</p>
       <p class="mono">Bundle: ${escapeHtml(projection.bundleDigest.slice(0, 16))}… · Methodology: ${escapeHtml(projection.methodologyVersion ?? 'not bound')}</p>
     </div>
-    ${projection.sections.map(sectionHtml).join('')}
+    ${sectionsHtml}
     <div class="footer">This report is projected from the exact Assurance Evidence Bundle. It does not recompute the U5 disposition, mutate canonical evidence states, or rerun analyzers.</div>
   </body></html>`;
 }
