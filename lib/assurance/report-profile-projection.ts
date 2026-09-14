@@ -373,9 +373,12 @@ function tenantBindingSummary(bundle: AssuranceEvidenceBundleV1): string {
   if (t.contextBindingRelationCount === 0) {
     return 'No context-binding relations were established by the evaluated snapshot. That is an evidence state, not a tenant-isolation verdict.';
   }
+  // AA-CONSTELLATION-PROVENANCE-1R §7: domain-correct wording — counts are
+  // RELATION counts (handler-operation × context binding grain), never path
+  // counts, and presence of tenant context is never isolation proof.
   return `${t.contextBindingRelationCount} canonical context-binding relation(s) across ${t.pathsWithContextEvidence} evaluated path(s). ` +
-    `Tenant context present on ${t.tenantContextPresent} relation(s); tenant filter bound on ${t.tenantFilterBound}; ` +
-    `tenant subject bound on ${t.tenantSubjectBound}; ${t.partialOrUnknownBinding} relation(s) remain partial or unknown.`;
+    `Tenant context detected on ${t.tenantContextPresent} relation(s); tenant restriction bound to action on ${t.tenantFilterBound}; ` +
+    `tenant tied to authenticated subject on ${t.tenantSubjectBound}; ${t.partialOrUnknownBinding} relation(s) remain partial or unknown.`;
 }
 
 function tenantBindingItems(
@@ -385,11 +388,16 @@ function tenantBindingItems(
   const items: string[] = [];
   for (const p of pathsWithContextBindings(bundle, restrictTo)) {
     for (const b of p.contextBindings ?? []) {
-      const bound = (v: boolean | undefined) =>
-        v === true ? 'bound' : v === false ? 'not bound' : 'not established';
+      // §7: booleans carry distinct semantics — never collapse them into a
+      // single "context bound" statement.
+      const ctx = b.tenantContextPresent === true ? 'tenant context detected'
+        : b.tenantContextPresent === false ? 'no tenant context detected' : 'tenant context not established';
+      const filter = b.tenantFilterBound === true ? 'tenant restriction bound to action'
+        : b.tenantFilterBound === false ? 'no tenant restriction bound' : 'tenant restriction not established';
+      const subject = b.tenantSubjectBound === true ? 'tenant tied to authenticated subject'
+        : b.tenantSubjectBound === false ? 'tenant not tied to authenticated subject' : 'subject binding not established';
       items.push(
-        `Path ${p.pathId.slice(0, 16)}… (${b.contextKind}): context ${bound(b.tenantContextPresent)}, ` +
-        `tenant filter ${bound(b.tenantFilterBound)}, subject ${bound(b.tenantSubjectBound)}` +
+        `Path ${p.pathId.slice(0, 16)}… (${b.contextKind}): ${ctx}; ${filter}; ${subject}` +
         `${b.tenantValueOrigin ? `, value origin ${b.tenantValueOrigin.toLowerCase().replace(/_/g, ' ')}` : ''}` +
         `${b.authenticationOrdering ? `, authentication ${b.authenticationOrdering.toLowerCase().replace(/_/g, ' ')}` : ''} — ` +
         `relation ${b.relationId.slice(0, 24)}…, state ${b.state.toLowerCase().replace(/_/g, ' ')}.`,

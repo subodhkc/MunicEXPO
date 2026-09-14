@@ -49,6 +49,7 @@ import { createHash } from 'crypto';
 import { verifyAISystemOrgBinding } from '@/lib/org-context';
 import { listConnectedAssets } from '@/lib/ai-inventory/connected-assets';
 import { readApplicationAuthorizationForSystem } from '@/lib/ai-security/application-authorization-read';
+import { getEvaluationOwnership } from '@/lib/assurance/u6-package-service';
 import {
   validatePersistedSnapshot,
   type PersistedOperationCoverageIntelligence,
@@ -325,18 +326,41 @@ export async function buildTopologyProjection(
    */
   let actionProofBasis: 'SAME_SCAN' | 'NOT_AVAILABLE' = 'NOT_AVAILABLE';
   let opCovData: PersistedOperationCoverageIntelligence | null = null;
-  // AA-REPORTING-INTERPRETATION-2 §3: presentation/provenance view state.
-  // Default = latest accepted evidence for this AI system.
+  // AA-REPORTING-INTERPRETATION-2 §3 + AA-CONSTELLATION-PROVENANCE-1R §3/§4:
+  // presentation/provenance view state follows RUN LIFECYCLE, not the
+  // availability of any single producer field.
+  //   source run still active          → CURRENT_SCAN_PROJECTION
+  //   first scan started, no source yet → CURRENT_SCAN_PROJECTION (bounded)
+  //   accepted source, run terminal     → CURRENT_SYSTEM_VIEW
+  // LOCKS:
+  //   SCAN_LIFECYCLE != FIELD_AVAILABILITY
+  //   ACTIVE_RUN_STATUS != EVIDENCE_AUTHORITY
+  //   ACTIVE_RUN != DISCARD_PRIOR_ACCEPTED_VIEW
+  //   NEW_RUN_STARTED != OLD_GRAPH_BELONGS_TO_NEW_RUN
   let viewState: TopologyProjectionResult['viewState'] = 'CURRENT_SYSTEM_VIEW';
+  /** Presentation only: a newer run is active but has not emitted a scan. */
+  let scanInProgress = false;
 
   if (ac1Read.status === 'NO_CURRENT_ACCEPTED_SOURCE') {
     mapAvailability = 'SOURCE_GAP';
-    limitations.push('No current accepted static source exists for this AI System — run a scan via the orchestrator to populate the map');
+    if (ac1Read.pendingScanRunActive === true) {
+      // §4 Case A — first-ever scan started, no scan-derived facts emitted.
+      // Show the bounded identity shell; never fabricate topology.
+      viewState = 'CURRENT_SCAN_PROJECTION';
+      scanInProgress = true;
+      limitations.push(
+        'The scan has started, but scan-derived relationships have not been emitted yet. ' +
+        'HAIEC will add capabilities, action paths, resources, authority context, and evidence relationships as they become available.',
+      );
+    } else {
+      limitations.push('No current accepted static source exists for this AI System — run a scan via the orchestrator to populate the map');
+    }
   } else if (ac1Read.status === 'SOURCE_GAP') {
     mapAvailability = 'SOURCE_GAP';
-    // AA-REPORTING-INTERPRETATION-2 §3.A: FIELD_NULL on an active run means
-    // this is a Current Scan Projection — analysis still populating.
-    if (ac1Read.reason === 'FIELD_NULL' && ac1Read.sourceRunActive === true) {
+    // AA-CONSTELLATION-PROVENANCE-1R §3: the view state follows the SOURCE
+    // RUN lifecycle — any reason (FIELD_NULL, INVALID_SNAPSHOT, unsupported
+    // schema) on a still-active run is a Current Scan Projection.
+    if (ac1Read.sourceRunActive === true) {
       viewState = 'CURRENT_SCAN_PROJECTION';
     }
     if (ac1Read.reason === 'FIELD_NULL') {
@@ -360,6 +384,12 @@ export async function buildTopologyProjection(
       scannedAt: null,
     };
   } else if (ac1Read.status === 'AVAILABLE') {
+    // AA-CONSTELLATION-PROVENANCE-1R §3: FIELD_PRESENT != SCAN_COMPLETE —
+    // available AC-1 facts do NOT mean the scan finished; the run lifecycle
+    // still decides whether this is a Current Scan Projection.
+    if (ac1Read.sourceRunActive === true) {
+      viewState = 'CURRENT_SCAN_PROJECTION';
+    }
     scanProvenance = {
       scanId: ac1Read.scanId,
       commitSha: ac1Read.commitSha,
@@ -1007,6 +1037,16 @@ export async function buildTopologyProjection(
     // Non-fatal
   }
 
+  // AA-CONSTELLATION-PROVENANCE-1R §4 Case B — a newer run is active but has
+  // not emitted a static scan. The accepted-source view stays
+  // CURRENT_SYSTEM_VIEW; scanInProgress is a separate presentation signal —
+  // the prior graph is NOT relabeled as belonging to the new run.
+  if (ac1Read.status !== 'NO_CURRENT_ACCEPTED_SOURCE' &&
+      'pendingScanRunActive' in ac1Read &&
+      ac1Read.pendingScanRunActive === true) {
+    scanInProgress = true;
+  }
+
   // ─── Compute deterministic projection hash (repair 18: covers graph truth) ─
   const payload: TopologyProjectionPayload = {
     projectionSchemaVersion: TOPOLOGY_PROJECTION_SCHEMA_VERSION,
@@ -1062,6 +1102,7 @@ export async function buildTopologyProjection(
     evaluatedBasis,
     actionProofBasis,
     viewState,
+    scanInProgress,
     lenses: SUPPORTED_MAP_LENSES,
     zoomLevels: SUPPORTED_SEMANTIC_ZOOM_LEVELS,
   };
@@ -1085,6 +1126,14 @@ export function buildEvaluatedTopologyProjection(
     organizationId: string;
     aiSystemId: string;
     aiSystemName?: string;
+    /**
+     * AA-CONSTELLATION-PROVENANCE-1R §2: exact persisted evaluation facts.
+     * Read-through only — never recomputed; absent optional fields stay null.
+     * LOCK: EVALUATION_PROVENANCE = PERSISTED_EVALUATION_FACTS
+     * LOCK: DISPLAYED_DISPOSITION != REPORTER_RECOMPUTATION
+     */
+    evaluationSnapshotAt?: string | null;
+    disposition?: string | null;
   },
 ): TopologyProjectionResult {
   // Defensive exact-scan guard before any composition.
@@ -1115,8 +1164,8 @@ export function buildEvaluatedTopologyProjection(
       evaluatedBasis: {
         state: 'NOT_AVAILABLE',
         evaluationId: provenance.evaluationId,
-        evaluationSnapshotAt: null,
-        disposition: null,
+        evaluationSnapshotAt: provenance.evaluationSnapshotAt ?? null,
+        disposition: provenance.disposition ?? null,
       },
       viewState: 'EVALUATION_SNAPSHOT',
       lenses: SUPPORTED_MAP_LENSES,
@@ -1191,8 +1240,8 @@ export function buildEvaluatedTopologyProjection(
     evaluatedBasis: {
       state: 'AVAILABLE',
       evaluationId: provenance.evaluationId,
-      evaluationSnapshotAt: null,
-      disposition: null,
+      evaluationSnapshotAt: provenance.evaluationSnapshotAt ?? null,
+      disposition: provenance.disposition ?? null,
     },
     viewState: 'EVALUATION_SNAPSHOT',
     lenses: SUPPORTED_MAP_LENSES,
@@ -1223,26 +1272,48 @@ export async function buildEvaluatedActionMapProjection(
   const bound = await verifyAISystemOrgBinding(aiSystemId, organizationId);
   if (!bound) return null;
 
-  // Evaluation identity: the evaluationId route param is the
-  // "<orchestratorRunId>:assurance:<version>" composite used across U6.
-  const orchestratorRunId = evaluationId.split(':')[0];
-  if (!orchestratorRunId) return null;
+  // AA-CONSTELLATION-PROVENANCE-1R §1: canonical identity comes from the
+  // PERSISTED evaluation row — never from evaluation-ID string parsing.
+  //   EVALUATION_ID_FORMAT != EVALUATION_IDENTITY
+  //   STRING_PREFIX != ORCHESTRATOR_RUN_BINDING
+  //   EVALUATION_ID_PRESENT != EVALUATION_ROW_EXISTS
+  //   CURRENT_SCAN_FALLBACK = FORBIDDEN
+  const evaluation = await getEvaluationOwnership(evaluationId);
+  if (!evaluation) return null;
+  // SAME_ORGANIZATION != SAME_AI_SYSTEM — both must match the request path.
+  if (
+    evaluation.organizationId !== organizationId ||
+    evaluation.aiSystemId !== aiSystemId
+  ) {
+    return null;
+  }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const run = await (prisma as any).audit_orchestrator_runs.findFirst({
-    where: { id: orchestratorRunId, organizationId, aiSystemId },
+    where: { id: evaluation.orchestratorRunId },
     select: { id: true, staticScanId: true, organizationId: true, aiSystemId: true },
   });
   if (!run?.staticScanId) return null;
+  // ORCHESTRATOR_RUN_ID_MATCH != EVALUATED_SYSTEM_IDENTITY_PROOF — the bound
+  // run must share the evaluation's organization AND AI system.
+  //   CROSS_ORGANIZATION_HISTORICAL_JOIN = INVALID
+  //   CROSS_SYSTEM_HISTORICAL_JOIN = INVALID
+  if (
+    run.organizationId !== evaluation.organizationId ||
+    run.aiSystemId !== evaluation.aiSystemId
+  ) {
+    return null;
+  }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const scan = await (prisma as any).ai_security_scans.findFirst({
-    where: { scanId: run.staticScanId, organizationId },
+    where: { scanId: run.staticScanId, organizationId: run.organizationId },
     select: { scanId: true, commitSha: true, aiSystemId: true, operationCoverageIntelligence: true },
   });
   if (!scan) return null;
-  // Present scan-level system binding must not contradict the run.
-  if (scan.aiSystemId != null && scan.aiSystemId !== aiSystemId) return null;
+  // STATIC_SCAN_ID_MATCH != EVALUATED_SYSTEM_IDENTITY_PROOF — a present
+  // scan-level system binding must not contradict the run/evaluation.
+  if (scan.aiSystemId != null && scan.aiSystemId !== run.aiSystemId) return null;
   if (scan.operationCoverageIntelligence == null) return null;
 
   let coverage: PersistedOperationCoverageIntelligence;
@@ -1260,12 +1331,18 @@ export async function buildEvaluatedActionMapProjection(
     select: { name: true },
   });
 
+  const snapshotAt = evaluation.evaluationSnapshotAt;
   return buildEvaluatedTopologyProjection(coverage, {
-    evaluationId,
+    evaluationId: evaluation.id,
     scanId: scan.scanId,
     repositoryCommitSha: scan.commitSha ?? null,
     organizationId,
     aiSystemId,
     aiSystemName: aiSystem?.name,
+    // §2: exact persisted evaluation provenance — read-through, never
+    // recomputed, never fabricated.
+    evaluationSnapshotAt:
+      snapshotAt instanceof Date ? snapshotAt.toISOString() : (snapshotAt ?? null),
+    disposition: evaluation.disposition ?? null,
   });
 }

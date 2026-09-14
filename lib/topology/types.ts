@@ -371,6 +371,15 @@ export interface TopologyProjectionResult {
    *   CURRENT_SYSTEM_PROJECTION != EVALUATION_SNAPSHOT.
    */
   viewState?: 'CURRENT_SCAN_PROJECTION' | 'CURRENT_SYSTEM_VIEW' | 'EVALUATION_SNAPSHOT';
+  /**
+   * AA-CONSTELLATION-PROVENANCE-1R §4 Case B: a newer orchestrator run is
+   * active but has not emitted a static scan. Presentation context only —
+   * the current view still shows the prior accepted evidence; it is NOT
+   * relabeled as belonging to the new run.
+   * LOCKS: NEW_RUN_STARTED != OLD_GRAPH_BELONGS_TO_NEW_RUN;
+   *   SCAN_LIFECYCLE != FIELD_AVAILABILITY.
+   */
+  scanInProgress?: boolean;
   lenses: MapLens[];
   zoomLevels: SemanticZoom[];
 }
