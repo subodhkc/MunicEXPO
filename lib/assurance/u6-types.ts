@@ -754,6 +754,19 @@ export interface ActionAssuranceReportSection {
   coverageLimitations?: string[];
   surfacesShown?: number;
   totalSurfaces?: number;
+  /**
+   * AA-FLAGSHIP-HARDENING-1: path-level code-capability truth for the same
+   * evaluation, derived from the evaluated snapshot's handler-operation
+   * relations (the same grain the reporting bundle's actionPaths carry).
+   *
+   * LOCK: PATH_LEVEL_CODE_CAPABILITY != U5_CAPABILITY_COMPARISON_FACT
+   * LOCK: ABSENT_COMPARISON_INPUT != ABSENT_CODE_CAPABILITY
+   */
+  pathLevelCodeCapability?: {
+    totalActionPaths: number;
+    codeCapableEstablishedPaths: number;
+    codeCapablePartialPaths: number;
+  };
 }
 
 export interface ReportProfileSection {
@@ -826,6 +839,19 @@ export interface FivePlaneReportSection {
    */
   overallVerdict: ProfileVerdict | null;
   availability: PlaneAvailability[];
+  /**
+   * AA-FLAGSHIP-HARDENING-1: path-level code-capability truth from the same
+   * evaluation's Action Assurance consequence paths. The five-plane section
+   * is the U5 capability-comparison input grain; an empty CODE_CAPABLE
+   * comparison input does NOT mean no code-capable paths were established.
+   *
+   * LOCK: PATH_LEVEL_CODE_CAPABILITY != U5_CAPABILITY_COMPARISON_FACT
+   */
+  pathLevelCodeCapability?: {
+    establishedPathCount: number;
+    partialPathCount: number;
+    totalPathCount: number;
+  };
 }
 
 export interface PlaneReportItem {
