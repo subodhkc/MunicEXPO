@@ -525,9 +525,11 @@ function buildFivePlaneReport(
     if (establishedPaths === 0) return entry;
     return {
       ...entry,
+      // AA-REPORTING-INTERPRETATION-2: customer-facing wording — no internal
+      // implementation labels (U5) in rendered copy.
       explanation:
-        `No qualifying capability-comparison fact was joined into the U5 five-plane comparison set for this plane. ` +
-        `Separately, path-level code capability is established on ${establishedPaths} of ` +
+        `No qualifying capability-comparison evidence was joined into this evaluation's authority comparison. ` +
+        `Separately, path-level code capability was established on ${establishedPaths} of ` +
         `${pathLevelCodeCapability!.totalActionPaths} evaluated action path(s) in the same evaluation — ` +
         `see the Action Assurance section.`,
     };

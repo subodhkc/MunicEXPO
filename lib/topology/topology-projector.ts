@@ -325,14 +325,29 @@ export async function buildTopologyProjection(
    */
   let actionProofBasis: 'SAME_SCAN' | 'NOT_AVAILABLE' = 'NOT_AVAILABLE';
   let opCovData: PersistedOperationCoverageIntelligence | null = null;
+  // AA-REPORTING-INTERPRETATION-2 §3: presentation/provenance view state.
+  // Default = latest accepted evidence for this AI system.
+  let viewState: TopologyProjectionResult['viewState'] = 'CURRENT_SYSTEM_VIEW';
 
   if (ac1Read.status === 'NO_CURRENT_ACCEPTED_SOURCE') {
     mapAvailability = 'SOURCE_GAP';
     limitations.push('No current accepted static source exists for this AI System — run a scan via the orchestrator to populate the map');
   } else if (ac1Read.status === 'SOURCE_GAP') {
     mapAvailability = 'SOURCE_GAP';
+    // AA-REPORTING-INTERPRETATION-2 §3.A: FIELD_NULL on an active run means
+    // this is a Current Scan Projection — analysis still populating.
+    if (ac1Read.reason === 'FIELD_NULL' && ac1Read.sourceRunActive === true) {
+      viewState = 'CURRENT_SCAN_PROJECTION';
+    }
     if (ac1Read.reason === 'FIELD_NULL') {
-      limitations.push('The current accepted scan predates application authorization analysis — run a new scan to populate the map');
+      // AA-REPORTING-INTERPRETATION-2 §5: ACTIVE current scan whose fields
+      // are still being populated != COMPLETED legacy scan that predates
+      // the evidence producer. FIELD_NULL stays the evidence state.
+      limitations.push(
+        ac1Read.sourceRunActive === true
+          ? 'Analysis is still being populated for this scan. Additional relationships will appear as evidence becomes available.'
+          : 'The current accepted scan predates application authorization analysis — run a new scan to populate the map',
+      );
     } else if (ac1Read.reason === 'INVALID_SNAPSHOT') {
       limitations.push(`Application authorization snapshot is invalid: ${ac1Read.invalidReason}`);
     } else if (ac1Read.reason === 'UNSUPPORTED_SCHEMA_VERSION') {
@@ -1046,6 +1061,7 @@ export async function buildTopologyProjection(
     currentPolicy,
     evaluatedBasis,
     actionProofBasis,
+    viewState,
     lenses: SUPPORTED_MAP_LENSES,
     zoomLevels: SUPPORTED_SEMANTIC_ZOOM_LEVELS,
   };
@@ -1102,6 +1118,7 @@ export function buildEvaluatedTopologyProjection(
         evaluationSnapshotAt: null,
         disposition: null,
       },
+      viewState: 'EVALUATION_SNAPSHOT',
       lenses: SUPPORTED_MAP_LENSES,
       zoomLevels: SUPPORTED_SEMANTIC_ZOOM_LEVELS,
     };
@@ -1177,7 +1194,78 @@ export function buildEvaluatedTopologyProjection(
       evaluationSnapshotAt: null,
       disposition: null,
     },
+    viewState: 'EVALUATION_SNAPSHOT',
     lenses: SUPPORTED_MAP_LENSES,
     zoomLevels: SUPPORTED_SEMANTIC_ZOOM_LEVELS,
   };
+}
+
+/**
+ * AA-REPORTING-INTERPRETATION-2 §7: resolve the exact evaluation-bound
+ * topology for a persisted assurance evaluation — the SAME projector the
+ * U6 package uses (buildEvaluatedTopologyProjection over the exact
+ * persisted operation-coverage snapshot). Never the current/latest scan.
+ *
+ * Identity locks (same as the Action Path Evidence section):
+ *   ORCHESTRATOR_RUN_ID_MATCH != EVALUATED_SYSTEM_IDENTITY_PROOF
+ *   STATIC_SCAN_ID_MATCH != EVALUATED_SYSTEM_IDENTITY_PROOF
+ *   CROSS_SYSTEM_HISTORICAL_JOIN = INVALID
+ *   CURRENT_MAP_SCAN_A + EVALUATED_SCAN_B != PROOF_JOIN
+ *
+ * Returns null when no exact evaluated binding can be established — the
+ * caller must NOT silently fall back to the current projection.
+ */
+export async function buildEvaluatedActionMapProjection(
+  aiSystemId: string,
+  organizationId: string,
+  evaluationId: string,
+): Promise<TopologyProjectionResult | null> {
+  const bound = await verifyAISystemOrgBinding(aiSystemId, organizationId);
+  if (!bound) return null;
+
+  // Evaluation identity: the evaluationId route param is the
+  // "<orchestratorRunId>:assurance:<version>" composite used across U6.
+  const orchestratorRunId = evaluationId.split(':')[0];
+  if (!orchestratorRunId) return null;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const run = await (prisma as any).audit_orchestrator_runs.findFirst({
+    where: { id: orchestratorRunId, organizationId, aiSystemId },
+    select: { id: true, staticScanId: true, organizationId: true, aiSystemId: true },
+  });
+  if (!run?.staticScanId) return null;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const scan = await (prisma as any).ai_security_scans.findFirst({
+    where: { scanId: run.staticScanId, organizationId },
+    select: { scanId: true, commitSha: true, aiSystemId: true, operationCoverageIntelligence: true },
+  });
+  if (!scan) return null;
+  // Present scan-level system binding must not contradict the run.
+  if (scan.aiSystemId != null && scan.aiSystemId !== aiSystemId) return null;
+  if (scan.operationCoverageIntelligence == null) return null;
+
+  let coverage: PersistedOperationCoverageIntelligence;
+  try {
+    coverage = (typeof scan.operationCoverageIntelligence === 'string'
+      ? JSON.parse(scan.operationCoverageIntelligence)
+      : scan.operationCoverageIntelligence) as PersistedOperationCoverageIntelligence;
+  } catch {
+    return null;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const aiSystem = await (prisma as any).ai_systems.findFirst({
+    where: { id: aiSystemId, organizationId },
+    select: { name: true },
+  });
+
+  return buildEvaluatedTopologyProjection(coverage, {
+    evaluationId,
+    scanId: scan.scanId,
+    repositoryCommitSha: scan.commitSha ?? null,
+    organizationId,
+    aiSystemId,
+    aiSystemName: aiSystem?.name,
+  });
 }

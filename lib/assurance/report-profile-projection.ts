@@ -149,7 +149,9 @@ function dispositionBasisSummary(bundle: AssuranceEvidenceBundleV1): string {
   if (bundle.u5DecisionBasis.availability === 'BOUND') {
     return 'Why the canonical assurance engine reached this disposition, from the evaluated claims bound to this exact evaluation.';
   }
-  return 'No completed canonical U5 evaluation is bound to this bundle, so no decision basis is available. That is not a pass.';
+  // AA-REPORTING-INTERPRETATION-2: customer copy never exposes internal
+  // methodology phase labels.
+  return 'No completed assurance evaluation is bound to this bundle, so no decision basis is available. That is not a pass.';
 }
 
 /** Ordered canonical claim results — deterministic, not a risk ranking. */
@@ -270,6 +272,51 @@ function requiredActions(bundle: AssuranceEvidenceBundleV1): string[] {
 
 const EXECUTIVE_ACTION_LIMIT = 5;
 const EXECUTIVE_PATH_LIMIT = 5;
+// AA-REPORTING-INTERPRETATION-2: executive bounding — summarize, don't dump.
+// NOT_DISPLAYED != NOT_PRESENT — every bound exposes totalCount.
+const EXECUTIVE_MISMATCH_LIMIT = 5;
+const EXECUTIVE_FRONTIER_ITEM_LIMIT = 5;
+
+/**
+ * Deterministic executive frontier prioritization — NOT a risk score.
+ * Frontier items related to a displayed action path's facet come first
+ * (exact same-evaluation relationship); remaining items follow a stable
+ * semantic ordering: UNSUPPORTED/NOT_ASSESSED/UNKNOWN before weaker-gap
+ * states, then facet + subjectId for determinism.
+ */
+function selectExecutiveFrontierItems(
+  bundle: AssuranceEvidenceBundleV1,
+  selectedPaths: EvidenceActionPath[],
+): AssuranceEvidenceBundleV1['evidenceFrontier'] {
+  // Exact same-evaluation relationship: a frontier item's canonical
+  // sourceRelationIds intersecting a displayed path's canonical relation IDs.
+  // No name/subject heuristics.
+  const selectedRelationIds = new Set(
+    selectedPaths.flatMap((p) =>
+      [
+        p.registrationRelationId,
+        p.modelExposureRelationId,
+        p.dispatchRelationId,
+        p.toolImplementationRelationId,
+        p.consequenceRelationId,
+        ...p.downstreamOperationIds,
+        ...p.sinkTargetIds,
+        ...(p.contextBindings?.map((b) => b.relationId) ?? []),
+      ].filter((x): x is string => !!x)),
+  );
+  const stateRank: Record<string, number> = {
+    UNSUPPORTED: 0, NOT_ASSESSED: 1, UNKNOWN: 2, PARTIAL: 3, ESTABLISHED: 4, NOT_APPLICABLE: 5,
+  };
+  const related = bundle.evidenceFrontier.filter(
+    (f) => f.sourceRelationIds.some((id) => selectedRelationIds.has(id)),
+  );
+  const rest = bundle.evidenceFrontier.filter((f) => !related.includes(f));
+  const byState = (a: (typeof bundle.evidenceFrontier)[number], b: (typeof bundle.evidenceFrontier)[number]) =>
+    (stateRank[a.state] ?? 9) - (stateRank[b.state] ?? 9) ||
+    a.facet.localeCompare(b.facet) ||
+    a.subjectId.localeCompare(b.subjectId);
+  return [...related.sort(byState), ...rest.sort(byState)];
+}
 
 function pathSummary(p: EvidenceActionPath): string {
   const parts = [p.toolCandidateId, p.handlerRef].filter(Boolean).join(' → ');
@@ -295,17 +342,120 @@ export function selectActionPathsForProfile(
   return profile === 'executive' ? ranked.slice(0, EXECUTIVE_PATH_LIMIT) : ranked;
 }
 
+/**
+ * AA-REPORTING-INTERPRETATION-2 §19-21: Tenant & Subject Binding module.
+ * Canonical AD-3 counts only — no tenant-security verdict.
+ */
+function pathsWithContextBindings(
+  bundle: AssuranceEvidenceBundleV1,
+  restrictTo?: EvidenceActionPath[],
+): EvidenceActionPath[] {
+  const candidates = restrictTo ?? bundle.actionPaths;
+  return candidates
+    .filter((p) => (p.contextBindings?.length ?? 0) > 0)
+    .sort((a, b) => a.pathId.localeCompare(b.pathId));
+}
+
+const EMPTY_TENANT_BINDING: NonNullable<AssuranceEvidenceBundleV1['tenantBinding']> = {
+  contextBindingRelationCount: 0,
+  pathsWithContextEvidence: 0,
+  tenantContextPresent: 0,
+  tenantFilterBound: 0,
+  tenantSubjectBound: 0,
+  partialOrUnknownBinding: 0,
+};
+
+function tenantBindingSummary(bundle: AssuranceEvidenceBundleV1): string {
+  const t = bundle.tenantBinding ?? EMPTY_TENANT_BINDING;
+  if (!bundle.tenantBinding) {
+    return 'Context-binding detail is not present in this bundle projection. That is an availability state, not a tenant-isolation verdict.';
+  }
+  if (t.contextBindingRelationCount === 0) {
+    return 'No context-binding relations were established by the evaluated snapshot. That is an evidence state, not a tenant-isolation verdict.';
+  }
+  return `${t.contextBindingRelationCount} canonical context-binding relation(s) across ${t.pathsWithContextEvidence} evaluated path(s). ` +
+    `Tenant context present on ${t.tenantContextPresent} relation(s); tenant filter bound on ${t.tenantFilterBound}; ` +
+    `tenant subject bound on ${t.tenantSubjectBound}; ${t.partialOrUnknownBinding} relation(s) remain partial or unknown.`;
+}
+
+function tenantBindingItems(
+  bundle: AssuranceEvidenceBundleV1,
+  restrictTo?: EvidenceActionPath[],
+): string[] {
+  const items: string[] = [];
+  for (const p of pathsWithContextBindings(bundle, restrictTo)) {
+    for (const b of p.contextBindings ?? []) {
+      const bound = (v: boolean | undefined) =>
+        v === true ? 'bound' : v === false ? 'not bound' : 'not established';
+      items.push(
+        `Path ${p.pathId.slice(0, 16)}… (${b.contextKind}): context ${bound(b.tenantContextPresent)}, ` +
+        `tenant filter ${bound(b.tenantFilterBound)}, subject ${bound(b.tenantSubjectBound)}` +
+        `${b.tenantValueOrigin ? `, value origin ${b.tenantValueOrigin.toLowerCase().replace(/_/g, ' ')}` : ''}` +
+        `${b.authenticationOrdering ? `, authentication ${b.authenticationOrdering.toLowerCase().replace(/_/g, ' ')}` : ''} — ` +
+        `relation ${b.relationId.slice(0, 24)}…, state ${b.state.toLowerCase().replace(/_/g, ' ')}.`,
+      );
+    }
+  }
+  return items;
+}
+
 export function projectAssuranceReportProfile(
   bundle: AssuranceEvidenceBundleV1,
   profile: AssuranceReportProfile,
 ): AssuranceReportProfileProjection {
   const selectedPaths = selectActionPathsForProfile(bundle.actionPaths, profile);
   const mismatches = mismatchPaths(bundle);
+  const displayedMismatches = profile === 'executive' ? mismatches.slice(0, EXECUTIVE_MISMATCH_LIMIT) : mismatches;
   const allActions = requiredActions(bundle);
   const displayedActions = profile === 'executive' ? allActions.slice(0, EXECUTIVE_ACTION_LIMIT) : allActions;
   const overflowActions = allActions.length - displayedActions.length;
+  const overflowMismatches = mismatches.length - displayedMismatches.length;
+  // AA-REPORTING-INTERPRETATION-2 §26: executive frontier is a bounded,
+  // deterministic sample — never a full dump.
+  const executiveFrontier = profile === 'executive'
+    ? selectExecutiveFrontierItems(bundle, selectedPaths)
+    : bundle.evidenceFrontier;
+  const displayedFrontier = profile === 'executive'
+    ? executiveFrontier.slice(0, EXECUTIVE_FRONTIER_ITEM_LIMIT)
+    : bundle.evidenceFrontier;
+  const overflowFrontier = bundle.evidenceFrontier.length - displayedFrontier.length;
 
   const sections: AssuranceReportSection[] = [
+    // AA-REPORTING-INTERPRETATION-2 §28: deterministic first-page executive
+    // summary — what was concluded, what the AI can reach, what authority
+    // is and is not established, evidence strength, what happens next.
+    // Facts only; no risk score, no marketing overclaim.
+    ...(profile === 'executive'
+      ? [{
+          key: 'executiveSummary',
+          title: 'Executive Summary',
+          summary:
+            (bundle.disposition === 'UNKNOWN'
+              ? 'HAIEC could not establish an assurance decision for this evaluation — UNKNOWN is not a pass. '
+              : `HAIEC evaluated this system and reached ${bundle.disposition}. `) +
+            summarizePlanes(bundle.actionPaths),
+          items: [
+            `${bundle.actionPaths.length} consequential action path(s) were evaluated; ` +
+              `${bundle.actionPaths.filter((p) => p.planes.codeCapable === 'ESTABLISHED').length} have established code capability ` +
+              `(what the code can reach or cause).`,
+            `${mismatches.length} path(s) have established code capability without established authority evidence — ` +
+              `policy authorization, effective permission, and observed execution remain separately stated, never inferred.`,
+            ...(bundle.actionProof.totalTraces != null
+              ? [`${bundle.actionProof.totalTraces} supporting evidence trace(s) document how these paths were reconstructed.`]
+              : []),
+            ...((bundle.tenantBinding?.contextBindingRelationCount ?? 0) > 0
+              ? [`${bundle.tenantBinding!.contextBindingRelationCount} canonical context-binding relation(s) were established; ` +
+                  `see Tenant & Subject Binding for whose context controls each action.`]
+              : []),
+            ...(bundle.evidenceFrontier.length > 0
+              ? [`${bundle.evidenceFrontier.length} evidence frontier item(s) remain — see Evidence Coverage & Frontier.`]
+              : []),
+            ...(allActions.length > 0
+              ? [`Next: ${allActions[0]}`]
+              : []),
+          ],
+        } as AssuranceReportSection]
+      : []),
     {
       key: 'decision',
       title: 'Assurance Decision',
@@ -326,29 +476,48 @@ export function projectAssuranceReportProfile(
       key: 'actionAssurance',
       title: 'Action Assurance',
       summary: `Availability: ${bundle.actionAssurance.availability.toLowerCase().replace(/_/g, ' ')}. ${bundle.actionAssurance.frontierCount} frontier surface(s).`,
-      limitations: bundle.actionAssurance.limitations,
+      // Deduplicate repeated identical limitation lines — one statement per
+      // distinct limitation; the canonical population is unchanged.
+      limitations: [...new Set(bundle.actionAssurance.limitations)],
     },
     {
+      // AA-REPORTING-INTERPRETATION-2 §16-18: primary compact path table.
+      // Incorporates the five planes; the former duplicative
+      // "Five Authority / Action Planes" + "Selected Consequential Paths"
+      // tables are merged here.
       key: 'fivePlanes',
-      title: 'Five Authority / Action Planes',
+      title: 'Capability & Authority Alignment',
       // Summary truthfully covers the full evaluated population; displayed
       // items obey the profile's deterministic selection.
       summary: `${summarizePlanes(bundle.actionPaths)} Full-population summary across all ${bundle.actionPaths.length} evaluated path(s); individual paths below are the profile-selected set.`,
-      items: selectedPaths.map((p) => `Path ${p.pathId.slice(0, 16)}…: requested ${STATE_LABEL[p.planes.requested]}, authorized ${STATE_LABEL[p.planes.policyAuthorized]}, granted ${STATE_LABEL[p.planes.effectivelyGranted]}, capable ${STATE_LABEL[p.planes.codeCapable]}, observed ${STATE_LABEL[p.planes.observed]}`),
+      items: selectedPaths.map((p) => `Path ${p.pathId.slice(0, 16)}…: requested ${STATE_LABEL[p.planes.requested]}, policy authorized ${STATE_LABEL[p.planes.policyAuthorized]}, effectively granted ${STATE_LABEL[p.planes.effectivelyGranted]}, code capable ${STATE_LABEL[p.planes.codeCapable]}, observed ${STATE_LABEL[p.planes.observed]}`),
       actionPathRefs: selectedPaths.map((p) => p.pathId),
       totalCount: bundle.actionPaths.length,
       displayedCount: selectedPaths.length,
     },
     {
+      key: 'tenantBinding',
+      title: 'Tenant & Subject Binding',
+      summary: tenantBindingSummary(bundle),
+      items: tenantBindingItems(bundle, profile === 'executive' ? selectedPaths : undefined),
+      actionPathRefs: pathsWithContextBindings(bundle, profile === 'executive' ? selectedPaths : undefined).map((p) => p.pathId),
+      totalCount: (bundle.tenantBinding ?? EMPTY_TENANT_BINDING).contextBindingRelationCount,
+    },
+    {
       key: 'materialMismatch',
       title: 'Material Mismatch / Consequence',
       summary: mismatches.length > 0
-        ? `${mismatches.length} evaluated path(s) have established code capability without established authority evidence.`
+        ? `${mismatches.length} evaluated path(s) have established code capability without established authority evidence.${overflowMismatches > 0 ? ` ${displayedMismatches.length} representative path(s) shown.` : ''}`
         : 'No authority-evidence mismatch meeting this report rule was identified among the evaluated paths.',
-      items: mismatches.map(
-        (p) => `Path ${p.pathId.slice(0, 16)}…: code capability is established, while ${authorityGaps(p).join(' and ')}.`,
-      ),
-      actionPathRefs: mismatches.map((p) => p.pathId),
+      items: [
+        ...displayedMismatches.map(
+          (p) => `Path ${p.pathId.slice(0, 16)}…: code capability is established, while ${authorityGaps(p).join(' and ')}.`,
+        ),
+        ...(overflowMismatches > 0 ? [`+ ${overflowMismatches} additional path(s) not shown in this profile.`] : []),
+      ],
+      actionPathRefs: displayedMismatches.map((p) => p.pathId),
+      totalCount: mismatches.length,
+      displayedCount: displayedMismatches.length,
     },
     {
       key: 'requiredAction',
@@ -363,17 +532,24 @@ export function projectAssuranceReportProfile(
     {
       key: 'evidenceCoverage',
       title: 'Evidence Coverage & Frontier',
-      summary: frontierSummary(bundle),
-      items: bundle.evidenceFrontier.map((f) => `${f.facet}:${f.subjectId} — ${STATE_LABEL[f.state]} (${f.reasonCode})`),
+      summary: frontierSummary(bundle) + (overflowFrontier > 0
+        ? ` ${displayedFrontier.length} decision-relevant item(s) shown for this profile; ${overflowFrontier} additional frontier item(s) remain in the full Technical/Auditor report.`
+        : ''),
+      items: displayedFrontier.map((f) => `${f.facet}:${f.subjectId} — ${STATE_LABEL[f.state]} (${f.reasonCode})`),
       proofRefs: proofRefsFor(bundle.evidenceReferences),
       evidenceRefs: bundle.evidenceReferences.flatMap((r) => r.evidenceRefs),
-      limitations: bundle.evaluationIntegrity.analysisLimitations,
+      limitations: [...new Set(bundle.evaluationIntegrity.analysisLimitations)],
+      totalCount: bundle.evidenceFrontier.length,
+      displayedCount: displayedFrontier.length,
     },
     {
+      // AA-REPORTING-INTERPRETATION-2 §18: retained as the canonical
+      // selection-accounting + Inspect Proof carrier (web PlaneStrip keys off
+      // actionPathRefs). The duplicative per-path text/table is gone — the
+      // Capability & Authority Alignment table above is the single path view.
       key: 'selectedPaths',
-      title: 'Selected Consequential Paths',
-      summary: `${selectedPaths.length} of ${bundle.actionPaths.length} evaluated action path(s) shown. Selected for presentation; not an exhaustive absence claim.`,
-      items: selectedPaths.map(pathSummary),
+      title: 'Consequential Action Paths',
+      summary: `${selectedPaths.length} of ${bundle.actionPaths.length} evaluated consequential action path(s) shown. Selected for presentation; not an exhaustive absence claim.`,
       actionPathRefs: selectedPaths.map((p) => p.pathId),
       totalCount: bundle.actionPaths.length,
       displayedCount: selectedPaths.length,
@@ -400,9 +576,9 @@ export function projectAssuranceReportProfile(
         `Freshness: ${bundle.evaluationIntegrity.freshnessState}`,
         `Unsupported analyzers: ${bundle.evaluationIntegrity.unsupportedAnalyzers.join(', ') || 'none'}`,
         `Not-assessed analyzers: ${bundle.evaluationIntegrity.notAssessedAnalyzers.join(', ') || 'none'}`,
-        `U5 evaluation status: ${bundle.u5DecisionBasis.evaluationStatus ?? 'not bound'}`,
-        `U5 reason codes: ${bundle.u5DecisionBasis.reasonCodes?.join(', ') || 'not bound'}`,
-        `Bundle digest: ${bundle.bundleDigest}`,
+        `Assurance evaluation status: ${bundle.u5DecisionBasis.evaluationStatus ?? 'not bound'}`,
+        `Assurance decision reason codes: ${bundle.u5DecisionBasis.reasonCodes?.join(', ') || 'not bound'}`,
+        `Assurance Evidence Bundle Digest: ${bundle.bundleDigest}`,
       ],
       proofRefs: proofRefsFor(bundle.evidenceReferences),
       evidenceRefs: bundle.evidenceReferences.flatMap((r) => r.evidenceRefs),
@@ -593,7 +769,9 @@ export function buildAssurancePdfHtml(bundle: AssuranceEvidenceBundleV1, profile
   const selectedPaths = selectActionPathsForProfile(bundle.actionPaths, profile);
   const decisionClass = projection.disposition === 'ALLOW' ? 'allow' : projection.disposition === 'BLOCK' ? 'block' : 'review';
   const sectionsHtml = projection.sections.map((s) => {
-    const table = s.key === 'fivePlanes' || s.key === 'selectedPaths' ? pathTableHtml(selectedPaths) : '';
+    // AA-REPORTING-INTERPRETATION-2 §18: one compact path table under
+    // Capability & Authority Alignment — no duplicated table per section.
+    const table = s.key === 'fivePlanes' ? pathTableHtml(selectedPaths) : '';
     return sectionHtml(s) + table;
   }).join('');
   return `<!doctype html><html><head><meta charset="utf-8"><title>HAIEC Assurance Report</title><style>
@@ -618,9 +796,9 @@ export function buildAssurancePdfHtml(bundle: AssuranceEvidenceBundleV1, profile
       <p style="font-size:12px;margin:0 0 12px">HAIEC traces consequential AI action paths and compares code capability with the authority and evidence available for the same evaluated scope.</p>
       <div class="decision ${decisionClass}">${escapeHtml(projection.disposition)}</div>
       <p>${escapeHtml(projection.evaluationIdentity.aiSystemId)} · Evaluation ${escapeHtml(projection.evaluationIdentity.evaluationId)} · ${escapeHtml(projection.evaluationIdentity.evaluationSnapshotAt ?? 'snapshot not bound')}</p>
-      <p class="mono">Bundle: ${escapeHtml(projection.bundleDigest.slice(0, 16))}… · Methodology: ${escapeHtml(projection.methodologyVersion ?? 'not bound')}</p>
+      <p class="mono">Evidence Bundle Digest: ${escapeHtml(projection.bundleDigest.slice(0, 16))}… · Methodology: ${escapeHtml(projection.methodologyVersion ?? 'not bound')}</p>
     </div>
     ${sectionsHtml}
-    <div class="footer">This report is projected from the exact Assurance Evidence Bundle. It does not recompute the U5 disposition, mutate canonical evidence states, or rerun analyzers.</div>
+    <div class="footer">This report is projected from the exact Assurance Evidence Bundle. It does not recompute the assurance decision, mutate canonical evidence states, or rerun analyzers.</div>
   </body></html>`;
 }

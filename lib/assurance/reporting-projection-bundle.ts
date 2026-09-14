@@ -82,6 +82,33 @@ export interface EvidenceReference {
   limitations: string[];
 }
 
+/**
+ * AA-REPORTING-INTERPRETATION-2: bounded AD-3 context-binding projection
+ * joined to an action path ONLY by exact canonical identity
+ * (ActionContextBindingRelation.handlerOperationRelationId === the path's
+ * handler-operation relation id). Never name/file/handler heuristics.
+ *
+ * LOCKS:
+ *   TENANT_CONTEXT_PRESENT != TENANT_FILTER_BOUND
+ *   TENANT_FILTER_BOUND != TENANT_SUBJECT_BOUND
+ *   ACTION_CONTEXT_BINDING != POLICY_AUTHORIZED
+ *   ACTION_CONTEXT_BINDING != EFFECTIVELY_GRANTED
+ *   ACTION_CONTEXT_BINDING != OBSERVED
+ *   TENANT_CONTEXT_PRESENT != CROSS_TENANT_ISOLATION_PROVEN
+ *   NO_EXACT_JOIN -> NO_DISPLAYED_BINDING
+ */
+export interface PathContextBinding {
+  /** Canonical AD-3 relation ID — exact Inspect Proof reference. */
+  relationId: string;
+  contextKind: string;
+  state: string;
+  tenantContextPresent?: boolean;
+  tenantFilterBound?: boolean;
+  tenantSubjectBound?: boolean;
+  tenantValueOrigin?: string;
+  authenticationOrdering?: string;
+}
+
 /** Bounded action consequence evidence for one capability path. */
 export interface EvidenceActionPath {
   /** Derived projection identity — not a canonical relation. */
@@ -93,6 +120,17 @@ export interface EvidenceActionPath {
   toolImplementationRelationId?: string;
   handlerFunctionId?: string;
   handlerRef?: string;
+  /**
+   * Canonical AD-1 handler-operation relation id backing this path's
+   * consequence stage — the exact join identity for context bindings.
+   */
+  consequenceRelationId?: string;
+  /**
+   * Exact AD-3 context bindings joined by canonical handler-operation
+   * relation id. Absent when the evaluated snapshot carries no AD-3
+   * relations for this path — never fabricated.
+   */
+  contextBindings?: PathContextBinding[];
   downstreamOperationIds: string[];
   sinkTargetIds: string[];
   /** Planes of authority independently tracked. */
@@ -153,7 +191,7 @@ export interface MaterialChangeProjection {
  * All fields are either canonical or explicitly bounded.
  */
 export interface AssuranceEvidenceBundleV1 {
-  schemaVersion: 'assurance-evidence-bundle-1.0.0';
+  schemaVersion: 'assurance-evidence-bundle-1.0.0' | 'assurance-evidence-bundle-1.1.0';
   /** Canonical identity of the evaluated scope. */
   evaluationIdentity: {
     evaluationId: string;
@@ -184,6 +222,11 @@ export interface AssuranceEvidenceBundleV1 {
   /** Action Proof section (canonical). */
   actionProof: {
     availability: 'ESTABLISHED' | 'PARTIAL' | 'NOT_AVAILABLE';
+    /**
+     * AA-REPORTING-INTERPRETATION-2: canonical supporting-trace count.
+     * ACTION_PROOF_TRACE_COUNT != ACTION_ASSURANCE_PATH_COUNT.
+     */
+    totalTraces?: number;
     limitations: string[];
   };
   /** Agent Reachability section (canonical). */
@@ -208,6 +251,27 @@ export interface AssuranceEvidenceBundleV1 {
   };
   /** Selected action/consequence paths with bounded plane states. */
   actionPaths: EvidenceActionPath[];
+  /**
+   * AA-REPORTING-INTERPRETATION-2: canonical AD-3 context-binding counts
+   * over the evaluated path population. Counts only — no tenant-security
+   * verdict. Per-path detail lives on EvidenceActionPath.contextBindings.
+   * Optional for 1.0.0 compatibility — projections must treat absent as
+   * NOT_ESTABLISHED, not zero-context-evidence.
+   */
+  tenantBinding?: {
+    /** Total canonical AD-3 relations in the evaluated snapshot. */
+    contextBindingRelationCount: number;
+    /** Evaluated paths with at least one exact AD-3 join. */
+    pathsWithContextEvidence: number;
+    /** TENANT_CONTEXT relations where a tenant context is present. */
+    tenantContextPresent: number;
+    /** TENANT_CONTEXT relations where a tenant filter is bound. */
+    tenantFilterBound: number;
+    /** TENANT_CONTEXT relations where the tenant value is subject-bound. */
+    tenantSubjectBound: number;
+    /** AD-3 relations whose binding state is not ESTABLISHED. */
+    partialOrUnknownBinding: number;
+  };
   /** Evidence references grouped by facet for inspectability. */
   evidenceReferences: EvidenceReference[];
   /** Evidence frontier — missing, partial, unsupported, not-assessed. */
@@ -348,10 +412,32 @@ function evidenceRefsFromArchetype(output: EvaluatedAssuranceOutput): EvidenceRe
   return refs;
 }
 
-function actionPathsFromArchetype(output: EvaluatedAssuranceOutput): EvidenceActionPath[] {
+function actionPathsFromArchetype(
+  output: EvaluatedAssuranceOutput,
+  coverage: PersistedOperationCoverageIntelligence,
+): EvidenceActionPath[] {
+  // AA-REPORTING-INTERPRETATION-2: exact canonical join — AD-3 relations are
+  // keyed by handlerOperationRelationId, which equals the path's
+  // consequenceRelationId. No name/file/handler heuristics.
+  const ad3ByHorId = new Map<string, NonNullable<PersistedOperationCoverageIntelligence['actionContextBindingRelations']>[number][]>();
+  for (const rel of coverage.actionContextBindingRelations ?? []) {
+    const list = ad3ByHorId.get(rel.handlerOperationRelationId);
+    if (list) list.push(rel);
+    else ad3ByHorId.set(rel.handlerOperationRelationId, [rel]);
+  }
   return output.executionArchetype.consequencePathSummary.map((p) => {
     const downstreamOperationIds = p.stages.filter((s) => s.stage === 'CONSEQUENCE' && s.targetId).map((s) => s.relationId);
     const sinkTargetIds = p.stages.filter((s) => s.stage === 'CONSEQUENCE' && s.targetId).map((s) => s.targetId ?? s.relationId);
+    const contextBindings = (ad3ByHorId.get(p.consequenceId ?? '') ?? []).map((rel): PathContextBinding => ({
+      relationId: rel.id,
+      contextKind: rel.contextKind,
+      state: rel.state,
+      tenantContextPresent: rel.tenantContextPresent,
+      tenantFilterBound: rel.tenantFilterBound,
+      tenantSubjectBound: rel.tenantSubjectBound,
+      tenantValueOrigin: rel.tenantValueOrigin,
+      authenticationOrdering: rel.authenticationOrdering,
+    }));
     return {
       pathId: computeSemanticDigest({
         toolCandidateId: p.toolCandidateId,
@@ -362,6 +448,8 @@ function actionPathsFromArchetype(output: EvaluatedAssuranceOutput): EvidenceAct
       }),
       toolCandidateId: p.toolCandidateId,
       handlerRef: p.handlerRef,
+      consequenceRelationId: p.consequenceId,
+      ...(contextBindings.length > 0 ? { contextBindings } : {}),
       downstreamOperationIds,
       sinkTargetIds,
       planes: {
@@ -466,7 +554,7 @@ export function buildAssuranceEvidenceBundleV1(input: BuildAssuranceEvidenceBund
   }
 
   const evidenceReferences = evidenceRefsFromArchetype(output);
-  const actionPaths = actionPathsFromArchetype(output);
+  const actionPaths = actionPathsFromArchetype(output, coverage);
   const evidenceFrontier = output.evidenceFrontier.frontierItems.map((f) => ({
     facet: f.facet,
     subjectId: f.subjectId,
@@ -482,8 +570,24 @@ export function buildAssuranceEvidenceBundleV1(input: BuildAssuranceEvidenceBund
   const ap = output.actionProof;
   const ar = output.reachability;
 
+  // AA-REPORTING-INTERPRETATION-2: canonical AD-3 counts over the evaluated
+  // path population. Relation-grain counts; TENANT_* flags are only
+  // populated on TENANT_CONTEXT relations by the canonical producer.
+  const ad3 = coverage.actionContextBindingRelations ?? [];
+  const tenantCtx = ad3.filter((r) => r.contextKind === 'TENANT_CONTEXT');
+  const tenantBinding = {
+    contextBindingRelationCount: ad3.length,
+    pathsWithContextEvidence: actionPaths.filter((p) => (p.contextBindings?.length ?? 0) > 0).length,
+    tenantContextPresent: tenantCtx.filter((r) => r.tenantContextPresent === true).length,
+    tenantFilterBound: tenantCtx.filter((r) => r.tenantFilterBound === true).length,
+    tenantSubjectBound: tenantCtx.filter((r) => r.tenantSubjectBound === true).length,
+    partialOrUnknownBinding: ad3.filter((r) => r.state !== 'ESTABLISHED').length,
+  };
+
   const bundlePayload: Omit<AssuranceEvidenceBundleV1, 'bundleDigest'> = {
-    schemaVersion: 'assurance-evidence-bundle-1.0.0',
+    // 1.1.0: additive per-path contextBindings + tenantBinding summary.
+    // Read-time projection — additive fields are backward-compatible.
+    schemaVersion: 'assurance-evidence-bundle-1.1.0',
     evaluationIdentity: {
       evaluationId: id.evaluationId,
       organizationId: id.organizationId,
@@ -501,7 +605,7 @@ export function buildAssuranceEvidenceBundleV1(input: BuildAssuranceEvidenceBund
     dispositionLimitations: [
       'Disposition is bounded to the evaluated scope and available evidence.',
       'UNKNOWN or missing disposition is not a pass.',
-      'The bundle never recomputes U5; it binds the canonical evaluation disposition when available.',
+      'The bundle never recomputes the assurance decision; it binds the canonical evaluation disposition when available.',
     ],
     u5DecisionBasis,
     actionAssurance: {
@@ -512,6 +616,7 @@ export function buildAssuranceEvidenceBundleV1(input: BuildAssuranceEvidenceBund
     },
     actionProof: {
       availability: ap.availability,
+      totalTraces: ap.summary?.totalTraces,
       limitations: ap.coverageLimitations ?? [],
     },
     reachability: {
@@ -521,6 +626,7 @@ export function buildAssuranceEvidenceBundleV1(input: BuildAssuranceEvidenceBund
       limitations: ar.coverageLimitations ?? [],
     },
     actionPaths,
+    tenantBinding,
     evidenceReferences,
     evidenceFrontier,
     evaluationIntegrity: {

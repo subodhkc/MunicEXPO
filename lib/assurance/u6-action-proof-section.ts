@@ -71,7 +71,7 @@ const TRACE_STAGE_ORDER_INDEX = new Map<string, number>(
 
 function traceEvidenceScore(t: ActionProofTrace): number {
   const w = (s: string) => TRACE_STATE_WEIGHT[s] ?? 0;
-  return (
+  const stageScore =
     w(t.consequence.state) * 8 +
     w(t.implementation.state) * 4 +
     w(t.modelExposure.state) * 3 +
@@ -81,18 +81,13 @@ function traceEvidenceScore(t: ActionProofTrace): number {
     w(t.contextBinding.state) +
     w(t.argumentProvenance.state) +
     w(t.confirmation.state) +
-    (t.consequenceTarget?.resourceTarget ? 1 : 0)
-  );
-}
-
-function traceCompare(a: ActionProofTrace, b: ActionProofTrace): number {
-  const scoreDelta = traceEvidenceScore(b) - traceEvidenceScore(a);
-  if (scoreDelta !== 0) return scoreDelta;
+    (t.consequenceTarget?.resourceTarget ? 1 : 0);
   // Deeper proof frontier = the trace proved further along the chain.
-  const fa = TRACE_STAGE_ORDER_INDEX.get(a.proofFrontier.stage) ?? TRACE_STAGE_ORDER_INDEX.size;
-  const fb = TRACE_STAGE_ORDER_INDEX.get(b.proofFrontier.stage) ?? TRACE_STAGE_ORDER_INDEX.size;
-  if (fa !== fb) return fb - fa;
-  return a.id.localeCompare(b.id);
+  // Frontier depth is folded into the evidence-strength tier so a deeper
+  // proven chain can never be outranked by a shallower one for diversity.
+  const frontierDepth =
+    TRACE_STAGE_ORDER_INDEX.get(t.proofFrontier.stage) ?? TRACE_STAGE_ORDER_INDEX.size;
+  return stageScore * 32 + frontierDepth;
 }
 
 /**
@@ -105,33 +100,54 @@ function traceDiversityKey(t: ActionProofTrace): string {
 }
 
 /**
- * Evidence-first selection with representative diversity:
- *   1. rank all traces by evidentiary strength (deterministic, stable,
- *      input-order independent — ties break on canonical trace id);
- *   2. first pass: highest-ranked trace per distinct (capability, target) pair;
- *   3. second pass: fill remaining slots in rank order.
- * Diversity never outranks evidence strength — it only orders selection
- * among already-ranked candidates.
+ * AA-REPORTING-INTERPRETATION-2 refinement of the #1707 selection:
+ * evidence strength is a strict ordering tier. Diversity only orders traces
+ * WITHIN the same evidence-strength tier — a lower-scored trace can never
+ * consume a display slot before a higher-scored one merely because it adds
+ * a new (capability, target) pair.
+ *
+ *   1. rank all traces by composite evidence strength (stage states +
+ *      proof-frontier depth), deterministic and input-order independent;
+ *   2. within each equal-strength tier: one representative per distinct
+ *      diversity key (lowest canonical trace id), keys ascending, then the
+ *      tier's remaining duplicates in canonical trace-id order;
+ *   3. concatenate tiers in strength order and take the bounded sample.
+ *
+ *   EVIDENCE_STRENGTH > DIVERSITY
+ *   LOWER_EVIDENCE_SCORE NEVER_OUTRANKS HIGHER_EVIDENCE_SCORE
  */
 export function selectActionProofTraces(
   traces: ActionProofTrace[],
   limit: number = MAX_TRACES_IN_SECTION,
 ): ActionProofTrace[] {
-  const ranked = [...traces].sort(traceCompare);
-  const seen = new Set<string>();
+  const ranked = [...traces].sort(
+    (a, b) => traceEvidenceScore(b) - traceEvidenceScore(a) || a.id.localeCompare(b.id),
+  );
   const selected: ActionProofTrace[] = [];
-  for (const t of ranked) {
-    if (selected.length >= limit) break;
-    const key = traceDiversityKey(t);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    selected.push(t);
+  let i = 0;
+  while (i < ranked.length) {
+    let j = i;
+    while (j < ranked.length && traceEvidenceScore(ranked[j]) === traceEvidenceScore(ranked[i])) j++;
+    const tier = ranked.slice(i, j);
+    const byKey = new Map<string, ActionProofTrace[]>();
+    for (const t of tier) {
+      const key = traceDiversityKey(t);
+      const bucket = byKey.get(key);
+      if (bucket) bucket.push(t);
+      else byKey.set(key, [t]);
+    }
+    const keys = [...byKey.keys()].sort();
+    const representatives = keys.map(
+      (k) => byKey.get(k)!.sort((a, b) => a.id.localeCompare(b.id))[0],
+    );
+    const representativeSet = new Set(representatives);
+    const rest = tier
+      .filter((t) => !representativeSet.has(t))
+      .sort((a, b) => a.id.localeCompare(b.id));
+    selected.push(...representatives, ...rest);
+    i = j;
   }
-  for (const t of ranked) {
-    if (selected.length >= limit) break;
-    if (!selected.includes(t)) selected.push(t);
-  }
-  return selected;
+  return selected.slice(0, limit);
 }
 
 function summarizeTrace(t: ActionProofTrace): NonNullable<ActionProofReportSection['traces']>[number] {
