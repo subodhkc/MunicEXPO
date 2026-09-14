@@ -52,10 +52,27 @@ const PACKAGE_SCHEMA_VERSIONS = {
 /**
  * Resource-first: load only ownership fields before authorization.
  */
-export async function getEvaluationOwnership(evaluationId: string): Promise<{ id: string; organizationId: string; aiSystemId: string; orchestratorRunId: string } | null> {
+export async function getEvaluationOwnership(evaluationId: string): Promise<{
+  id: string;
+  organizationId: string;
+  aiSystemId: string;
+  orchestratorRunId: string;
+  /** AA-CONSTELLATION-PROVENANCE-1R: exact persisted evaluation facts. */
+  evaluationSnapshotAt?: Date | string | null;
+  disposition?: string | null;
+  assuranceMethodologyVersion?: string | null;
+} | null> {
   const row = await prisma.assurance_evaluations.findUnique({
     where: { id: evaluationId },
-    select: { id: true, organizationId: true, aiSystemId: true, orchestratorRunId: true },
+    select: {
+      id: true,
+      organizationId: true,
+      aiSystemId: true,
+      orchestratorRunId: true,
+      evaluationSnapshotAt: true,
+      disposition: true,
+      assuranceMethodologyVersion: true,
+    },
   });
   if (!row) return null;
   return row as any;

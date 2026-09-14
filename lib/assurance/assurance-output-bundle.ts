@@ -41,6 +41,9 @@ import {
   buildAssuranceEvidenceBundleV1,
   buildReportProjectionManifestV1,
   computeSemanticDigest,
+  REPORT_PROFILE_VERSION,
+  REPORT_PROJECTION_PROFILE_VERSION,
+  RENDERER_REGISTRY_VERSION,
   type AssuranceEvidenceBundleV1,
   type ReportProjectionManifestV1,
 } from './reporting-projection-bundle';
@@ -118,6 +121,10 @@ function buildBundleFromOutput(
     organizationId: orgId,
     aiSystemId,
     aiSystemName,
+    // AA-CONSTELLATION-PROVENANCE-1R §2: exact persisted evaluation facts —
+    // read-through only, never recomputed.
+    evaluationSnapshotAt: output.evaluationIdentity.evaluationSnapshotAt ?? null,
+    disposition: canonicalEvaluation?.disposition ?? null,
   });
 
   const reachability = readModel ?? buildAgentReachabilityReadModel(coverage, { scanId, commitSha });
@@ -203,9 +210,9 @@ function buildBundleFromOutput(
     bundle: evidenceBundle,
     artifactManifest: manifest,
     projectedArtifacts,
-    profile: { profileId: 'default', profileVersion: '1.0.0', rendererId: 'server-bundle-composer', rendererVersion: '1.0.0' },
-    projectionProfileVersion: 'report-projection-default-1.0.0',
-    rendererRegistryVersion: 'renderer-registry-1.0.0',
+    profile: { profileId: 'default', profileVersion: REPORT_PROFILE_VERSION, rendererId: 'server-bundle-composer', rendererVersion: REPORT_PROFILE_VERSION },
+    projectionProfileVersion: REPORT_PROJECTION_PROFILE_VERSION,
+    rendererRegistryVersion: RENDERER_REGISTRY_VERSION,
   });
 
   return {

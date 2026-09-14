@@ -673,6 +673,19 @@ export interface ReportProjectionProfile {
   rendererVersion: string;
 }
 
+/**
+ * AA-CONSTELLATION-PROVENANCE-1R §6: projection policy version provenance.
+ * The 1.1.0 bump identifies the AA-REPORTING-INTERPRETATION-2 semantic
+ * change (bundle schema 1.1.0, executive bounding, tenant module, section
+ * hierarchy, terminology). LOCK:
+ *   SAME_EVALUATION + SAME_EVIDENCE + SAME_PROJECTION_POLICY_VERSION
+ *     = DETERMINISTIC_PRESENTATION
+ *   PROJECTION_SEMANTICS_CHANGED -> PROJECTION_VERSION_MUST_IDENTIFY_THE_CHANGE
+ */
+export const REPORT_PROJECTION_PROFILE_VERSION = 'report-projection-default-1.1.0';
+export const RENDERER_REGISTRY_VERSION = 'renderer-registry-1.1.0';
+export const REPORT_PROFILE_VERSION = '1.1.0';
+
 export interface BuildReportProjectionManifestInput {
   bundle: AssuranceEvidenceBundleV1;
   artifactManifest: ArtifactManifest;
