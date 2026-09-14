@@ -29,7 +29,7 @@
 import { createHash } from 'crypto';
 import type { EvaluatedAssuranceOutput } from './assurance-output-composer';
 import type { ArtifactManifest } from './assurance-artifact-manifest';
-import type { AssuranceDisposition, AssuranceEvaluation } from './types';
+import type { AssuranceDisposition, AssuranceEvaluation, AssuranceEvaluationStatus, ClaimEvaluationResult, ClaimReasonCode, ClaimState } from './types';
 import type { PersistedOperationCoverageIntelligence } from '@/lib/ai-security/operation-coverage-read';
 
 /**
@@ -193,6 +193,19 @@ export interface AssuranceEvidenceBundleV1 {
     relationCount: number;
     limitations: string[];
   };
+  /**
+   * Bounded U5 decision basis — canonical evaluation facts bound only when the
+   * exact canonical evaluation identity validates. NOT_BOUND carries nothing.
+   *   DECISION_BASIS = CANONICAL_U5_FACTS
+   *   DECISION_BASIS != REPORTER_INFERENCE
+   */
+  u5DecisionBasis: {
+    availability: 'BOUND' | 'NOT_BOUND';
+    evaluationStatus?: AssuranceEvaluationStatus;
+    reasonCodes?: ClaimReasonCode[];
+    claimCounts?: Record<ClaimState, number>;
+    claimResults?: ClaimEvaluationResult[];
+  };
   /** Selected action/consequence paths with bounded plane states. */
   actionPaths: EvidenceActionPath[];
   /** Evidence references grouped by facet for inspectability. */
@@ -220,8 +233,12 @@ export interface ReportProjectionArtifactEntry {
   schemaVersion: string;
   /** Semantic bundle digest for the same evaluation package. */
   evidenceBundleDigest: string;
-  /** Whether the artifact semantics were derived from the evidence bundle or merely share the same evaluation. */
-  semanticRelationToEvidenceBundle: 'DERIVED_FROM_EVIDENCE_BUNDLE' | 'SAME_EVALUATION_SIBLING';
+  /**
+   * Whether the artifact semantics were derived from the evidence bundle or
+   * merely share the same evaluation. SERIALIZATION_OF_EVIDENCE_BUNDLE is the
+   * byte serialization of the bundle itself — not an independent derivation.
+   */
+  semanticRelationToEvidenceBundle: 'DERIVED_FROM_EVIDENCE_BUNDLE' | 'SAME_EVALUATION_SIBLING' | 'SERIALIZATION_OF_EVIDENCE_BUNDLE';
   /** Exact artifact byte digest. */
   artifactDigest: string;
   /** Profile identity for audience-specific projection. */
@@ -246,7 +263,7 @@ export interface ProjectedArtifactInput {
   schemaVersion: string;
   artifactDigest: string;
   /** Caller-owned claim that this artifact was projected from the bundle. */
-  semanticRelationToEvidenceBundle?: 'DERIVED_FROM_EVIDENCE_BUNDLE' | 'SAME_EVALUATION_SIBLING';
+  semanticRelationToEvidenceBundle?: 'DERIVED_FROM_EVIDENCE_BUNDLE' | 'SAME_EVALUATION_SIBLING' | 'SERIALIZATION_OF_EVIDENCE_BUNDLE';
   profileId?: string;
   profileVersion?: string;
   rendererId?: string;
@@ -284,8 +301,8 @@ export interface BuildAssuranceEvidenceBundleInput {
   artifactManifest: ArtifactManifest;
   /** Persisted coverage intelligence for the exact evaluated scan. */
   coverage: PersistedOperationCoverageIntelligence;
-  /** Optional canonical evaluation carrying exact U5 identity + disposition + methodology. */
-  canonicalEvaluation?: Pick<AssuranceEvaluation, 'id' | 'organizationId' | 'aiSystemId' | 'orchestratorRunId' | 'disposition' | 'assuranceMethodologyVersion'> & { evaluationSnapshotAt?: Date | string };
+  /** Optional canonical evaluation carrying exact U5 identity, disposition, methodology and decision basis. */
+  canonicalEvaluation?: Pick<AssuranceEvaluation, 'id' | 'organizationId' | 'aiSystemId' | 'orchestratorRunId' | 'disposition' | 'assuranceMethodologyVersion' | 'evaluationStatus' | 'reasonCodes' | 'claimCounts' | 'claimResults'> & { evaluationSnapshotAt?: Date | string };
   /** Optional reachability/topology/constellation digests if already computed. */
   topologyProjectionDigest?: string;
   reachabilityDigest?: string;
@@ -415,6 +432,7 @@ export function buildAssuranceEvidenceBundleV1(input: BuildAssuranceEvidenceBund
   let dispositionSource: AssuranceEvidenceBundleV1['dispositionSource'] = 'NOT_AVAILABLE';
   let dispositionAvailability: AssuranceEvidenceBundleV1['dispositionAvailability'] = 'NOT_BOUND';
   let dispositionMethodologyVersion: string | undefined;
+  let u5DecisionBasis: AssuranceEvidenceBundleV1['u5DecisionBasis'] = { availability: 'NOT_BOUND' };
   if (canonicalEvaluation) {
     if (canonicalEvaluation.id !== id.evaluationId) {
       throw new Error('CROSS_EVALUATION_COMPOSITION: canonicalEvaluation id mismatch');
@@ -438,6 +456,13 @@ export function buildAssuranceEvidenceBundleV1(input: BuildAssuranceEvidenceBund
     dispositionSource = 'CANONICAL_U5';
     dispositionAvailability = 'BOUND';
     dispositionMethodologyVersion = canonicalEvaluation.assuranceMethodologyVersion;
+    u5DecisionBasis = {
+      availability: 'BOUND',
+      evaluationStatus: canonicalEvaluation.evaluationStatus,
+      reasonCodes: canonicalEvaluation.reasonCodes,
+      claimCounts: canonicalEvaluation.claimCounts,
+      claimResults: canonicalEvaluation.claimResults,
+    };
   }
 
   const evidenceReferences = evidenceRefsFromArchetype(output);
@@ -478,6 +503,7 @@ export function buildAssuranceEvidenceBundleV1(input: BuildAssuranceEvidenceBund
       'UNKNOWN or missing disposition is not a pass.',
       'The bundle never recomputes U5; it binds the canonical evaluation disposition when available.',
     ],
+    u5DecisionBasis,
     actionAssurance: {
       availability: aa.availability,
       surfaces: aa.surfaces,
