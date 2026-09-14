@@ -30,8 +30,8 @@ import {
 } from './agentic-production-passport';
 import type { ConsequenceDelta } from './consequence-delta';
 import { buildAssuranceReportFromOutput } from './assurance-report-composer';
-import { buildMachineReadableAssuranceOutput } from './assurance-artifact-manifest';
-import { buildArtifactManifest, computeArtifactSha256 } from './assurance-artifact-manifest';
+import { buildArtifactManifest, buildMachineReadableAssuranceOutput, computeArtifactSha256, type MachineReadableAssuranceOutput } from './assurance-artifact-manifest';
+import { buildMachineBundleProjection, type MachineBundleProjection } from './report-profile-projection';
 import { buildEvaluatedTopologyProjection } from '@/lib/topology/topology-projector';
 import { buildAgentReachabilityReadModel, type AgentReachabilityReadModel } from '@/lib/ai-inventory/agent-reachability-read-model';
 import { buildConstellationProjection } from '@/lib/topology/constellation-presentation-projection';
@@ -54,7 +54,10 @@ export interface AssuranceOutputBundle {
   output: EvaluatedAssuranceOutput;
   passport: ReturnType<typeof buildAgenticProductionPassport>;
   report: ReturnType<typeof buildAssuranceReportFromOutput>;
-  machineJson: ReturnType<typeof buildMachineReadableAssuranceOutput>;
+  /** Legacy machine-readable-0.1.1 contract — SAME_EVALUATION_SIBLING. */
+  machineJson: MachineReadableAssuranceOutput;
+  /** AA-RENDERER-2: bundle-derived machine projection — DERIVED_FROM_EVIDENCE_BUNDLE. */
+  assuranceMachineJson: MachineBundleProjection;
   constellation: ReturnType<typeof buildConstellationProjection>;
   constellationSvg: string;
   manifest: ArtifactManifest;
@@ -108,8 +111,6 @@ function buildBundleFromOutput(
   const passport = buildAgenticProductionPassport(output, passportContext);
   const report = buildAssuranceReportFromOutput(output);
 
-  const machineJson = buildMachineReadableAssuranceOutput(output);
-
   const topology = buildEvaluatedTopologyProjection(coverage, {
     evaluationId,
     scanId,
@@ -123,11 +124,48 @@ function buildBundleFromOutput(
   const constellation = buildConstellationProjection(topology, reachability);
   const constellationExport = buildConstellationExport(constellation, { evaluationId });
 
+  const topologyDigest = computeSemanticDigest(topology);
+  const reachabilityDigest = computeSemanticDigest(reachability);
+  const constellationDigest = computeSemanticDigest(constellation);
+
+  // Identity-only manifest used for bundle validation; the artifact list is
+  // finalized after bundle-derived artifacts are generated.
+  const provisionalManifest: ArtifactManifest = {
+    manifestSchemaVersion: 'artifact-0.1.1',
+    evaluationSnapshotAt: output.evaluationIdentity.evaluationSnapshotAt ?? null,
+    evaluationId,
+    scanId,
+    repositoryCommit: commitSha,
+    artifacts: [],
+    limitations: [],
+  };
+
+  const evidenceBundle = buildAssuranceEvidenceBundleV1({
+    output,
+    artifactManifest: provisionalManifest,
+    coverage,
+    canonicalEvaluation,
+    topologyProjectionDigest: topologyDigest,
+    reachabilityDigest,
+    constellationDigest,
+  });
+  // Production composition seam: required canonical domains must be represented.
+  assertRequiredBundleDomainsPresent(evidenceBundle);
+
+  // AA-RENDERER-2R: machine.json preserves the legacy machine-readable-0.1.1
+  // contract (SAME_EVALUATION_SIBLING). The bundle-derived machine projection
+  // is a separate artifact: assurance-machine.json.
+  const machineJson = buildMachineReadableAssuranceOutput(output);
+  const assuranceMachineJson = buildMachineBundleProjection(evidenceBundle, provisionalManifest);
+  const evidenceBundleJson = evidenceBundle;
+
   const artifacts = [
     // MANIFEST_PASSPORT_SHA == SHA256(exact canonical Passport artifact bytes)
     { name: 'passport.json', artifactType: 'passport', schemaVersion: passport.schemaVersion, bytes: Buffer.from(canonicalPassportBytes(passport), 'utf8') },
     { name: 'report.json', artifactType: 'report', schemaVersion: report.schemaVersion, bytes: Buffer.from(JSON.stringify(report)) },
     { name: 'machine.json', artifactType: 'machine-readable', schemaVersion: machineJson.schemaVersion, bytes: Buffer.from(JSON.stringify(machineJson)) },
+    { name: 'assurance-machine.json', artifactType: 'assurance-machine', schemaVersion: assuranceMachineJson.schemaVersion, bytes: Buffer.from(JSON.stringify(assuranceMachineJson)) },
+    { name: 'evidence-bundle.json', artifactType: 'evidence-bundle', schemaVersion: evidenceBundleJson.schemaVersion, bytes: Buffer.from(JSON.stringify(evidenceBundleJson)) },
     { name: 'constellation.svg', artifactType: 'constellation-svg', schemaVersion: constellation.projectionSchemaVersion, bytes: Buffer.from(constellationExport.svg) },
     { name: 'constellation.json', artifactType: 'constellation-json', schemaVersion: constellation.projectionSchemaVersion, bytes: Buffer.from(JSON.stringify(constellation)) },
   ];
@@ -141,28 +179,14 @@ function buildBundleFromOutput(
     evaluationSnapshotAt: output.evaluationIdentity.evaluationSnapshotAt ?? null,
   });
 
-  const topologyDigest = computeSemanticDigest(topology);
-  const reachabilityDigest = computeSemanticDigest(reachability);
-  const constellationDigest = computeSemanticDigest(constellation);
-
-  const evidenceBundle = buildAssuranceEvidenceBundleV1({
-    output,
-    artifactManifest: manifest,
-    coverage,
-    canonicalEvaluation,
-    topologyProjectionDigest: topologyDigest,
-    reachabilityDigest,
-    constellationDigest,
-  });
-  // Production composition seam: required canonical domains must be represented.
-  assertRequiredBundleDomainsPresent(evidenceBundle);
-
-  const artifactProfile: Record<string, { profileId: string; rendererId: string }> = {
-    'passport': { profileId: 'passport-semantic-projection', rendererId: 'agentic-production-passport' },
-    'report': { profileId: 'report-semantic-projection', rendererId: 'assurance-report-composer' },
-    'machine-readable': { profileId: 'machine-semantic-projection', rendererId: 'assurance-artifact-manifest' },
-    'constellation-svg': { profileId: 'constellation-projection', rendererId: 'constellation-export' },
-    'constellation-json': { profileId: 'constellation-projection', rendererId: 'constellation-presentation-projection' },
+  const artifactProfile: Record<string, { profileId: string; rendererId: string; relation: 'DERIVED_FROM_EVIDENCE_BUNDLE' | 'SAME_EVALUATION_SIBLING' | 'SERIALIZATION_OF_EVIDENCE_BUNDLE' }> = {
+    'passport': { profileId: 'passport-semantic-projection', rendererId: 'agentic-production-passport', relation: 'SAME_EVALUATION_SIBLING' },
+    'report': { profileId: 'report-semantic-projection', rendererId: 'assurance-report-composer', relation: 'SAME_EVALUATION_SIBLING' },
+    'machine-readable': { profileId: 'machine-readable-legacy', rendererId: 'assurance-artifact-manifest', relation: 'SAME_EVALUATION_SIBLING' },
+    'assurance-machine': { profileId: 'machine-semantic-projection', rendererId: 'report-profile-projection', relation: 'DERIVED_FROM_EVIDENCE_BUNDLE' },
+    'evidence-bundle': { profileId: 'bundle-serialization', rendererId: 'reporting-projection-bundle', relation: 'SERIALIZATION_OF_EVIDENCE_BUNDLE' },
+    'constellation-svg': { profileId: 'constellation-projection', rendererId: 'constellation-export', relation: 'SAME_EVALUATION_SIBLING' },
+    'constellation-json': { profileId: 'constellation-projection', rendererId: 'constellation-presentation-projection', relation: 'SAME_EVALUATION_SIBLING' },
   };
 
   const projectedArtifacts = artifacts.map((a) => ({
@@ -170,7 +194,7 @@ function buildBundleFromOutput(
     name: a.name,
     schemaVersion: a.schemaVersion,
     artifactDigest: computeArtifactSha256(a.bytes),
-    semanticRelationToEvidenceBundle: 'SAME_EVALUATION_SIBLING' as const,
+    semanticRelationToEvidenceBundle: artifactProfile[a.artifactType]?.relation ?? 'SAME_EVALUATION_SIBLING',
     profileId: artifactProfile[a.artifactType]?.profileId,
     rendererId: artifactProfile[a.artifactType]?.rendererId,
   }));
@@ -193,6 +217,7 @@ function buildBundleFromOutput(
     passport,
     report,
     machineJson,
+    assuranceMachineJson,
     constellation,
     constellationSvg: constellationExport.svg,
     manifest,
