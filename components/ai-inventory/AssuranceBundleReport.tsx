@@ -71,6 +71,11 @@ function InspectProof({ bundle, section }: { bundle: AssuranceEvidenceBundleV1; 
                 {p.sinkTargetIds.length > 0 && (
                   <p className="mt-1 font-mono break-all text-slate-500">Target references: {p.sinkTargetIds.join(', ')}</p>
                 )}
+                {(p.contextBindings?.length ?? 0) > 0 && (
+                  <p className="mt-1 text-slate-600">
+                    Context bindings — {(p.contextBindings ?? []).map((b) => `${b.contextKind} ${b.state.toLowerCase().replace(/_/g, ' ')} (tenant context ${b.tenantContextPresent === true ? 'present' : b.tenantContextPresent === false ? 'absent' : 'not established'}, filter ${b.tenantFilterBound === true ? 'bound' : b.tenantFilterBound === false ? 'not bound' : 'not established'}, subject ${b.tenantSubjectBound === true ? 'bound' : b.tenantSubjectBound === false ? 'not bound' : 'not established'})`).join('; ')}.
+                  </p>
+                )}
                 {p.limitations.length > 0 && <p className="mt-1 italic text-slate-500">Limitations: {p.limitations.join('; ')}</p>}
               </li>
             );
@@ -79,7 +84,7 @@ function InspectProof({ bundle, section }: { bundle: AssuranceEvidenceBundleV1; 
             const m = resolved.u5Member;
             return (
               <li key={ref} className="rounded bg-white p-2">
-                <p className="font-mono break-all">U5 evidence {m.evidenceId}</p>
+                <p className="font-mono break-all">Assurance evidence {m.evidenceId}</p>
                 <p className="mt-1 text-slate-600">
                   Claim {m.claimKey} — {m.claimState} · role {m.role} · class {m.epistemicClass} · producer {m.producerId}
                 </p>
@@ -163,7 +168,7 @@ export function AssuranceBundleReport({ bundle, profile = 'executive', aiSystemD
           <div className="flex gap-2"><dt className="font-medium text-slate-600">Evaluation snapshot:</dt><dd>{projection.evaluationIdentity.evaluationSnapshotAt ?? 'not bound'}</dd></div>
           <div className="flex gap-2"><dt className="font-medium text-slate-600">Repository commit:</dt><dd className="font-mono text-xs break-all">{projection.evaluationIdentity.repositoryCommitSha ?? 'not bound'}</dd></div>
           <div className="flex gap-2"><dt className="font-medium text-slate-600">Methodology:</dt><dd>{projection.methodologyVersion ?? 'not bound'}</dd></div>
-          <div className="flex gap-2"><dt className="font-medium text-slate-600">Bundle digest:</dt><dd className="font-mono text-xs break-all">{projection.bundleDigest.slice(0, 16)}…</dd></div>
+          <div className="flex gap-2"><dt className="font-medium text-slate-600">Evidence Bundle Digest:</dt><dd className="font-mono text-xs break-all">{projection.bundleDigest.slice(0, 16)}…</dd></div>
         </dl>
       </header>
 
@@ -189,7 +194,7 @@ export function AssuranceBundleReport({ bundle, profile = 'executive', aiSystemD
         .map((s) => <Section key={s.key} bundle={bundle} section={s} />)}
 
       <section className="report-section break-inside-avoid">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-700">Five Authority / Action Planes</h2>
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-700">Capability &amp; Authority Alignment</h2>
         <p className="mt-1 text-xs text-slate-500">
           Showing {projection.displayedPathCount} of {projection.totalPathCount} evaluated path(s).
           Selected for presentation; not an exhaustive absence claim.
@@ -198,7 +203,7 @@ export function AssuranceBundleReport({ bundle, profile = 'executive', aiSystemD
       </section>
 
       <footer className="mt-8 border-t border-slate-300 pt-4 text-xs text-slate-500">
-        <p>This report is projected from the exact Assurance Evidence Bundle. It does not recompute the U5 disposition, mutate canonical evidence states, or rerun analyzers.</p>
+        <p>This report is projected from the exact Assurance Evidence Bundle. It does not recompute the assurance decision, mutate canonical evidence states, or rerun analyzers.</p>
       </footer>
     </article>
   );

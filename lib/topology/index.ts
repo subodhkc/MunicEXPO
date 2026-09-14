@@ -2,7 +2,7 @@
  * AI Action & Access Map — Topology Projection barrel
  */
 
-export { buildTopologyProjection } from './topology-projector';
+export { buildTopologyProjection, buildEvaluatedActionMapProjection } from './topology-projector';
 export {
   buildConstellationProjection,
   filterByScale,

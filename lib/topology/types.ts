@@ -356,6 +356,21 @@ export interface TopologyProjectionResult {
    * LOCK: CURRENT_MAP_SCAN_A + TRACE_SCAN_B != PROOF_JOIN
    */
   actionProofBasis?: 'SAME_SCAN' | 'NOT_AVAILABLE';
+  /**
+   * AA-REPORTING-INTERPRETATION-2 §3: customer-facing System Constellation
+   * view state — a PRESENTATION/provenance classification derived from
+   * canonical projection/run state. It is NOT an evidence state and NOT an
+   * assurance state.
+   *
+   *   CURRENT_SCAN_PROJECTION — the bound run/scan is still active;
+   *     analysis fields may still be populating.
+   *   CURRENT_SYSTEM_VIEW — latest accepted evidence for the AI system.
+   *   EVALUATION_SNAPSHOT — bound to the exact evaluated evidence scope.
+   *
+   * LOCKS: VIEW_STATE != EVIDENCE_STATE; VIEW_STATE != ASSURANCE_STATE;
+   *   CURRENT_SYSTEM_PROJECTION != EVALUATION_SNAPSHOT.
+   */
+  viewState?: 'CURRENT_SCAN_PROJECTION' | 'CURRENT_SYSTEM_VIEW' | 'EVALUATION_SNAPSHOT';
   lenses: MapLens[];
   zoomLevels: SemanticZoom[];
 }
