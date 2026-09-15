@@ -37,10 +37,10 @@
     {
       "filename": "constellation-focused-path-1440.png",
       "route": "/sample-reports/kestrel/constellation (public)",
-      "selectedPath": "ORDER RECORD WRITE (orders insert)",
-      "viewState": "single consequence path selected, Inspect Proof visible",
+      "selectedPath": "ORDER RECORD WRITE — handle_place_order → tool_handlers.py:220:18 (orders insert)",
+      "viewState": "single consequence path selected: agent → capability → handler → operation/resource → consequence chain open, five evidence planes shown, path highlighted in evaluated-paths list",
       "viewport": "1440x900",
-      "proves": "One source-backed Code Capable path to a mutating consequence, with inspectable proof",
+      "proves": "One source-backed Code Capable path to a mutating consequence with honest plane states — Code Capable ESTABLISHED, other planes NOT_ASSESSED",
       "origin": "REAL_APPLICATION"
     },
     {
