@@ -48,6 +48,33 @@ export interface SampleArtifact {
 
 export const SAMPLE_ARTIFACTS: SampleArtifact[] = [
   {
+    id: 'kestrel-assurance',
+    name: 'Kestrel — Agentic AI Assurance Report',
+    productOwner: 'Evidence-Bound Assurance',
+    sampleType: 'current_generated_example',
+    currentCapability: 'CURRENT',
+    integrityState: 'HASH_BOUND',
+    category: 'report',
+    description: 'A real-repository assurance example (sanitized) showing what the Kestrel AI Service Call Agent implementation can reach and cause, where authority evidence ends, and why the bounded Assurance Decision is REVIEW.',
+    demonstrates: [
+      '44 source-backed consequential action paths',
+      'Code Capable vs policy/runtime/observed distinction',
+      'Consequence-first Action Assurance',
+      'Exact Evidence Frontier and Inspect Proof drill-down',
+      'System Constellation bound to the same evaluation',
+    ],
+    evidenceBasis: 'Frozen evaluation of a real public repository (sanitized projection). Source commit 5e65843.',
+    limitations: [
+      'Sanitized demonstration — organization and run identifiers redacted',
+      'Policy, runtime permission and observed-execution evidence were not established',
+      'Not a certification, audit opinion, or production approval',
+    ],
+    previewUrl: '/sample-reports/kestrel',
+    cta: { label: 'View Assurance Report', href: '/sample-reports/kestrel' },
+    badge: 'Flagship',
+    frameworkMappings: [],
+  },
+  {
     id: 'soc2-detailed',
     name: 'SOC 2 Control Mapping Report',
     productOwner: 'Compliance Wizard',
