@@ -1,0 +1,146 @@
+{
+  "window": {
+    "baseline_sha": "4c999fb86ff8fb6a9283c250511339eac79b1d64",
+    "baseline_date": "2026-08-31T22:02:00-05:00",
+    "submission_sha": "11b2e8b68cdbd974d6ae0b03ede5c1e907700e12",
+    "note": "Baseline verified chronologically as the last accepted Main commit before the 2026-09-01 competition boundary."
+  },
+  "capabilities": [
+    {
+      "capability": "Evidence-Bound Assurance evaluator / types / persistence",
+      "first_impl_sha": "f2e87682f6fedc352adab5b0d1b6dae5e425d9a5",
+      "first_impl_date": "2026-08-23",
+      "merged_main": "pre-baseline",
+      "classification": "PRE_EXISTING_FOUNDATION",
+      "owners": ["lib/assurance/types.ts", "lib/assurance/assurance-evaluator.ts", "lib/assurance/persistence.ts"]
+    },
+    {
+      "capability": "Assurance Package / Decision Receipt service",
+      "first_impl_sha": "c2b10cc29238528dcc0dc13a154511913a862526",
+      "first_impl_date": "2026-08-24",
+      "merged_main": "pre-baseline",
+      "classification": "PRE_EXISTING_FOUNDATION",
+      "owners": ["lib/assurance/u6-package-service.ts"]
+    },
+    {
+      "capability": "Action surface model",
+      "first_impl_sha": "9b01ff037673961f69f38974f6d9c50e3a8036a0",
+      "first_impl_date": "2026-08-30",
+      "merged_main": "pre-baseline",
+      "classification": "PRE_EXISTING_FOUNDATION",
+      "owners": ["lib/assurance/action-surface.ts"]
+    },
+    {
+      "capability": "Engine / producer registry",
+      "first_impl_sha": "7f39d9d8bceb46b1312f24b347656c5b68680840",
+      "first_impl_date": "2026-08-23",
+      "merged_main": "pre-baseline",
+      "classification": "PRE_EXISTING_FOUNDATION",
+      "owners": ["lib/engine-registry/"]
+    },
+    {
+      "capability": "Topology projector (System Constellation core)",
+      "first_impl_sha": "24bf48f1bfe68a3cac8e64ff152817edbb21e75c",
+      "first_impl_date": "2026-09-04",
+      "merged_main": "c723d8348f05155f96e006db024fbd886dc06d52 (2026-09-09)",
+      "classification": "NEW_DURING_MUNICTECH",
+      "owners": ["lib/topology/topology-projector.ts", "lib/topology/types.ts"]
+    },
+    {
+      "capability": "Constellation presentation projection",
+      "first_impl_sha": "371c6ecff4ac8a77b2ba1e12e7c4533e7a56f039",
+      "first_impl_date": "2026-09-09",
+      "merged_main": "c723d8348f05155f96e006db024fbd886dc06d52 (2026-09-09)",
+      "classification": "NEW_DURING_MUNICTECH",
+      "owners": ["lib/topology/constellation-presentation-projection.ts"]
+    },
+    {
+      "capability": "Action Assurance five-plane section",
+      "first_impl_sha": "8692943ac4ef9fbb1fbfe51e9805c5b26fb83c81",
+      "first_impl_date": "2026-09-09",
+      "merged_main": "2026-09-09",
+      "classification": "NEW_DURING_MUNICTECH",
+      "owners": ["lib/assurance/u6-action-assurance-section.ts"]
+    },
+    {
+      "capability": "Agentic Production Passport",
+      "first_impl_sha": "e0315497ae4211d349a11d3d756ee74b5633a8a9",
+      "first_impl_date": "2026-09-10",
+      "merged_main": "2c9cff4aa9d27958b16cc112b0d996be3db10be3 (2026-09-12)",
+      "classification": "NEW_DURING_MUNICTECH",
+      "owners": ["lib/assurance/agentic-production-passport.ts"]
+    },
+    {
+      "capability": "Artifact manifest / integrity",
+      "first_impl_sha": "e0315497ae4211d349a11d3d756ee74b5633a8a9",
+      "first_impl_date": "2026-09-10",
+      "merged_main": "2c9cff4aa9d27958b16cc112b0d996be3db10be3 (2026-09-12)",
+      "classification": "NEW_DURING_MUNICTECH",
+      "owners": ["lib/assurance/assurance-artifact-manifest.ts"]
+    },
+    {
+      "capability": "Assurance product adapters (bundle owner)",
+      "first_impl_sha": "56b7b298b79a6c9dc37fea065ff282f13b0918ee",
+      "first_impl_date": "2026-09-10",
+      "merged_main": "2c9cff4aa9d27958b16cc112b0d996be3db10be3 (2026-09-12)",
+      "classification": "NEW_DURING_MUNICTECH",
+      "owners": ["lib/assurance/assurance-product-adapters.ts"]
+    },
+    {
+      "capability": "Consequence Delta (+ service + overlay)",
+      "first_impl_sha": "e7e70ccb6248d9ef42116551901b626a0631210c",
+      "first_impl_date": "2026-09-11",
+      "merged_main": "2c9cff4aa9d27958b16cc112b0d996be3db10be3 (2026-09-12)",
+      "classification": "NEW_DURING_MUNICTECH",
+      "owners": ["lib/assurance/consequence-delta.ts", "lib/assurance/consequence-delta-service.ts", "lib/topology/constellation-delta-overlay.ts"]
+    },
+    {
+      "capability": "Evidence-bound report projection (bundle + exec/technical/auditor profiles)",
+      "first_impl_sha": "fc887901a29c4114c4a4c8685a069934323ba5e1 / ae48c964276128c0a5b1886840991486705674d0",
+      "first_impl_date": "2026-09-13",
+      "merged_main": "616039ee0b9d51e29932bcc13294b80b99049ba7 / a005c75991b0d0a84d8aa322309208b16b8800fe (2026-09-13)",
+      "classification": "NEW_DURING_MUNICTECH",
+      "owners": ["lib/assurance/reporting-projection-bundle.ts", "lib/assurance/report-profile-projection.ts", "components/ai-inventory/AssuranceBundleReport.tsx"]
+    },
+    {
+      "capability": "Evaluation report API + dashboard report page",
+      "first_impl_sha": "4410439d77356f32ce2202ad7f0f56e1f03249ca",
+      "first_impl_date": "2026-09-13",
+      "merged_main": "2026-09-13",
+      "classification": "NEW_DURING_MUNICTECH",
+      "owners": ["app/api/assurance/evaluations/[evaluationId]/report/route.ts", "app/dashboard/assurance/evaluations/[evaluationId]/page.tsx"]
+    },
+    {
+      "capability": "Kestrel real-repository public demo pack (sanitized projection + report + constellation)",
+      "first_impl_sha": "cfa853e89cf3e678f5b412cd16a94b6d5f6add39",
+      "first_impl_date": "2026-09-14",
+      "merged_main": "ad5d376b473cb95e8af107c47c6c864ebf85add7 (2026-09-14)",
+      "classification": "NEW_DURING_MUNICTECH",
+      "owners": ["app/sample-reports/kestrel/", "data/kestrel-demo/", "scripts/kestrel-demo-export.ts"]
+    },
+    {
+      "capability": "Consequence-label semantic hardening (canonical sink→effect map)",
+      "first_impl_sha": "ee1cbafb8d8c91dd9a5f212491544f9464175c2f",
+      "first_impl_date": "2026-09-14",
+      "merged_main": "c44152b37e9d61b6a1b0025094433e0250fd8b4d (2026-09-14)",
+      "classification": "NEW_DURING_MUNICTECH",
+      "owners": ["data/kestrel-demo/consequence-labels.ts"]
+    },
+    {
+      "capability": "Dev-only QA review hub",
+      "first_impl_sha": "ee1cbafb8d8c91dd9a5f212491544f9464175c2f",
+      "first_impl_date": "2026-09-14",
+      "merged_main": "c44152b37e9d61b6a1b0025094433e0250fd8b4d (2026-09-14)",
+      "classification": "NEW_DURING_MUNICTECH",
+      "owners": ["app/dev/qa-review/"]
+    },
+    {
+      "capability": "Colon-bearing evaluation ID decode fix (report page)",
+      "first_impl_sha": "e2521efe",
+      "first_impl_date": "2026-09-14",
+      "merged_main": "11b2e8b68cdbd974d6ae0b03ede5c1e907700e12 (2026-09-14)",
+      "classification": "NEW_DURING_MUNICTECH",
+      "owners": ["app/dashboard/assurance/evaluations/[evaluationId]/page.tsx"]
+    }
+  ]
+}

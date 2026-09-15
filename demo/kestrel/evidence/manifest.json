@@ -1,0 +1,52 @@
+{
+  "manifestVersion": "kestrel-demo-manifest-1.0.0",
+  "generatedAt": "2026-09-15T03:55:18.792Z",
+  "publicationProfile": "sanitized-real-repository-example",
+  "source": {
+    "repository": "subodhkc/AI-Service-Call-Agent-",
+    "commitSha": "5e65843fddfe5f907485b798e464ad37b3b3b2c7"
+  },
+  "evaluation": {
+    "publicEvaluationRef": "HAIEC-KESTREL-EVAL-5e65843",
+    "evaluationSnapshotAt": "2026-09-14T08:38:17.814Z",
+    "schemaVersion": "assurance-evidence-bundle-1.1.0",
+    "bundleDigest": "3e21e47c0fdfa89d7dc0a7516d680b578b4051d923c47c731aee411c47e50901",
+    "disposition": "REVIEW",
+    "actionPathCount": 44,
+    "codeCapableEstablished": 44,
+    "totalEvidenceTraces": 1322,
+    "evidenceFrontierItems": 555
+  },
+  "artifacts": [
+    {
+      "name": "kestrel-assurance.public.json",
+      "type": "web-report-projection",
+      "schemaVersion": "assurance-evidence-bundle-1.1.0",
+      "sha256": "6a1dcae3cc557ef251d1d8e505269cc852fbe707c846f9c771ed258e9e86b285"
+    },
+    {
+      "name": "kestrel-assurance.machine.json",
+      "type": "machine-export",
+      "schemaVersion": "assurance-evidence-bundle-1.1.0",
+      "sha256": "b21057c803e21cdddf3087d2f3048ee1d85be62f96a66f7ef4cf9368191a5679"
+    },
+    {
+      "name": "kestrel-assurance-executive.pdf",
+      "type": "executive-pdf",
+      "profile": "executive",
+      "sha256": "06cf17662a799305e98564d38f08a891bdc6803fdcacad8648393a553f51bac3"
+    },
+    {
+      "name": "kestrel-assurance-technical.pdf",
+      "type": "technical-pdf",
+      "profile": "technical",
+      "sha256": "1f7a202c3271649db9fe9db2f5c2ebe3b136ccd5f4170a6f6cf1452a4f77ac26"
+    },
+    {
+      "name": "kestrel-assurance-auditor.pdf",
+      "type": "auditor-pdf",
+      "profile": "auditor",
+      "sha256": "7650952ce0831bce3a97ce96360c59466948bc05b425b0192728339de48aa548"
+    }
+  ]
+}

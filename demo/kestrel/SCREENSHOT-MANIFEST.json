@@ -1,0 +1,69 @@
+{
+  "manifest": "kestrel-screenshot-manifest-1.0.0",
+  "evaluation": {
+    "publicEvaluationRef": "HAIEC-KESTREL-EVAL-5e65843",
+    "sourceCommitSha": "5e65843fddfe5f907485b798e464ad37b3b3b2c7",
+    "evaluationSnapshotAt": "2026-09-14T08:38:17.814Z",
+    "disposition": "REVIEW"
+  },
+  "screenshots": [
+    {
+      "filename": "assurance-decision-executive-1440.png",
+      "route": "/sample-reports/kestrel (public, executive profile)",
+      "selectedPath": null,
+      "viewState": "executive profile, top of report",
+      "viewport": "1440x900",
+      "proves": "Public report renders the frozen REVIEW evaluation with decision banner and path summary",
+      "origin": "REAL_APPLICATION"
+    },
+    {
+      "filename": "five-evidence-planes-technical-1440.png",
+      "route": "/sample-reports/kestrel (public, technical profile)",
+      "selectedPath": null,
+      "viewState": "technical profile, Action Assurance five-plane section",
+      "viewport": "1440x900",
+      "proves": "Five evidence planes rendered independently; NOT_ASSESSED planes are shown honestly, not upgraded",
+      "origin": "REAL_APPLICATION"
+    },
+    {
+      "filename": "constellation-overview-1440.png",
+      "route": "/sample-reports/kestrel/constellation (public)",
+      "selectedPath": null,
+      "viewState": "constellation overview, evaluation snapshot basis",
+      "viewport": "1440x900",
+      "proves": "Consequence-first System Constellation renders the frozen evaluation's reach surface",
+      "origin": "REAL_APPLICATION"
+    },
+    {
+      "filename": "constellation-focused-path-1440.png",
+      "route": "/sample-reports/kestrel/constellation (public)",
+      "selectedPath": "ORDER RECORD WRITE (orders insert)",
+      "viewState": "single consequence path selected, Inspect Proof visible",
+      "viewport": "1440x900",
+      "proves": "One source-backed Code Capable path to a mutating consequence, with inspectable proof",
+      "origin": "REAL_APPLICATION"
+    },
+    {
+      "filename": "authenticated-eval-report-1440.png",
+      "route": "/dashboard/assurance/evaluations/<eval> (MunichTech Demo workspace)",
+      "selectedPath": null,
+      "viewState": "authenticated report, executive profile",
+      "viewport": "1440x900",
+      "proves": "Same frozen evaluation renders in the authenticated product workspace — public demo is not a mock",
+      "origin": "REAL_APPLICATION"
+    },
+    {
+      "filename": "report-mobile-390.png",
+      "route": "/sample-reports/kestrel (public)",
+      "selectedPath": null,
+      "viewState": "mobile viewport",
+      "viewport": "390px",
+      "proves": "Report remains legible at mobile width",
+      "origin": "REAL_APPLICATION"
+    }
+  ],
+  "notIncluded": {
+    "DELTA_SCREENSHOT": "No qualified Kestrel A/B evaluation pair exists; capability documented and tested instead",
+    "PASSPORT_SCREENSHOT": "Passport is exported as canonical JSON (demo/kestrel/passport/) rather than presented as a rendered screenshot"
+  }
+}

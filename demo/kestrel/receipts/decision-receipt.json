@@ -1,0 +1,40 @@
+{
+  "inputHash": "2b11e0633ee2a073c0b9f0b92394ad00ccaf9f7a33e3049d639d7cefeaf88100",
+  "profileId": "haiec.agentic.baseline",
+  "receiptId": "HAIEC-KESTREL-EVAL-5e65843:assurance:1.1:receipt",
+  "aiSystemId": "kestrel-ai-service-call-agent",
+  "outputHash": "edd742d983f7bd3cbe4e0e3893d20b8081c8a9c492b16b2c839fa643dd533655",
+  "disposition": "REVIEW",
+  "limitations": [
+    "SCAN_ERRORS"
+  ],
+  "receiptHash": "fe6f5cd7f84c7d5d96d451f404f3112743ca6cc282843c6e6194b400d5874919",
+  "merkleStatus": "AVAILABLE",
+  "buildIdentity": {
+    "source": "STATIC_REPOSITORY_COMMIT",
+    "gitCommit": "5e65843fddfe5f907485b798e464ad37b3b3b2c7"
+  },
+  "organizationId": "munich-tech-demo",
+  "profileVersion": "1.0",
+  "receiptVersion": "1.1.0",
+  "claimStateSummary": {
+    "NOT_ASSESSED": 1,
+    "INSUFFICIENT_EVIDENCE": 4
+  },
+  "evidenceSetDigest": "9a55dd5fc21bd2e71c946a355a8bada818cf0f9f9c7fc567db2756e7b9e468fd",
+  "orchestratorRunId": "HAIEC-KESTREL-EVAL-5e65843",
+  "evidenceMerkleRoot": "256962c3834659a897d9b979dd8ca38d6d0c0a0386c1e297759e65d9f9b79658",
+  "authoritySourceLabel": "UNKNOWN",
+  "evaluationSnapshotAt": "2026-09-14T08:38:17.814Z",
+  "evidenceBundleDigest": "b68f16fa444bb1bde0321cc2ba2d1d2c20e30ff976351b8c5fb42357c378276c",
+  "semanticReportDigest": "feaa8f5dc94b74b3ae888ece84b9620c2815b773bb597fee125608480d4ceb84",
+  "assuranceEvaluationId": "HAIEC-KESTREL-EVAL-5e65843:assurance:1.1",
+  "evaluatedScopeBinding": {
+    "scopeDigest": "a6cb9cdfe7fa216c42e4273fc67daa6f5aa92f4ff2afa296bcdd8d3c909ab31c",
+    "evaluatedScopeId": "kestrel-evaluated-scope",
+    "scopeSchemaVersion": "1.2"
+  },
+  "profileDigestResolved": "c436050b5d3870dc9b949ad910d5b31ddc7a4ea61606ceeb8b0cd234c3aad907",
+  "syntheticClassification": "UNKNOWN",
+  "assuranceMethodologyVersion": "1.1"
+}

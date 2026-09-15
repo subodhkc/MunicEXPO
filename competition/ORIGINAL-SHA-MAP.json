@@ -1,0 +1,1507 @@
+[
+  {
+    "public_sha": "2afcb0df77e1743b05cfdca4b712b59605e088d8",
+    "original_haiec_sha": "002e0771e94f1cdb713d7e8cc49dcb326f3b2b3e",
+    "original_author_date": "2026-09-05 06:04:13 -0500",
+    "original_commit_date": "2026-09-05 06:04:13 -0500",
+    "subject": "SEO intent ownership, hub IA, footer simplification, AGENTS governance"
+  },
+  {
+    "public_sha": "e9571d930a428794733902f11fd2620c5528ce2d",
+    "original_haiec_sha": "011dc2804a6494e4abcb03643403143e3d01f514",
+    "original_author_date": "2026-09-10 22:37:44 -0500",
+    "original_commit_date": "2026-09-10 22:37:44 -0500",
+    "subject": "OUTPUT-Q0: repair Passport/report semantic identity, subject identity and capability ladder OUTPUT-Q0: bind Evidence Frontier to structured, non-prose reasons OUTPUT-Q0: make Constellation export a canonical reachability rendering adapter OUTPUT-Q0: add dedicated output tests"
+  },
+  {
+    "public_sha": "98b6774045b4fd53b11366bd927a072dd30e7207",
+    "original_haiec_sha": "01bc397585f37932b3186c94953b3b348a8131fa",
+    "original_author_date": "2026-09-11 07:19:33 -0500",
+    "original_commit_date": "2026-09-11 07:19:33 -0500",
+    "subject": "fix(assurance): Delta comparisonDigest hashes explicit semantic core only"
+  },
+  {
+    "public_sha": "2d983e870bb0e314f67c36962c8c71407efa44f7",
+    "original_haiec_sha": "01f5a0ab1c04ee46a18cf156e2f841809a6851ce",
+    "original_author_date": "2026-09-04 00:09:14 -0500",
+    "original_commit_date": "2026-09-04 00:09:14 -0500",
+    "subject": "UX-2C truth repair — atomic CAS, single render, canonical diff, real validation"
+  },
+  {
+    "public_sha": "be1bbae4560f93aa7857fd33e45cb8c660644e0a",
+    "original_haiec_sha": "020f69fb2a863f05338ec8cbd6386a76e4630815",
+    "original_author_date": "2026-08-24 04:17:06 -0500",
+    "original_commit_date": "2026-08-24 04:17:06 -0500",
+    "subject": "feat(u6): semantic comparator grouping, actor identity, optional dimensions, availability truth"
+  },
+  {
+    "public_sha": "2d1aa87bb3da7c2a51b43b8e4ee6b90f3b24e921",
+    "original_haiec_sha": "027cbceb831042730dcc5d34d94817d198ba3e8b",
+    "original_author_date": "2026-08-24 22:09:15 -0500",
+    "original_commit_date": "2026-08-24 22:09:15 -0500",
+    "subject": "U6 final productization: private assurance APIs, offline export, atomic publication, build identity, framework truth"
+  },
+  {
+    "public_sha": "64e49bd922a6964eb9cd8299332a2f06825d11c4",
+    "original_haiec_sha": "035d4ee2ad42ce3f168b79504f03430dbb725a6c",
+    "original_author_date": "2026-08-25 04:30:32 -0500",
+    "original_commit_date": "2026-08-25 04:30:32 -0500",
+    "subject": "Merge pull request #1468 from subodhkc/px1.1b/surgical-truth-repair-and-colorado-reconciliation"
+  },
+  {
+    "public_sha": "fef2198c3f8ae50325d7c13e8c92d2f9e800d6d0",
+    "original_haiec_sha": "038b0ab6e749d5ebecf5ac71bf7bacc8d5ef6f11",
+    "original_author_date": "2026-09-11 00:12:53 -0500",
+    "original_commit_date": "2026-09-11 00:12:53 -0500",
+    "subject": "One exact snapshot per product bundle; from-snapshot U6 builders; EA-2 stage normalization; Constellation identity fail-closed"
+  },
+  {
+    "public_sha": "0f1a36a7e4e5910d2c3e7ee5074531a89b026a96",
+    "original_haiec_sha": "03bfbceb86a26bcd042a783e89b2a0a39af9a4b0",
+    "original_author_date": "2026-08-30 21:17:06 -0500",
+    "original_commit_date": "2026-08-30 21:17:06 -0500",
+    "subject": "Gate 4A: bind exact source/build identity and fail closed on conflicts (#1557)"
+  },
+  {
+    "public_sha": "8794058c4353e2dee6ab9ed0cab92b3f0c81ab98",
+    "original_haiec_sha": "045355a5b64dd2be9f96707225650fe34a456c46",
+    "original_author_date": "2026-08-26 22:34:22 -0500",
+    "original_commit_date": "2026-08-26 22:34:22 -0500",
+    "subject": "PX1.2B-R1: Truth binding, state authority, and workspace closure"
+  },
+  {
+    "public_sha": "b12fcb88c32c41f99f30e927d0d821afb7477216",
+    "original_haiec_sha": "045bda0ea19c5807f7d82ba343caae4664629311",
+    "original_author_date": "2026-08-26 04:15:46 -0500",
+    "original_commit_date": "2026-08-26 04:15:46 -0500",
+    "subject": "Merge pull request #1482 from subodhkc/ux/public-site-enterprise-alignment"
+  },
+  {
+    "public_sha": "1e81d9da2a7d8171f426733f079ee88a2be2b8b5",
+    "original_haiec_sha": "049b38adc123ed7243f75a4666ec2a1aba5522bf",
+    "original_author_date": "2026-09-11 07:55:34 -0500",
+    "original_commit_date": "2026-09-11 07:55:34 -0500",
+    "subject": "fix(assurance): Passport U6 lineage envelope + deterministic canonical bytes"
+  },
+  {
+    "public_sha": "be30b75563066c561c95735d798bcf930edc0264",
+    "original_haiec_sha": "05fd64baf55578140a613ebf3f73da219f138a4f",
+    "original_author_date": "2026-09-09 08:26:38 -0500",
+    "original_commit_date": "2026-09-09 08:26:38 -0500",
+    "subject": "security: bind scan intent authorization and source revision"
+  },
+  {
+    "public_sha": "5a4ea374b43c9fb093a0295772a45e411eaf02dc",
+    "original_haiec_sha": "064be411d4a23dc2b2be5d1d89e5de0f7b2b1b79",
+    "original_author_date": "2026-02-12 17:21:12 -0600",
+    "original_commit_date": "2026-02-12 17:21:12 -0600",
+    "subject": "fix: hero buttons, menu links, runtime engine landing page, sample report"
+  },
+  {
+    "public_sha": "a21f9a5a6b5c019f044da0c24d6b8feda05b6647",
+    "original_haiec_sha": "081d720cb9e1256f4d3ffb2129945d2e8ce819f1",
+    "original_author_date": "2026-09-09 04:14:22 -0500",
+    "original_commit_date": "2026-09-09 04:14:22 -0500",
+    "subject": "U6/ARI Phase 4R convergence: qualify source reachability, IAM context, and additive report sections"
+  },
+  {
+    "public_sha": "a798546e2557edfc6caffb08e5a40d541a0d509c",
+    "original_haiec_sha": "08825cbb71c65cf9546cd0a3685ca85accae9d45",
+    "original_author_date": "2026-09-13 03:11:22 -0500",
+    "original_commit_date": "2026-09-13 03:11:22 -0500",
+    "subject": "FP-EMPTY-1: empty five-plane comparison set is a state, never an ALLOW"
+  },
+  {
+    "public_sha": "b3f900c9bdd73276385850c202c7e95821e42b32",
+    "original_haiec_sha": "08e593b23a25be0080da593130b5de4508b13f07",
+    "original_author_date": "2026-08-23 16:02:50 -0500",
+    "original_commit_date": "2026-08-23 16:02:50 -0500",
+    "subject": "feat(t1-d): final tenant security proof — slug entitlement isolation, installation transfer auth, adapter conflict, executable tests"
+  },
+  {
+    "public_sha": "ce29216aa12cad144ab36f888877627637ed0712",
+    "original_haiec_sha": "090cbc202cf555f11fc496e115fa2e69bab61ed1",
+    "original_author_date": "2026-08-24 00:07:53 -0500",
+    "original_commit_date": "2026-08-24 00:07:53 -0500",
+    "subject": "feat(e1): close profile-runtime integration — persisted, source-truthful, U6-ready"
+  },
+  {
+    "public_sha": "9aa48a13042dc5946209d51b541dbd0a2a8a7bf0",
+    "original_haiec_sha": "0b457302662332ac5a418cc3ac91b08ec8290379",
+    "original_author_date": "2026-09-11 00:53:47 -0500",
+    "original_commit_date": "2026-09-11 00:53:47 -0500",
+    "subject": "F-3/EA-2: include framework relevance in machine-readable assurance artifact"
+  },
+  {
+    "public_sha": "f79e220a36b73e14065457a0af2ac33194cfd14a",
+    "original_haiec_sha": "0c64156514ea7e7e99874e7cdf62fff95f41127c",
+    "original_author_date": "2026-09-04 08:59:59 -0500",
+    "original_commit_date": "2026-09-04 08:59:59 -0500",
+    "subject": "Final map truth close — reachability, credential direction, resource identity"
+  },
+  {
+    "public_sha": "9e9a4dd2dff50fb2dd6a4878a7ac52c68d3fe295",
+    "original_haiec_sha": "1083c36ef8331c9c14eba32b2737f6d02a511965",
+    "original_author_date": "2026-09-04 09:18:42 -0500",
+    "original_commit_date": "2026-09-04 09:18:42 -0500",
+    "subject": "Merge pull request #1605 from subodhkc/wave2/action-access-map-mvp"
+  },
+  {
+    "public_sha": "c4ebb5197886b1d3e7dcb480e5f4026f5dad7850",
+    "original_haiec_sha": "11072740c5dac861820945321fcbe36db9bc194c",
+    "original_author_date": "2026-09-13 21:42:35 -0500",
+    "original_commit_date": "2026-09-13 21:42:35 -0500",
+    "subject": "AA-RENDERER-2R2: exact proof identity, U5 evidence-set member proof, web/PDF path parity, consequence IDs in Inspect Proof"
+  },
+  {
+    "public_sha": "fb7dcd14a2036aef58490c6b7dc88ae3dfbfbe4f",
+    "original_haiec_sha": "150fcfcc3aef6ad7ba0a961744d25213f42281fa",
+    "original_author_date": "2026-09-14 03:19:23 -0500",
+    "original_commit_date": "2026-09-14 03:19:23 -0500",
+    "subject": "AA-CONSTELLATION-PROVENANCE-1R: exact evaluation identity + scan-lifecycle closure"
+  },
+  {
+    "public_sha": "a5413db11f711e14820060bae12d3acb2a5bec07",
+    "original_haiec_sha": "15bc214408f4af7e24bb6e5ecee2927552e2c804",
+    "original_author_date": "2026-09-05 05:41:56 -0500",
+    "original_commit_date": "2026-09-05 05:41:56 -0500",
+    "subject": "Remove HAIEC Inc. from all active brand, legal, and artifact surfaces"
+  },
+  {
+    "public_sha": "90b6080179fbf8854cb12b8de6898fa093081f6c",
+    "original_haiec_sha": "15fe3e8a306e3379845ad923435ed60ddadb9b2c",
+    "original_author_date": "2026-09-09 10:14:36 -0500",
+    "original_commit_date": "2026-09-09 10:14:36 -0500",
+    "subject": "security: qualify PK-0 scan, Modal pre-clone, and aggregate callback seams"
+  },
+  {
+    "public_sha": "9c22dc6045c1ab1e5a85cd944e98f430a0009651",
+    "original_haiec_sha": "188345b6d930fee158e7591d9c8e51d0209f9340",
+    "original_author_date": "2026-08-24 03:39:48 -0500",
+    "original_commit_date": "2026-08-24 03:39:48 -0500",
+    "subject": "feat(u6): persist five-plane capability facts and availability, render real report"
+  },
+  {
+    "public_sha": "37e778b0b65f106c48ecf77d4a1573ec7f0a087c",
+    "original_haiec_sha": "19097de810970e8885465cd96e28b0ee135dea3e",
+    "original_author_date": "2026-08-24 09:19:30 -0500",
+    "original_commit_date": "2026-08-24 09:19:30 -0500",
+    "subject": "U6 semantic integrity pass: additive migration, method-aware epistemic classification, action-witness identity, five-plane ALIGNED restraint, and PostgreSQL integration test."
+  },
+  {
+    "public_sha": "b36a3bf4a217e48116cd66100b7c457ea2e69d29",
+    "original_haiec_sha": "1b6e0310d0ca6e171e1d439cc226fc1cc657cb3f",
+    "original_author_date": "2026-09-05 07:27:42 -0500",
+    "original_commit_date": "2026-09-05 07:27:42 -0500",
+    "subject": "Merge pull request #1625 from subodhkc/wave6/final-customer-surface-convergence"
+  },
+  {
+    "public_sha": "65bb16733f1a63c6b63f2fcd493619c1b2209424",
+    "original_haiec_sha": "1c87c17a6963a5f2a6c0e8bb792eb03863d254d7",
+    "original_author_date": "2026-09-10 21:54:28 -0500",
+    "original_commit_date": "2026-09-10 21:54:28 -0500",
+    "subject": "EA-2: add deterministic execution archetype summary read-model OUTPUT-0: add shared evaluated-assurance output composer with exact-scan binding"
+  },
+  {
+    "public_sha": "5c090c01c3c0be470aae1afeecb523c1acfe026a",
+    "original_haiec_sha": "1e2a4ab4c4af64abe80b3c37d80b66b0d7f910e2",
+    "original_author_date": "2026-09-08 09:49:01 -0500",
+    "original_commit_date": "2026-09-08 09:49:01 -0500",
+    "subject": "PX-FINAL: SaaS product convergence - Action Proof UI, map trace refs, U6 section, dashboard cleanup"
+  },
+  {
+    "public_sha": "6d0f3fc40a5e83920c6258487ca36de6e37ca6e2",
+    "original_haiec_sha": "1f531c90099188ed9472bd5ea0522c46714b474e",
+    "original_author_date": "2026-09-06 23:36:53 -0500",
+    "original_commit_date": "2026-09-06 23:36:53 -0500",
+    "subject": "WP-MAP-REPLICA — Final Exact-HTML Fidelity Closure"
+  },
+  {
+    "public_sha": "3033be4363529d69d5ac9767635540972775f14d",
+    "original_haiec_sha": "1f9581b75f4b284787fda6f55853c199715d1729",
+    "original_author_date": "2026-09-09 04:53:36 -0500",
+    "original_commit_date": "2026-09-09 04:53:36 -0500",
+    "subject": "ARI-P0 product convergence: customer-facing reachability read model"
+  },
+  {
+    "public_sha": "100fa1b96024ff4f42e89b60b25f42787d231dd1",
+    "original_haiec_sha": "203eb154e2effbad71215225a9e0d1dc4f7ecd08",
+    "original_author_date": "2026-08-24 02:11:16 -0500",
+    "original_commit_date": "2026-08-24 02:11:16 -0500",
+    "subject": "feat(u6): move capability contract to Evidence Core, extend Envelope and mapping"
+  },
+  {
+    "public_sha": "b22711ad1a5147c499f18fc41c4ec3a2f25520e0",
+    "original_haiec_sha": "2070e60aa9e92e590d1e4ba3cf0519854a03c04f",
+    "original_author_date": "2026-09-13 09:13:03 -0500",
+    "original_commit_date": "2026-09-13 09:13:03 -0500",
+    "subject": "AA-PROJECTION-1R: remove hard-coded truth, bind canonical U5, enforce provenance"
+  },
+  {
+    "public_sha": "ef6392b714970c771c646f767231870413311155",
+    "original_haiec_sha": "2097327f013322363337538a5c45117e7a1f6fa9",
+    "original_author_date": "2026-09-09 09:40:44 -0500",
+    "original_commit_date": "2026-09-09 09:40:44 -0500",
+    "subject": "security: PK-0 source/tenant identity repairs and behavioral qualification"
+  },
+  {
+    "public_sha": "4fff7e63843da2c991fafb24a47be1be5753cc9f",
+    "original_haiec_sha": "21e13031215c49165382592401d72857b5139d72",
+    "original_author_date": "2026-09-04 10:11:35 -0500",
+    "original_commit_date": "2026-09-04 10:11:35 -0500",
+    "subject": "Add Sample AI Action & Access Map experience (wave3/sample-action-access-map)"
+  },
+  {
+    "public_sha": "733129552d5dbd3b257bbf600cb3546c7cfaf4c8",
+    "original_haiec_sha": "22c9ee10f2bdcc0d023c584788a9f0a4eba7bd20",
+    "original_author_date": "2026-08-26 23:04:02 -0500",
+    "original_commit_date": "2026-08-26 23:04:02 -0500",
+    "subject": "Merge pull request #1486 from subodhkc/px1.2/historical-binding-lifecycle-integrity"
+  },
+  {
+    "public_sha": "349155417dc66c63affede33378f2b5344649c6f",
+    "original_haiec_sha": "24bf48f1bfe68a3cac8e64ff152817edbb21e75c",
+    "original_author_date": "2026-09-04 06:16:34 -0500",
+    "original_commit_date": "2026-09-04 06:16:34 -0500",
+    "subject": "AI Action & Access Map MVP — topology projection over persisted AC-1 facts"
+  },
+  {
+    "public_sha": "8a89e1c3143bac00045315b42d952dea6f426b54",
+    "original_haiec_sha": "25f27b98982dc5b4b7f876d47447d50d0fd44330",
+    "original_author_date": "2026-09-04 04:38:35 -0500",
+    "original_commit_date": "2026-09-04 04:38:35 -0500",
+    "subject": "Merge pull request #1602 from subodhkc/wave2/eg1-effective-grant-source"
+  },
+  {
+    "public_sha": "69ae6ea07eac20949e944a221daf139ae126af4d",
+    "original_haiec_sha": "2927a47912ce77bd207413e38276227f74243f28",
+    "original_author_date": "2026-09-09 22:46:35 -0500",
+    "original_commit_date": "2026-09-09 22:46:35 -0500",
+    "subject": "S6 closure pass: repair Action Assurance projection contract; split analysis/result state, preserve ANALYZED_EMPTY, remove hard-coded frontier copy, wire exact-run evidence, add truth tests"
+  },
+  {
+    "public_sha": "584849b9fa0f1336952f77d4ea4e8e59a996508c",
+    "original_haiec_sha": "2c6a799fcd2e819edb523ecdef21ec4cb68bdbf3",
+    "original_author_date": "2026-08-25 23:42:57 -0500",
+    "original_commit_date": "2026-08-25 23:42:57 -0500",
+    "subject": "Merge pull request #1478 from subodhkc/px1.1r/park-colorado-supplement"
+  },
+  {
+    "public_sha": "75e29270e298e36ac2afce43129e3e34f302a348",
+    "original_haiec_sha": "2c9cff4aa9d27958b16cc112b0d996be3db10be3",
+    "original_author_date": "2026-09-12 13:18:11 -0500",
+    "original_commit_date": "2026-09-12 13:18:11 -0500",
+    "subject": "Merge pull request #1683 from subodhkc/product/f3-ea2-output-convergence"
+  },
+  {
+    "public_sha": "c7ac3473061313b7cf1dc66fc2e3efcd841111b8",
+    "original_haiec_sha": "2d4d21c81b2027a80eb042049dd465c4e2947c0b",
+    "original_author_date": "2026-09-14 01:26:57 -0500",
+    "original_commit_date": "2026-09-14 01:26:57 -0500",
+    "subject": "AA-FLAGSHIP-HARDENING-1: five-plane grain reconciliation + evidence-first trace selection + deployment-compatible PDF + action-map adapter fix"
+  },
+  {
+    "public_sha": "0ba874757f523fd09590b8ad9eedbc39aca965fe",
+    "original_haiec_sha": "2f44a672865e9b596ea0603d7def977f39de32d8",
+    "original_author_date": "2026-09-10 22:47:01 -0500",
+    "original_commit_date": "2026-09-10 22:47:01 -0500",
+    "subject": "Q1-A: make Constellation export a pure ConstellationProjection renderer with canonical IDs"
+  },
+  {
+    "public_sha": "e57d30637c7e422d7703db69ee4bf5b628db6812",
+    "original_haiec_sha": "300bd2e7fd7878ab033ac0e1a76a7c0102c00eea",
+    "original_author_date": "2026-09-04 10:42:40 -0500",
+    "original_commit_date": "2026-09-04 10:42:40 -0500",
+    "subject": "Merge pull request #1606 from subodhkc/wave3/sample-action-access-map"
+  },
+  {
+    "public_sha": "da1be3dcecdbea41e980d7e8c5693d8aca115ed7",
+    "original_haiec_sha": "30d625cc0a7c304a651320d55495eced24b21877",
+    "original_author_date": "2026-09-11 04:17:24 -0500",
+    "original_commit_date": "2026-09-11 04:17:24 -0500",
+    "subject": "F-3/EA-2: durable server-owned run progression, producer hooks, org propagation, NYC resolver"
+  },
+  {
+    "public_sha": "38ea24aa308bd8de53f139f76f21d56a0e3db03c",
+    "original_haiec_sha": "326bee21a7f1fedaf619f58f27a4f0bda803259c",
+    "original_author_date": "2026-09-06 05:51:18 -0500",
+    "original_commit_date": "2026-09-06 05:51:18 -0500",
+    "subject": "WP-WF-1 — Exact Evidence Reuse + Assurance Re-evaluation"
+  },
+  {
+    "public_sha": "b82b7432fc8345dbd00dd8753d9b0caa0cc1c7cf",
+    "original_haiec_sha": "3294a7d2f03d8a7a433a66fb97d494c80d5eedc1",
+    "original_author_date": "2026-09-07 01:06:00 -0500",
+    "original_commit_date": "2026-09-07 01:06:00 -0500",
+    "subject": "﻿WP-MAP-REPLICA — Profile-specific rendered fidelity closure"
+  },
+  {
+    "public_sha": "909c7f8553d0027d37be6fce5b400979697e511f",
+    "original_haiec_sha": "34f01014ca879fdca7e8abc54cd07679979fbc16",
+    "original_author_date": "2026-09-12 00:06:59 -0500",
+    "original_commit_date": "2026-09-12 00:06:59 -0500",
+    "subject": "fix(assurance): remove wall-clock/process time from hashed artifact bytes"
+  },
+  {
+    "public_sha": "764bedace5b93785f65bd5a10c5f7fbe41ee4d46",
+    "original_haiec_sha": "350d75a4006e93df03d56feb296b9e8b9ef87aba",
+    "original_author_date": "2026-09-13 04:48:12 -0500",
+    "original_commit_date": "2026-09-13 04:48:12 -0500",
+    "subject": "Merge pull request #1697 from subodhkc/chore/customer-facing-naming"
+  },
+  {
+    "public_sha": "88008a4b70c8d8d27aa81fdb10da24b72afb0ee7",
+    "original_haiec_sha": "36b328efcc4eb55916ea42e9ff5920581eaf636f",
+    "original_author_date": "2026-08-24 22:55:39 -0500",
+    "original_commit_date": "2026-08-24 22:55:39 -0500",
+    "subject": "U6 truth closure: 13 source-truth defect corrections"
+  },
+  {
+    "public_sha": "a4628a8f67695c7c61ffb6bb6f3fb3debd6e67e1",
+    "original_haiec_sha": "371c6ecff4ac8a77b2ba1e12e7c4533e7a56f039",
+    "original_author_date": "2026-09-09 05:50:31 -0500",
+    "original_commit_date": "2026-09-09 05:50:31 -0500",
+    "subject": "feat: add progressive assurance constellation presentation"
+  },
+  {
+    "public_sha": "534f9ca16979276921afca7f732527d1a5c838d8",
+    "original_haiec_sha": "3a2d1591aef1a7541ad51a96d869a562a69d8177",
+    "original_author_date": "2026-09-03 23:25:01 -0500",
+    "original_commit_date": "2026-09-03 23:25:01 -0500",
+    "subject": "Merge pull request #1600 from subodhkc/wave2/ux2b-requested-intent-provenance"
+  },
+  {
+    "public_sha": "73b84f83d4518110d3344791e855093a2049524c",
+    "original_haiec_sha": "3b611722cad079614b3eba25ab194e1a265cba49",
+    "original_author_date": "2026-09-14 02:36:27 -0500",
+    "original_commit_date": "2026-09-14 02:36:27 -0500",
+    "subject": "AA-REPORTING-INTERPRETATION-2: first-scan constellation, customer terminology, tenant binding, executive compression"
+  },
+  {
+    "public_sha": "3cd52db3e71e7638e327b07725a86b8cacaf3623",
+    "original_haiec_sha": "3ca59c8c7c4ec6bf9f2771f428959d1aff39b6b3",
+    "original_author_date": "2026-09-06 02:44:23 -0500",
+    "original_commit_date": "2026-09-06 02:44:23 -0500",
+    "subject": "UI/product-truth closure: remove unestablished claims, fix enterprise field persistence, add legal operator"
+  },
+  {
+    "public_sha": "7f3235f6f7fe2cf827606e34486ac4fb23d9cf50",
+    "original_haiec_sha": "3d290f651b540be1fd81d6252e2db0fda93568ef",
+    "original_author_date": "2026-02-11 21:52:48 -0600",
+    "original_commit_date": "2026-02-11 21:52:48 -0600",
+    "subject": "feat: Colorado AI dashboard hub + exemption checker + cross-session TS fixes"
+  },
+  {
+    "public_sha": "1623a5d17183639e80eec927dda29208667a2dbb",
+    "original_haiec_sha": "3f167ff19c5db1e3f999d242d3dc40ce783b8038",
+    "original_author_date": "2026-09-10 22:51:19 -0500",
+    "original_commit_date": "2026-09-10 22:51:19 -0500",
+    "subject": "Q1-B: per-subject Passport/report operating model Q1-D: add artifact publication state and public sample sanitizer Q1-E: add analyzer build provenance inventory"
+  },
+  {
+    "public_sha": "0fcf7e21dace3309b4d031c4bddf6c1d94d084bd",
+    "original_haiec_sha": "3f2f5ade1ce17f5eb721f7964914bcb16d653d13",
+    "original_author_date": "2026-02-11 23:32:45 -0600",
+    "original_commit_date": "2026-02-11 23:32:45 -0600",
+    "subject": "feat: interactive NYC compliance quiz, Colorado sample reports (impact assessment, consumer notice, risk policy), H1 wording update"
+  },
+  {
+    "public_sha": "4dfd0747fa79f71df97c15cba0a5aaf4804a4a1f",
+    "original_haiec_sha": "401c7dcd41630b7a3c91a47c0ec59f94d3b0bfe6",
+    "original_author_date": "2026-09-10 23:00:31 -0500",
+    "original_commit_date": "2026-09-10 23:00:31 -0500",
+    "subject": "Q2-B: multi-value per-subject Passport/report Operating Model Q2-C: stop hardcoding memory/RAG/MCP; inventory canonical owners Q2-G: publication transition enforcement, receipt, and manifest default Q2-H: separate exact analyzer build identity from provenance fragments Q2-A: Constellation SOURCE_GAP no longer risk-red"
+  },
+  {
+    "public_sha": "d28b7a0cb195ff0043ff6bcd9204b0135d4e322b",
+    "original_haiec_sha": "409282b22071963fa97c42355e75f43800c51b32",
+    "original_author_date": "2026-09-10 22:17:41 -0500",
+    "original_commit_date": "2026-09-10 22:17:41 -0500",
+    "subject": "ENTRY-1: remove declaration-only lifecycle and tool decision authority OUTPUT-1: complete composer with canonical U6 sections, evidence frontier and source location provenance"
+  },
+  {
+    "public_sha": "0113fca497ac4d9ebf3549aeccecc1c5b4abea37",
+    "original_haiec_sha": "414b3579873a5658222b2902a32b89663469aa50",
+    "original_author_date": "2026-09-06 06:28:39 -0500",
+    "original_commit_date": "2026-09-06 06:28:39 -0500",
+    "subject": "WP-WF-1 Closure - Semantic corrections + canonical triggers + source-newer safety"
+  },
+  {
+    "public_sha": "ac8c9f239835b4c7d67df6ee7a4dcd016cc02b6f",
+    "original_haiec_sha": "41604d9ba1b05770a9d47a1848930058103c09fe",
+    "original_author_date": "2026-08-26 20:34:16 -0500",
+    "original_commit_date": "2026-08-26 20:34:16 -0500",
+    "subject": "Merge pull request #1483 from subodhkc/ux/public-site-r1"
+  },
+  {
+    "public_sha": "616f5b392588c60c4c3cf9c595ca0f4cac9e8d2a",
+    "original_haiec_sha": "431110e08713dbb999375391d0dd8d3a3e72f19d",
+    "original_author_date": "2026-08-26 04:58:21 -0500",
+    "original_commit_date": "2026-08-26 04:58:42 -0500",
+    "subject": "UX0-R1: complete public website design system + enterprise story"
+  },
+  {
+    "public_sha": "98783a926b07809c03aa2ee3c2e391562391b586",
+    "original_haiec_sha": "471d29933bd2475f6a504d5914749e37ec6f9469",
+    "original_author_date": "2026-08-25 04:26:23 -0500",
+    "original_commit_date": "2026-08-25 04:26:23 -0500",
+    "subject": "PX1.1B: surgical truth repair, Colorado SB 26-189 reconciliation, CI migration fix"
+  },
+  {
+    "public_sha": "5b2ab314c1cc0ed637361dfeb3f87ad55d526f37",
+    "original_haiec_sha": "47aaba050ac833fb55fef3d9f65b840086debef3",
+    "original_author_date": "2026-08-27 00:56:59 -0500",
+    "original_commit_date": "2026-08-27 01:55:31 -0500",
+    "subject": "PX1.2B-H3: exact read-model + referential closure"
+  },
+  {
+    "public_sha": "2fcd6a3b71439499c156153bcf02a0e2b2ebf438",
+    "original_haiec_sha": "47beb42b7662f73949b6cc8a162c738194e33cd7",
+    "original_author_date": "2026-09-09 10:15:28 -0500",
+    "original_commit_date": "2026-09-09 10:15:28 -0500",
+    "subject": "Merge pull request #1669 from subodhkc/pk0-source-tenant-continuity"
+  },
+  {
+    "public_sha": "a121de2b1df84f8a0f3def5809cc46220cea8c27",
+    "original_haiec_sha": "483be135e7d2e8e66bc89fe8aa251f43c5311645",
+    "original_author_date": "2026-09-14 01:28:11 -0500",
+    "original_commit_date": "2026-09-14 01:28:11 -0500",
+    "subject": "Merge pull request #1707 from subodhkc/feat/aa-flagship-hardening-1"
+  },
+  {
+    "public_sha": "7b8675cb61377e2824ac21623b4b85fae1a77c20",
+    "original_haiec_sha": "4857e7ca870ee578f3e1438f0af8c28e79ba4588",
+    "original_author_date": "2026-09-07 01:45:54 -0500",
+    "original_commit_date": "2026-09-07 01:45:54 -0500",
+    "subject": "Merge pull request #1639 from subodhkc/product/action-access-map-html-replica"
+  },
+  {
+    "public_sha": "a38d4b2df889d40ee20df78dfbc86520f7188806",
+    "original_haiec_sha": "4c7e154edd01252b4e2d6a7a85981897c2d1dfee",
+    "original_author_date": "2026-08-26 04:10:35 -0500",
+    "original_commit_date": "2026-08-26 04:10:35 -0500",
+    "subject": "UX0: unify public design system and enterprise narrative"
+  },
+  {
+    "public_sha": "4b8f35e4b75e12ff54b4e3e619a4f0fa47d43946",
+    "original_haiec_sha": "4d177e60c0687e5e3b0ba6c890114be4a753a0a6",
+    "original_author_date": "2026-09-04 12:52:52 -0500",
+    "original_commit_date": "2026-09-04 12:52:52 -0500",
+    "subject": "Launch-critical convergence: fix sample map 500, branching minimap, ambient motion, developers routing, platform 5-step, metadata/SEO, U5 removal, evidence IA, sample report claims"
+  },
+  {
+    "public_sha": "5bd265957109b14920d267bb91f3b724bea78790",
+    "original_haiec_sha": "4dbf3cd319a82ca4ae9bef09ded01348beee846c",
+    "original_author_date": "2026-09-04 22:32:51 -0500",
+    "original_commit_date": "2026-09-04 22:32:51 -0500",
+    "subject": "Merge pull request #1607 from subodhkc/wave4/public-website-convergence"
+  },
+  {
+    "public_sha": "a8b89a44193b6100811653f5a1fefd68c9781663",
+    "original_haiec_sha": "4ed6af361c8b7a12383d9b93870755b958a26809",
+    "original_author_date": "2026-08-26 03:06:13 -0500",
+    "original_commit_date": "2026-08-26 03:06:13 -0500",
+    "subject": "Merge pull request #1480 from subodhkc/px1.2/ai-system-assurance-foundation"
+  },
+  {
+    "public_sha": "1ddb26ea6ce41e2584475b08be0d70ed9c50eaa0",
+    "original_haiec_sha": "4ef13a2ffbbd6125f9d012974a17e746c741a03f",
+    "original_author_date": "2026-09-13 08:09:16 -0500",
+    "original_commit_date": "2026-09-13 08:09:16 -0500",
+    "subject": "Merge pull request #1700 from subodhkc/feat/aa-bridge-1"
+  },
+  {
+    "public_sha": "257f7090f37e4f22ef9593f14273821c19b806ac",
+    "original_haiec_sha": "4fd2cef2bd1b76eeff73314c4032d8008ee481dc",
+    "original_author_date": "2026-08-24 00:43:12 -0500",
+    "original_commit_date": "2026-08-24 00:43:12 -0500",
+    "subject": "feat(e1): final semantic closure — capability facts, claim merge, envelope lifecycle, migration packaging"
+  },
+  {
+    "public_sha": "e23b5214ffe0816311641c610067ba455bb99114",
+    "original_haiec_sha": "50b1935808fd17068c16b7fbff4d4c44429dfa4d",
+    "original_author_date": "2026-07-20 07:01:38 -0500",
+    "original_commit_date": "2026-07-20 07:01:38 -0500",
+    "subject": "fix: normalize all domain URLs to canonical https://www.haiec.com"
+  },
+  {
+    "public_sha": "2dbbd9d988e07fc86b1a2c3c30a5353898b909a1",
+    "original_haiec_sha": "52717907a834810013e8ac4842b696a746687f91",
+    "original_author_date": "2026-08-25 23:32:34 -0500",
+    "original_commit_date": "2026-08-25 23:33:02 -0500",
+    "subject": "PX1.1R: Park Colorado supplement + unblock HAIEC core"
+  },
+  {
+    "public_sha": "19c9078eb5109f2e1a12ed713214d210a0afe755",
+    "original_haiec_sha": "5420d6a8fdf8cf91b4f1995a854b9e21777f5018",
+    "original_author_date": "2026-08-22 21:11:18 -0500",
+    "original_commit_date": "2026-08-22 21:11:18 -0500",
+    "subject": "feat(developer-security): rebuild product hierarchy + fix OG images, MDX, claims"
+  },
+  {
+    "public_sha": "d351456a07cb25b4ba025685e19d369fb3e5e1b6",
+    "original_haiec_sha": "551373e1c379604badafae7c1d878967e161cdac",
+    "original_author_date": "2026-08-28 06:08:09 -0500",
+    "original_commit_date": "2026-08-28 06:08:09 -0500",
+    "subject": "Merge pull request #1507 from subodhkc/px1.2/core-consolidation"
+  },
+  {
+    "public_sha": "7af230eef199d5056757470cdcaf2ba4650bae04",
+    "original_haiec_sha": "555ea6c65350b6dafb2fa79e71e455abad8370f1",
+    "original_author_date": "2026-08-21 00:40:56 -0500",
+    "original_commit_date": "2026-08-21 00:40:56 -0500",
+    "subject": "fix: factual-integrity audit — correct claims, remove unverified stats, add evidence source registry"
+  },
+  {
+    "public_sha": "99dec1ed5f8aa1a6b83aabd041b18d76fca10a30",
+    "original_haiec_sha": "561dba095232922e6c4b08cb5d5eb5561479bd7a",
+    "original_author_date": "2026-08-26 21:02:51 -0500",
+    "original_commit_date": "2026-08-26 21:02:51 -0500",
+    "subject": "UX0-FINAL-R1: primary CTA hover contrast closure"
+  },
+  {
+    "public_sha": "3fa2f82fb18eaa3a709f652f99886de9fcde412d",
+    "original_haiec_sha": "56b7b298b79a6c9dc37fea065ff282f13b0918ee",
+    "original_author_date": "2026-09-10 23:39:41 -0500",
+    "original_commit_date": "2026-09-10 23:39:41 -0500",
+    "subject": "Q2-F: production bundle uses composeAssuranceOutput and loadEvaluatedOperationCoverage Q2-A: explicit evaluatedBasis.evaluationId in exact topology Q2-3/5/4: report and machine JSON carry canonical U6 sections Q2-D/E/8: product adapters with resource-first ownership and cross-tenant negatives Q2-21: architecture baseline addendum"
+  },
+  {
+    "public_sha": "3bbe4cd134c9ac724c533dfe88a16418ee2cf682",
+    "original_haiec_sha": "574cfb3a7ff7db1552187685f5bcf681533142d7",
+    "original_author_date": "2026-09-03 10:58:45 -0500",
+    "original_commit_date": "2026-09-03 10:58:45 -0500",
+    "subject": "Merge pull request #1594 from subodhkc/wave1h/aa0-canonical-action-resource-identity"
+  },
+  {
+    "public_sha": "65092d04795c696d011f0ad6f0b7136dd5e58d32",
+    "original_haiec_sha": "59a4583ce12d20df6160c8e8c57891c46d0914d1",
+    "original_author_date": "2026-08-24 14:13:01 -0500",
+    "original_commit_date": "2026-08-24 14:13:01 -0500",
+    "subject": "U6 persistence: provide explicit nanoid IDs for control_* records"
+  },
+  {
+    "public_sha": "533f96ef2dded9ac24aecfaef69221a2422285a5",
+    "original_haiec_sha": "59c32788ab1995402c91643bc16613799e4b8473",
+    "original_author_date": "2026-07-21 04:53:25 -0500",
+    "original_commit_date": "2026-07-21 04:53:25 -0500",
+    "subject": "feat: SEO enhancements + social media automation + Bing verification"
+  },
+  {
+    "public_sha": "353b463540a9b82f96d89a221891884612da2bb4",
+    "original_haiec_sha": "5ae8950ac08fa8780a3c6066638d80ca8c834a2a",
+    "original_author_date": "2026-09-03 22:51:51 -0500",
+    "original_commit_date": "2026-09-03 22:51:51 -0500",
+    "subject": "Wave 2 UX-2B — First-Class REQUESTED Capability / Customer Intent Provenance"
+  },
+  {
+    "public_sha": "1590ba374180081a3de9d989894b812977c81337",
+    "original_haiec_sha": "5de729bb71f2ec25cceefc8946a2eff940163a42",
+    "original_author_date": "2026-08-31 00:20:32 -0500",
+    "original_commit_date": "2026-08-31 00:20:32 -0500",
+    "subject": "Gate 4A Phase B: CI/SARIF exact-run evidence binding (#1558)"
+  },
+  {
+    "public_sha": "18b5d4ecd79bd34457bc9d74be3ce80fb8822592",
+    "original_haiec_sha": "5e88cd3588515b645a779f7542dd7ee6dba41569",
+    "original_author_date": "2026-08-23 23:04:01 -0500",
+    "original_commit_date": "2026-08-23 23:04:25 -0500",
+    "subject": "feat(e1): Enterprise Assurance Profiles + U5 1.1 hardening + Ericsson/O-RAN profile foundation"
+  },
+  {
+    "public_sha": "09e949c657ec7112fd6cc28ce4cf5403f2411dea",
+    "original_haiec_sha": "60151214871c1cc1f1d2f3fdb5b3726d206cec2d",
+    "original_author_date": "2026-09-10 07:47:51 -0500",
+    "original_commit_date": "2026-09-10 07:47:51 -0500",
+    "subject": "ux: constellation fail-soft status and light homepage sample preview"
+  },
+  {
+    "public_sha": "20bcb27a10d0f01cb043850be539fe21f649a893",
+    "original_haiec_sha": "616039ee0b9d51e29932bcc13294b80b99049ba7",
+    "original_author_date": "2026-09-13 09:34:54 -0500",
+    "original_commit_date": "2026-09-13 09:34:54 -0500",
+    "subject": "Merge pull request #1702 from subodhkc/feat/aa-projection-1"
+  },
+  {
+    "public_sha": "a6632ac508402215049f974459e31cb0bff10503",
+    "original_haiec_sha": "62d2934249e1be9ae55c4ab988fdd0045a6d5e98",
+    "original_author_date": "2026-08-25 02:28:29 -0500",
+    "original_commit_date": "2026-08-25 02:28:29 -0500",
+    "subject": "PX1.1A: post-deploy Product Truth closure, regulatory freshness, navigation/shell consolidation"
+  },
+  {
+    "public_sha": "f795926d360c6c21a35eb822e334a99c46bd854e",
+    "original_haiec_sha": "644de11429f867d90a712c24d6fb2a56caad6894",
+    "original_author_date": "2026-09-04 11:12:39 -0500",
+    "original_commit_date": "2026-09-04 11:12:39 -0500",
+    "subject": "Public website convergence — evidence-bound assurance for consequential AI"
+  },
+  {
+    "public_sha": "bf7e3b59880ea7a1d501fe17d50d0e6132e433d9",
+    "original_haiec_sha": "651323b46fb8c03dd826d6d297f339cb45383137",
+    "original_author_date": "2026-08-27 00:08:06 -0500",
+    "original_commit_date": "2026-08-27 00:08:06 -0500",
+    "subject": "Merge pull request #1487 from subodhkc/px1.2/current-historical-truth-closure"
+  },
+  {
+    "public_sha": "c3ab50ee19569987deeb0987aef80cb9115eb3d4",
+    "original_haiec_sha": "660af064e14c25fa8bb58f1e781f6e0defaa9abc",
+    "original_author_date": "2026-09-04 03:24:42 -0500",
+    "original_commit_date": "2026-09-04 03:24:42 -0500",
+    "subject": "EG-1 TRUTH REPAIR: candidate discovery + SimulatePrincipalPolicy qualification + fail-closed crypto"
+  },
+  {
+    "public_sha": "3ee8956a12aef68c1d473113bedbc4d5f2d8246a",
+    "original_haiec_sha": "69720fc143bde507a03092bc6c180dd3b5d7ed5e",
+    "original_author_date": "2026-08-23 18:57:03 -0500",
+    "original_commit_date": "2026-08-23 18:57:03 -0500",
+    "subject": "feat(u3-b2): inventory discovery lifecycle + tenant safety + wizard recovery + regulatory durable activation"
+  },
+  {
+    "public_sha": "288d81f70e32d6f88a9ae9051edaa8122ea7797f",
+    "original_haiec_sha": "6d213ff79232a81d9f8be8e7a0ceabf9764e538d",
+    "original_author_date": "2026-08-26 22:35:29 -0500",
+    "original_commit_date": "2026-08-26 22:35:29 -0500",
+    "subject": "Merge pull request #1485 from subodhkc/px1.2/ai-system-experience"
+  },
+  {
+    "public_sha": "523bf5fccdfa6e93c7871dd3120d91f9387c6ef9",
+    "original_haiec_sha": "6d5286d7048c7fee6d1403451d56fc5cfb5651c5",
+    "original_author_date": "2026-09-05 02:51:14 -0500",
+    "original_commit_date": "2026-09-05 02:51:14 -0500",
+    "subject": "Merge pull request #1609 from subodhkc/wave5/legacy-public-surface-convergence"
+  },
+  {
+    "public_sha": "b826b91fe0b4113510f314d50cf9587d19c437c3",
+    "original_haiec_sha": "739d63e0ede536a7fae3c04c78d6efd35a965144",
+    "original_author_date": "2026-08-26 21:51:20 -0500",
+    "original_commit_date": "2026-08-26 21:51:20 -0500",
+    "subject": "PX1.2B: AI System workspace and system-first onboarding"
+  },
+  {
+    "public_sha": "1a9a758d8d9310832b8a3a669eefbcbca7686b9f",
+    "original_haiec_sha": "743ccf2bf77b216d5a2795e0787d6a9906445e96",
+    "original_author_date": "2026-08-24 01:43:19 -0500",
+    "original_commit_date": "2026-08-24 01:43:19 -0500",
+    "subject": "feat(u6): Pre-U6 capability-evidence gate and U6 report/bundle/receipt scaffold"
+  },
+  {
+    "public_sha": "52c2396898480cc99be88da97d856534080f773e",
+    "original_haiec_sha": "74a80b56309d26646abcdb1326aa01078dc96458",
+    "original_author_date": "2026-08-23 02:47:42 -0500",
+    "original_commit_date": "2026-08-23 02:47:42 -0500",
+    "subject": "feat(u2-b): evidence core consolidation — contract v1.0.0, adapters, provenance"
+  },
+  {
+    "public_sha": "ea0a93f5ed316ae3b3ea6196f32810247acce986",
+    "original_haiec_sha": "75306fdae75e498d4e735d46b959847f00c9f4a5",
+    "original_author_date": "2026-09-10 23:55:22 -0500",
+    "original_commit_date": "2026-09-10 23:55:22 -0500",
+    "subject": "Q2-10: deterministic public artifact projection with redaction and policy version Q2-11: digest-bound publication receipt chain with source/result digests EA-2 machine JSON: preserve subject, state, coverage, relation IDs, stage provenance EA-2 source location: unique-relation denominator EA-2 path state: canonical consequence relation state, no aggregate downgrades Constellation: bind exact reachability read-model Architecture baseline addendum"
+  },
+  {
+    "public_sha": "c55745c7bdacc68ed3719a51819b6c84dce74c7e",
+    "original_haiec_sha": "784543db5b9a8def59bb61f92dc9dee44b3bd3b0",
+    "original_author_date": "2026-09-04 01:30:22 -0500",
+    "original_commit_date": "2026-09-04 01:30:22 -0500",
+    "subject": "Merge pull request #1601 from subodhkc/wave2/ux2c-operating-authority-approval"
+  },
+  {
+    "public_sha": "d2afd77179fd55cff6aba494815c701a4c619625",
+    "original_haiec_sha": "79304546dfb482a8af1458c73d18a277db3af862",
+    "original_author_date": "2026-08-31 01:50:05 -0500",
+    "original_commit_date": "2026-08-31 01:50:05 -0500",
+    "subject": "Gate 4A: bind build artifact and deployment identity (#1560)"
+  },
+  {
+    "public_sha": "0dd255b1dc68b1a1e4133c00d90f4100ecca5d56",
+    "original_haiec_sha": "79ce1f6ef0c4d64a008f74828896c889deaa22f4",
+    "original_author_date": "2026-09-04 07:02:11 -0500",
+    "original_commit_date": "2026-09-04 07:02:11 -0500",
+    "subject": "AI Action & Access Map — truth + product integration repair pass"
+  },
+  {
+    "public_sha": "341cb62619288f005b64e9066022166f1e936cbf",
+    "original_haiec_sha": "7b8c1a7e4f9521922c972e3a7e2a24455718c113",
+    "original_author_date": "2026-08-26 23:59:30 -0500",
+    "original_commit_date": "2026-08-26 23:59:30 -0500",
+    "subject": "PX1.2B-H2: current vs historical truth closure"
+  },
+  {
+    "public_sha": "132ed2b5189ce26384a8a1e6c7d7fb8156b382b5",
+    "original_haiec_sha": "7c76505d87cdadaa17174825b508314ae390d875",
+    "original_author_date": "2026-08-26 01:54:24 -0500",
+    "original_commit_date": "2026-08-26 01:54:24 -0500",
+    "subject": "PX1.2A-R: Correct AI System foundation before merge"
+  },
+  {
+    "public_sha": "08ff314013b41574e1f22655a3717f6b38b8d5ee",
+    "original_haiec_sha": "7e512b20a9a8484a34106059e1c7538e85d6aab0",
+    "original_author_date": "2026-08-23 03:42:12 -0500",
+    "original_commit_date": "2026-08-23 03:42:12 -0500",
+    "subject": "feat(t1): canonical tenant ownership migration — projects, ci_scan_results, monitored_systems, GitHub ownership graph, CI adapter unblock"
+  },
+  {
+    "public_sha": "49de6fb08097b7f6f3c26d59d57f4412ca039fd3",
+    "original_haiec_sha": "7ef4c91b561c50ef84e3a293abdfdd1fe2691a6f",
+    "original_author_date": "2026-09-05 01:06:21 -0500",
+    "original_commit_date": "2026-09-05 01:06:21 -0500",
+    "subject": "Final Customer Journey Convergence Close"
+  },
+  {
+    "public_sha": "2464cb544bb635e99c82a12417f1e11da455a92f",
+    "original_haiec_sha": "7f39d9d8bceb46b1312f24b347656c5b68680840",
+    "original_author_date": "2026-08-23 00:55:57 -0500",
+    "original_commit_date": "2026-08-23 00:55:57 -0500",
+    "subject": "feat(u1-c): retire generic admin role, auth boundary inventory, U2 preflight"
+  },
+  {
+    "public_sha": "faaa1168d2371485964df88ba9a198e11fbaa8bb",
+    "original_haiec_sha": "7fdf4f64d3253d84f7adb2a21d6d845452557e26",
+    "original_author_date": "2026-09-13 09:24:47 -0500",
+    "original_commit_date": "2026-09-13 09:24:47 -0500",
+    "subject": "AA-PROJECTION-1R: exact U5 identity binding, methodology provenance, artifact lineage"
+  },
+  {
+    "public_sha": "64595661b2e43f9b18cbdf794b65e74b89fec885",
+    "original_haiec_sha": "843883281da0e41ae07eaab7cacd9518b556a183",
+    "original_author_date": "2026-08-26 23:02:06 -0500",
+    "original_commit_date": "2026-08-26 23:02:06 -0500",
+    "subject": "PX1.2B-H1: preserve historical system and asset identity"
+  },
+  {
+    "public_sha": "3a0ea5257686b752cece09afbad16444158c11f1",
+    "original_haiec_sha": "85ee76d3ca3cb35702541738a795f56255d47199",
+    "original_author_date": "2026-09-09 03:27:42 -0500",
+    "original_commit_date": "2026-09-09 03:27:42 -0500",
+    "subject": "U6 ARI: historical Agent Reachability + Evaluation Integrity report sections"
+  },
+  {
+    "public_sha": "3161b4fef771560a1adce7a6791e333fa8e679b1",
+    "original_haiec_sha": "868e106e0bed25b9af9d0f6525274f855aed3360",
+    "original_author_date": "2026-09-10 23:09:35 -0500",
+    "original_commit_date": "2026-09-10 23:09:35 -0500",
+    "subject": "Q2-C: project memory/RAG/MCP truth from exact persisted evidence Q2-G: enforce publication transition chain and self-approval guard Q2-9: neutralize generic frontier label color"
+  },
+  {
+    "public_sha": "f6bce68b21b17f6318a36e32e0f804db9186f503",
+    "original_haiec_sha": "8692943ac4ef9fbb1fbfe51e9805c5b26fb83c81",
+    "original_author_date": "2026-09-09 21:58:52 -0500",
+    "original_commit_date": "2026-09-09 21:58:52 -0500",
+    "subject": "S6 — Agentic Assurance / Action Assurance customer-facing projection"
+  },
+  {
+    "public_sha": "122d87d92ed9d0671ff361ce66246716b768f594",
+    "original_haiec_sha": "873233f981ea6f6c8712c7f45fa9a5ae8584c288",
+    "original_author_date": "2026-09-13 03:46:41 -0500",
+    "original_commit_date": "2026-09-13 03:46:41 -0500",
+    "subject": "Merge pull request #1694 from subodhkc/fix/five-plane-empty-comparison-semantics"
+  },
+  {
+    "public_sha": "b3a26737c2a239019f2cc2f03e1a78755ee2f3b7",
+    "original_haiec_sha": "8dba3e448455db400f1c8400f22ab06e07bb2213",
+    "original_author_date": "2026-09-03 23:49:54 -0500",
+    "original_commit_date": "2026-09-03 23:49:54 -0500",
+    "subject": "Wave 2 UX-2C — Operating Authority Review, Approval, Versioning & Revocation"
+  },
+  {
+    "public_sha": "65a67faae217bbb71ed7793fce608e24ae310450",
+    "original_haiec_sha": "8e34de6f32946685c1836451de641b3edd490412",
+    "original_author_date": "2026-08-24 03:26:49 -0500",
+    "original_commit_date": "2026-08-24 03:26:49 -0500",
+    "subject": "feat(u6): correct static capability semantics, plane qualification, claim mapping"
+  },
+  {
+    "public_sha": "bda12fc4586475f6da30e5ce7b88b2d95a8bafda",
+    "original_haiec_sha": "900bcdc67625b2fcf2e123f5b5fa2c42bd1bfc50",
+    "original_author_date": "2026-09-05 00:26:33 -0500",
+    "original_commit_date": "2026-09-05 00:26:33 -0500",
+    "subject": "Commercial + Product Experience Convergence Close"
+  },
+  {
+    "public_sha": "bc62acd47bb7e33af910b515a7042359f400f9a9",
+    "original_haiec_sha": "91cd5522caa374692d8a3a20db75d76865e7d06d",
+    "original_author_date": "2026-08-26 05:36:27 -0500",
+    "original_commit_date": "2026-08-26 05:36:39 -0500",
+    "subject": "UX0-R2: product-truth, contrast, and validation corrections"
+  },
+  {
+    "public_sha": "26f8a04af5ae1f3c7a5c457a9bafff95d606cff1",
+    "original_haiec_sha": "923436fe05321ce3e7dd901b030ebd0d33495cab",
+    "original_author_date": "2026-09-03 20:10:51 -0500",
+    "original_commit_date": "2026-09-03 20:10:51 -0500",
+    "subject": "Wave 2 UX-2A — Operating Envelope DRAFT Authoring + Constraint Evaluability"
+  },
+  {
+    "public_sha": "3c6a8a7a63351676cd434fd565e40a9fda2e76c1",
+    "original_haiec_sha": "92d8e80364f5e18bb9cb6ae64ac5f99c0e2a316d",
+    "original_author_date": "2026-09-05 22:50:40 -0500",
+    "original_commit_date": "2026-09-05 22:50:40 -0500",
+    "subject": "WP-AA-CURRENT-1B: Policy granularity truth closure"
+  },
+  {
+    "public_sha": "dceba6494c3b701a0a01b6c4713bdc99e3aa7c1a",
+    "original_haiec_sha": "94a060167991fe689172cdd11e047757fa8c6dec",
+    "original_author_date": "2026-08-23 03:16:08 -0500",
+    "original_commit_date": "2026-08-23 03:16:08 -0500",
+    "subject": "feat(u2-b1): evidence semantic integrity correction — coverage truth, provenance truth, order-preserving determinism"
+  },
+  {
+    "public_sha": "7b8514c284498d030730af4d2bf5845685435249",
+    "original_haiec_sha": "966ad1dbaa7212c630e10a6db2da29ed17af37aa",
+    "original_author_date": "2026-09-12 01:08:25 -0500",
+    "original_commit_date": "2026-09-12 01:08:25 -0500",
+    "subject": "fix(u6): preserve unknown authority truth without envelope"
+  },
+  {
+    "public_sha": "4cb478a41ee3becad00d78f5f08c896d88a89a77",
+    "original_haiec_sha": "96d3fc778e1744dbce6e1bc002b7720c7a0e8927",
+    "original_author_date": "2026-09-11 08:19:07 -0500",
+    "original_commit_date": "2026-09-11 08:19:07 -0500",
+    "subject": "fix(assurance): Passport final-acceptance micro-repair — stable generator identity + U6 lifecycle truth"
+  },
+  {
+    "public_sha": "e4d42374820889a3e0ad219c17d1ac238e9114f5",
+    "original_haiec_sha": "97835a1897268e4af726eae9b6938339849f95a9",
+    "original_author_date": "2026-09-08 08:42:16 -0500",
+    "original_commit_date": "2026-09-08 08:42:16 -0500",
+    "subject": "Merge pull request #1654 from subodhkc/py-k3/kestrel-action-proof-trace"
+  },
+  {
+    "public_sha": "decc651651564091be4baf8d32a4eee905e13fe8",
+    "original_haiec_sha": "9a9183fac032042971e80b51d0b0118d2c6610b1",
+    "original_author_date": "2026-09-05 22:56:26 -0500",
+    "original_commit_date": "2026-09-05 22:56:26 -0500",
+    "subject": "Merge pull request #1628 from subodhkc/product/current-authority-convergence"
+  },
+  {
+    "public_sha": "5cd493602bfa87cd0d7ff23ba92ef7fd960a41e8",
+    "original_haiec_sha": "9ab32fabd39a58566d75ab740acefe44d0128846",
+    "original_author_date": "2026-08-23 19:47:06 -0500",
+    "original_commit_date": "2026-08-23 19:47:06 -0500",
+    "subject": "feat(u3-c): external SARIF + CI producer activation + regulatory failEngine closure + producer qualification"
+  },
+  {
+    "public_sha": "dbcd4320d0da5edb36943e720d5225aee0b8f4bc",
+    "original_haiec_sha": "9b01ff037673961f69f38974f6d9c50e3a8036a0",
+    "original_author_date": "2026-08-30 05:27:10 -0500",
+    "original_commit_date": "2026-08-30 05:27:10 -0500",
+    "subject": "Gate 3 Closure + Gate 4B Readiness: Tenant Integrity, Engine Truth & Capability Semantics (#1554)"
+  },
+  {
+    "public_sha": "13c50271ca88c36cafbce1f7610167c482ba5909",
+    "original_haiec_sha": "9b1574bf2f39fa2f06576b072e5698f713456ffc",
+    "original_author_date": "2026-09-13 06:07:46 -0500",
+    "original_commit_date": "2026-09-13 06:07:46 -0500",
+    "subject": "CAP-P20: converge intake on PythonSemanticWorkspace + aggressive Pareto-20 Pack expansion"
+  },
+  {
+    "public_sha": "bd7a60b1abf143a5a5eaf60ab33dd3b7b6bfc8c3",
+    "original_haiec_sha": "9be6bb287b6872bb75cdb687345928d785268815",
+    "original_author_date": "2026-09-14 02:38:00 -0500",
+    "original_commit_date": "2026-09-14 02:38:00 -0500",
+    "subject": "Merge pull request #1708 from subodhkc/feat/aa-reporting-interpretation-2"
+  },
+  {
+    "public_sha": "bd95c68aada8f67d2e4d554954e5efd38d8dd4c5",
+    "original_haiec_sha": "9bff1e5b3500986d83038dc577a2cd36803cd832",
+    "original_author_date": "2026-08-24 02:51:16 -0500",
+    "original_commit_date": "2026-08-24 02:51:16 -0500",
+    "subject": "feat(u6): real static producer R2/R10 capability bridge and plane qualification"
+  },
+  {
+    "public_sha": "f61dffe284a775ab1507d4a72e10771a80fc48a3",
+    "original_haiec_sha": "9cc3e682da1d8c82df5506c304489b8f778af7f8",
+    "original_author_date": "2026-09-10 08:14:24 -0500",
+    "original_commit_date": "2026-09-10 08:14:24 -0500",
+    "subject": "ux: evidence-language copy, reason field, and progressive evidence key"
+  },
+  {
+    "public_sha": "18a01c646c3f4f0f18d9b91528795f68e766acf7",
+    "original_haiec_sha": "9e1e72db348b5f4278e6718396064f5e774327f9",
+    "original_author_date": "2026-08-23 17:53:24 -0500",
+    "original_commit_date": "2026-08-23 17:53:24 -0500",
+    "subject": "feat(u3-b): AI inventory + wizard + regulatory producer activation — evidence-type boundaries, existing producer reuse, canonical persistence"
+  },
+  {
+    "public_sha": "399f46dd19b0f9e4c6a0aa45888d3838c4c0ab28",
+    "original_haiec_sha": "9e724e53dba678848a5c65fde34ea29810d414e7",
+    "original_author_date": "2026-09-13 06:38:21 -0500",
+    "original_commit_date": "2026-09-13 06:38:21 -0500",
+    "subject": "Merge pull request #1699 from subodhkc/feat/capability-p20-convergence"
+  },
+  {
+    "public_sha": "ec2fc3e535ed2707ee8231ef733bcc076e0f4f0c",
+    "original_haiec_sha": "a005c75991b0d0a84d8aa322309208b16b8800fe",
+    "original_author_date": "2026-09-13 21:43:17 -0500",
+    "original_commit_date": "2026-09-13 21:43:17 -0500",
+    "subject": "Merge pull request #1703 from subodhkc/feat/aa-renderer-2"
+  },
+  {
+    "public_sha": "0727133f37c973594c98c9626676451b6402961f",
+    "original_haiec_sha": "a20576819e13c0497f37f112456abecea759523e",
+    "original_author_date": "2026-09-13 04:42:00 -0500",
+    "original_commit_date": "2026-09-13 04:42:00 -0500",
+    "subject": "NAMING-1: remove internal U5/U6 codenames from customer-visible surfaces"
+  },
+  {
+    "public_sha": "008e54438674b88fd5428b5f34d3dc3dee7a90d7",
+    "original_haiec_sha": "a50f6b061f11af38efc31c5d57d7a599fe904f91",
+    "original_author_date": "2026-09-13 03:42:37 -0500",
+    "original_commit_date": "2026-09-13 03:42:37 -0500",
+    "subject": "FP-EMPTY-1.1: per-status participation classification + null reconstructed verdict"
+  },
+  {
+    "public_sha": "a750931caaee5bdf12eb2dbacf3d75aee33a8da1",
+    "original_haiec_sha": "a527b01b1bfb7639ba42678a8c5dc6dbaec46f8a",
+    "original_author_date": "2026-09-10 23:25:27 -0500",
+    "original_commit_date": "2026-09-10 23:25:27 -0500",
+    "subject": "Q2-A: exact-evaluation topology projection via buildAriTopologyProjection Q2-C: preserve memory/RAG/MCP evidence states in Passport Q2-F: single output bundle service (compose once, project many) Q2-9: neutral frontier label color"
+  },
+  {
+    "public_sha": "9254612bb2e9bdb45a84e0a07597f94d48de4a14",
+    "original_haiec_sha": "a70c008438a89a163e744b82046e0dd618999882",
+    "original_author_date": "2026-08-24 06:24:31 -0500",
+    "original_commit_date": "2026-08-24 06:24:31 -0500",
+    "subject": "feat(u6): crypto correctness, samples, public route"
+  },
+  {
+    "public_sha": "c228e4ba391aead1b40ffc3b2f97de9f2c5b7dc1",
+    "original_haiec_sha": "a7382e83c09e33d950ed4b4e17fbf66a91c8c5ad",
+    "original_author_date": "2026-08-24 04:01:22 -0500",
+    "original_commit_date": "2026-08-24 04:01:22 -0500",
+    "subject": "feat(u6): semantic capability matching, snapshot persistence, criticality truth"
+  },
+  {
+    "public_sha": "0094b307cd086024c4ed06daa24f67d4dc6c4157",
+    "original_haiec_sha": "ab83cbe829c247b570143796df1a938abd7fd493",
+    "original_author_date": "2026-08-23 17:32:23 -0500",
+    "original_commit_date": "2026-08-23 17:32:23 -0500",
+    "subject": "feat(u3-a1): producer activation correctness closure — canonical identity, atomic idempotency, static identity model, runtime trace references"
+  },
+  {
+    "public_sha": "b16185bb4c093c8910c3fda3ba84e4bf2fde4d31",
+    "original_haiec_sha": "ad2cd0ba1ea85ee55a7adfd561942b00c8b2843a",
+    "original_author_date": "2026-09-04 23:49:20 -0500",
+    "original_commit_date": "2026-09-04 23:49:20 -0500",
+    "subject": "Public Experience Integrity Close"
+  },
+  {
+    "public_sha": "d0374022717a8c3b8248a56f615f40fdc07de1ca",
+    "original_haiec_sha": "ad5d376b473cb95e8af107c47c6c864ebf85add7",
+    "original_author_date": "2026-09-14 23:12:37 -0500",
+    "original_commit_date": "2026-09-14 23:12:37 -0500",
+    "subject": "Merge pull request #1734 from subodhkc/feat/kestrel-demo-pack-1r"
+  },
+  {
+    "public_sha": "d511ae0d663e912fb765a926cd7a7c4c16158a4f",
+    "original_haiec_sha": "ae48c964276128c0a5b1886840991486705674d0",
+    "original_author_date": "2026-09-13 10:13:12 -0500",
+    "original_commit_date": "2026-09-13 10:13:12 -0500",
+    "subject": "AA-RENDERER-2: profile projection, machine/PDF bundle-derived renderers, flagship report component"
+  },
+  {
+    "public_sha": "54f14c70e54373d7608b9dc7dca79372bc6d83b2",
+    "original_haiec_sha": "af28dfc1a5be0ab9656872621ce005e0c693cc51",
+    "original_author_date": "2026-09-11 09:48:56 -0500",
+    "original_commit_date": "2026-09-11 09:48:56 -0500",
+    "subject": "feat(assurance): canonical analyzer execution identity + historical provenance (AEI-1)"
+  },
+  {
+    "public_sha": "78b7f38bfcb1309b009c226d4040f00faa61c017",
+    "original_haiec_sha": "b043792fae00a5893c35189b8e6b6de6f9df0676",
+    "original_author_date": "2026-09-01 02:24:25 -0500",
+    "original_commit_date": "2026-09-01 02:24:25 -0500",
+    "subject": "Product path qualification: static scan → Evidence → Assurance continuity (#1576)"
+  },
+  {
+    "public_sha": "82da4fce51405b42910ba25f73c6e38776e0329c",
+    "original_haiec_sha": "b12571a24fc356a9a0e16e1441c10a701cc4d89c",
+    "original_author_date": "2026-09-09 05:50:45 -0500",
+    "original_commit_date": "2026-09-09 05:50:45 -0500",
+    "subject": "feat: converge enterprise website and proof surfaces"
+  },
+  {
+    "public_sha": "1e5a18bf264df154ba848cf4f283f69d7281a813",
+    "original_haiec_sha": "b18faba97a31afa98a9458f5434558c4b08a699d",
+    "original_author_date": "2026-09-06 06:56:37 -0500",
+    "original_commit_date": "2026-09-06 06:56:37 -0500",
+    "subject": "Merge pull request #1634 from subodhkc/product/wf1-assurance-reevaluation-evidence-reuse"
+  },
+  {
+    "public_sha": "8b8a84bc54ef81081bec7f4a9f6a7a6d5f7b142b",
+    "original_haiec_sha": "b2be1430dcfccef3c1b3daf9e2b5ee62f0c00320",
+    "original_author_date": "2026-08-24 10:10:06 -0500",
+    "original_commit_date": "2026-08-24 10:10:06 -0500",
+    "subject": "U6 final semantic-integrity correction: explicit authority/synthetic truth, crypto version binding, and production Postgres proof"
+  },
+  {
+    "public_sha": "a424a0fe753607b77a935c659e502f0d9c2265dc",
+    "original_haiec_sha": "b3e66458b254778017a5fda9073a0667567bc7b3",
+    "original_author_date": "2026-08-24 23:28:33 -0500",
+    "original_commit_date": "2026-08-24 23:28:46 -0500",
+    "subject": "PX0 Product Truth Synchronization: source-truth correction, public claim remediation, truth system"
+  },
+  {
+    "public_sha": "9f3935382780d19f044c68dbd41ca995557566ad",
+    "original_haiec_sha": "b4c461688d00390266990cdf77adcc19ee03ada9",
+    "original_author_date": "2026-08-23 20:39:06 -0500",
+    "original_commit_date": "2026-08-23 20:39:06 -0500",
+    "subject": "feat(u3-g): GitHub App security-first hardening + U3-C SARIF stabilization + U3 producer-activation closeout"
+  },
+  {
+    "public_sha": "db7faf721ccea1eaed6992120388f335d5043087",
+    "original_haiec_sha": "b5a746deb8e084b4aa302d91440cf5c6c7c9b24d",
+    "original_author_date": "2026-08-27 02:06:37 -0500",
+    "original_commit_date": "2026-08-27 02:06:37 -0500",
+    "subject": "PX1.2B-H3-R1: receipt state consistency + MTI execution + repo hygiene"
+  },
+  {
+    "public_sha": "22d4809550286dedec465aec030a6c64b9aa1cb7",
+    "original_haiec_sha": "b92a5af791f1c53ec209997fa8ca915156eb93ba",
+    "original_author_date": "2026-09-09 07:12:52 -0500",
+    "original_commit_date": "2026-09-09 07:12:52 -0500",
+    "subject": "feat: close UX-3 truth and v4.2 site governance"
+  },
+  {
+    "public_sha": "46c16d8c24163658a061818a8e47a943ebd619dd",
+    "original_haiec_sha": "ba0f7683f70bf2b5eab2b1c14b4f8f88557096cd",
+    "original_author_date": "2026-09-03 22:09:31 -0500",
+    "original_commit_date": "2026-09-03 22:09:31 -0500",
+    "subject": "Merge pull request #1599 from subodhkc/wave2/ux2a-envelope-draft-evaluability"
+  },
+  {
+    "public_sha": "0501d496f1793a92a487cb14c6967dd28025c2c7",
+    "original_haiec_sha": "be98aad1a0a32617a050cf9872cb50c67f3e9529",
+    "original_author_date": "2026-08-25 02:42:01 -0500",
+    "original_commit_date": "2026-08-25 02:42:01 -0500",
+    "subject": "Merge pull request #1467 from subodhkc/px1.1a/post-deploy-truth-closure-and-nav"
+  },
+  {
+    "public_sha": "d215754b9471a13f91ff6d8fb3befcb38e501e97",
+    "original_haiec_sha": "bf63193beb3b510fee9bd9b5f7b815214d6bdef1",
+    "original_author_date": "2026-09-04 08:31:29 -0500",
+    "original_commit_date": "2026-09-04 08:31:29 -0500",
+    "subject": "Canonical mapping eligibility correction — match Action Surface isCanonical rule"
+  },
+  {
+    "public_sha": "180b183e4446dd8f462228bf5d9e008fcf236641",
+    "original_haiec_sha": "bfa3b2aa2a9a382129554d1fe96c4aa96d0f909e",
+    "original_author_date": "2026-09-04 08:12:09 -0500",
+    "original_commit_date": "2026-09-04 08:12:09 -0500",
+    "subject": "AI Action & Access Map — final micro-close (fail-closed capability join)"
+  },
+  {
+    "public_sha": "75afa93e53b7571cddfff6bec173a13f2a776773",
+    "original_haiec_sha": "c15700511250cd02f181e2914f2630e50d048403",
+    "original_author_date": "2026-09-11 06:59:56 -0500",
+    "original_commit_date": "2026-09-11 06:59:56 -0500",
+    "subject": "fix(assurance): Consequence Delta semantic closure (scope gate, direction, edge truth, digest binding)"
+  },
+  {
+    "public_sha": "6a4a118f9da7354a64dd5033f92ca01c12e6587e",
+    "original_haiec_sha": "c180f9e1b891f25794dfd02495ec19f9ccfee16e",
+    "original_author_date": "2026-09-01 00:55:02 -0500",
+    "original_commit_date": "2026-09-01 00:55:02 -0500",
+    "subject": "Capability Core Phase 12: evidence admission + five-plane availability truth (#1575)"
+  },
+  {
+    "public_sha": "e91e7b9b9152333c40c72732471637b7dbfb5e21",
+    "original_haiec_sha": "c1fb4ea30f2ee956a1cd9adc5ecaca9cf7bb5ba8",
+    "original_author_date": "2026-09-09 23:31:17 -0500",
+    "original_commit_date": "2026-09-09 23:31:17 -0500",
+    "subject": "S6 final pass: family-scoped frontier semantics, exact-run Action Assurance context, SystemWorkspace / Action & Access Map integration, U6 1.4.0 verification tests, and product-truth documentation."
+  },
+  {
+    "public_sha": "1ec7725e45a07efed11ba787c1f9d3dfc8d91820",
+    "original_haiec_sha": "c250a08c74fb2de4bfa76a0c5d05bf8f0b17c466",
+    "original_author_date": "2026-08-23 04:18:24 -0500",
+    "original_commit_date": "2026-08-23 04:18:24 -0500",
+    "subject": "feat(t1-c): tenant authorization closure — project/CI route org enforcement, GitHub ownership truth, slug auto-link removal"
+  },
+  {
+    "public_sha": "0bb18ab2ab2b552b1772d9a62719cf088539e4f0",
+    "original_haiec_sha": "c2b10cc29238528dcc0dc13a154511913a862526",
+    "original_author_date": "2026-08-24 05:51:44 -0500",
+    "original_commit_date": "2026-08-24 05:51:44 -0500",
+    "subject": "feat(u6): structural package builder, persistence, verification, badge"
+  },
+  {
+    "public_sha": "c990ce74fcff2c4bcb7169575faf15cac69b924f",
+    "original_haiec_sha": "c42ba4ddf095ce425ed60f731cb829080df86e3a",
+    "original_author_date": "2026-09-09 00:58:11 -0500",
+    "original_commit_date": "2026-09-09 00:58:11 -0500",
+    "subject": "ARI-P0 Phase 3 convergence: ARI topology projection into the Action & Access Map."
+  },
+  {
+    "public_sha": "f542ecfcf6b59d1fecb67e5aaf736ca4a5f40602",
+    "original_haiec_sha": "c44152b37e9d61b6a1b0025094433e0250fd8b4d",
+    "original_author_date": "2026-09-14 23:45:56 -0500",
+    "original_commit_date": "2026-09-14 23:45:56 -0500",
+    "subject": "Merge pull request #1736 from subodhkc/feat/kestrel-demo-hardening-qa-1r"
+  },
+  {
+    "public_sha": "e1e8db828634cc64ec81fcd3c144320969b9e461",
+    "original_haiec_sha": "c5108bba79c0f3a5ef16279d7264352718400fe8",
+    "original_author_date": "2026-08-28 04:14:11 -0500",
+    "original_commit_date": "2026-08-28 04:50:04 -0500",
+    "subject": "fix(assurance): close PX1.2C product and receipt truth"
+  },
+  {
+    "public_sha": "4d76c3515d9bccb075ec9acac9dd5fb26842db70",
+    "original_haiec_sha": "c534efc353e28c50d0b3d4b8f8cd94ee4d8f39eb",
+    "original_author_date": "2026-08-23 16:42:53 -0500",
+    "original_commit_date": "2026-08-23 16:42:53 -0500",
+    "subject": "feat(u3-a): static + runtime evidence producer activation — canonical persistence, runtime source-of-truth correction, idempotent envelopes"
+  },
+  {
+    "public_sha": "5ec8becec9099f7ce34c436ec5d06fbb1efb3e46",
+    "original_haiec_sha": "c5c8c674ce3f85abd74531634d30319d6d54530c",
+    "original_author_date": "2026-09-03 01:53:46 -0500",
+    "original_commit_date": "2026-09-03 01:53:46 -0500",
+    "subject": "AA-0: Canonical Action / Resource Identity Foundation"
+  },
+  {
+    "public_sha": "433e02831657ffb1e785f3bdd739c04a3e0b601b",
+    "original_haiec_sha": "c723d8348f05155f96e006db024fbd886dc06d52",
+    "original_author_date": "2026-09-09 07:44:01 -0500",
+    "original_commit_date": "2026-09-09 07:44:01 -0500",
+    "subject": "Merge pull request #1666 from subodhkc/ux3-enterprise-ui-convergence"
+  },
+  {
+    "public_sha": "7027c38ec11f48e81e8e8af0234b64e370ffcac7",
+    "original_haiec_sha": "c74d21759b5ce35a6e2a56eb7fa697a076ed42ff",
+    "original_author_date": "2026-09-04 07:56:22 -0500",
+    "original_commit_date": "2026-09-04 07:56:22 -0500",
+    "subject": "AI Action & Access Map — completion pass (exact join, zoom, labels, hash)"
+  },
+  {
+    "public_sha": "2f888c5c13a96f7174537ae55dbff7f02cc61a7d",
+    "original_haiec_sha": "c791ff03c0c2cbb4085fdede73c22e1031482c99",
+    "original_author_date": "2026-02-14 21:28:52 -0600",
+    "original_commit_date": "2026-02-14 21:28:52 -0600",
+    "subject": "Fix MARPP migration: guard admin_api_keys FK with table existence check"
+  },
+  {
+    "public_sha": "57e1bb5a29e82b4f7719aa3da9e4077b76bdf6e5",
+    "original_haiec_sha": "c7be7027e0cc6fc0c881c6ec5606f14e5b84bd08",
+    "original_author_date": "2026-09-09 01:35:39 -0500",
+    "original_commit_date": "2026-09-09 01:35:39 -0500",
+    "subject": "ARI-P0 Phase 3 qualification repair: same-scan composition and canonical identity"
+  },
+  {
+    "public_sha": "270166d0a1ae66e47863a7f28c699525846ba891",
+    "original_haiec_sha": "cb70427152d6a9c2deb9f69932201001ce0b072f",
+    "original_author_date": "2026-09-08 10:32:54 -0500",
+    "original_commit_date": "2026-09-08 10:32:54 -0500",
+    "subject": "PX-IDENTITY: fail-closed evaluation->run->scan identity continuity for historical Action Proof"
+  },
+  {
+    "public_sha": "72b7d7aa1d1016c8d241a8f83deb6d3a51726983",
+    "original_haiec_sha": "cd9816cce513a48a133476d93a7ae2d481593c8e",
+    "original_author_date": "2026-09-08 10:05:37 -0500",
+    "original_commit_date": "2026-09-08 10:05:37 -0500",
+    "subject": "Merge pull request #1656 from subodhkc/product/final-saas-convergence"
+  },
+  {
+    "public_sha": "37bb5f30cf91391ef3d4ccfe67b1ff85e044ac39",
+    "original_haiec_sha": "cdb259f17a59af4a5eae10d5c769d768f40fcd0a",
+    "original_author_date": "2026-08-26 03:38:58 -0500",
+    "original_commit_date": "2026-08-26 03:38:58 -0500",
+    "subject": "Merge pull request #1481 from subodhkc/brand/haiec-identity-transition"
+  },
+  {
+    "public_sha": "d38c13b886e4e00e43df7d22d69ea86667106960",
+    "original_haiec_sha": "ce02fed20acb0f2979f9a4498812b60278340826",
+    "original_author_date": "2026-08-23 01:51:58 -0500",
+    "original_commit_date": "2026-08-23 01:51:58 -0500",
+    "subject": "feat(u2-a2): evidence core truth reconciliation — fix collectors, correct docs"
+  },
+  {
+    "public_sha": "7a7e0855ef53b022d8869b8ba7c33b1a863089ef",
+    "original_haiec_sha": "ce847e2f3ed0d694bf8fe6826b0e4ae64230afc1",
+    "original_author_date": "2026-09-14 03:20:18 -0500",
+    "original_commit_date": "2026-09-14 03:20:18 -0500",
+    "subject": "Merge pull request #1709 from subodhkc/feat/aa-constellation-provenance-1r"
+  },
+  {
+    "public_sha": "3794b910e326b3cff034b7a6423fcb667299632a",
+    "original_haiec_sha": "cf8164ca05b60fbb73757785f7e9c6d619efba23",
+    "original_author_date": "2026-09-05 04:11:55 -0500",
+    "original_commit_date": "2026-09-05 04:11:55 -0500",
+    "subject": "Security Testing + Badge Semantics + Map Accessibility Close"
+  },
+  {
+    "public_sha": "15dba563a695ba6cb99a0c84e40110d5310170a5",
+    "original_haiec_sha": "cfa853e89cf3e678f5b412cd16a94b6d5f6add39",
+    "original_author_date": "2026-09-14 23:11:39 -0500",
+    "original_commit_date": "2026-09-14 23:11:39 -0500",
+    "subject": "HAIEC-KESTREL-DEMO-PACK-1R: flagship assurance demo + consequence-first Constellation"
+  },
+  {
+    "public_sha": "e71e122a9bdae8f7080d2da8f9d95a275f826d6f",
+    "original_haiec_sha": "d04eefe1fac2dae4ff99fe2a655b6d16ceb8391f",
+    "original_author_date": "2026-08-26 03:31:34 -0500",
+    "original_commit_date": "2026-08-26 03:31:34 -0500",
+    "subject": "BR1: HAIEC identity and research narrative transition"
+  },
+  {
+    "public_sha": "919600357473d047e19dc86523cb957e7614fd96",
+    "original_haiec_sha": "d1bd141f7a44e2b60cf67b5016ca8cc630078abc",
+    "original_author_date": "2026-09-06 23:11:25 -0500",
+    "original_commit_date": "2026-09-06 23:11:25 -0500",
+    "subject": "WP-MAP-REPLICA — Structural Visual Closure"
+  },
+  {
+    "public_sha": "2cc51b387b776d71b9cde5f7155f78ce305fffd4",
+    "original_haiec_sha": "d49b21a9f2420fb36e78b650e6589f48a9993964",
+    "original_author_date": "2026-09-09 09:03:45 -0500",
+    "original_commit_date": "2026-09-09 09:03:45 -0500",
+    "subject": "security: qualify PK-0 continuity gate"
+  },
+  {
+    "public_sha": "c43d9fffcd320ffe6dcf827db02ff9b6bf5a87f2",
+    "original_haiec_sha": "d51400fa9285a717ac5976aaaf185ceb2bed90c8",
+    "original_author_date": "2026-08-27 03:25:18 -0500",
+    "original_commit_date": "2026-08-27 03:25:18 -0500",
+    "subject": "Merge pull request #1494 from subodhkc/px1.2/exact-read-model-closure"
+  },
+  {
+    "public_sha": "53cc825ff0f06f5c4c031e96e56707fe2a33e0d9",
+    "original_haiec_sha": "d5e788d0d62cf23f8130bcd1c559e93303a5cfef",
+    "original_author_date": "2026-09-06 02:22:37 -0500",
+    "original_commit_date": "2026-09-06 02:22:37 -0500",
+    "subject": "Brand semantic closure: tagline != company expansion, legal entity limitation, asset path cleanup"
+  },
+  {
+    "public_sha": "2bffa0d9769303acc95b0f2f204a9789d749fc61",
+    "original_haiec_sha": "d661fb63dfa4f1d08ca9318c33eea377d64e7459",
+    "original_author_date": "2026-09-08 10:04:42 -0500",
+    "original_commit_date": "2026-09-08 10:04:42 -0500",
+    "subject": "PX-FINAL-R: provider-native map coverage limitation + strengthened trace/U6 digest tests"
+  },
+  {
+    "public_sha": "a237c0556e468f1dbad422cc4e1215b3619b3ba8",
+    "original_haiec_sha": "d8c1a88d03e10e38a6f89b136029989ee0c10e36",
+    "original_author_date": "2026-08-26 21:06:59 -0500",
+    "original_commit_date": "2026-08-26 21:06:59 -0500",
+    "subject": "Merge pull request #1484 from subodhkc/ux/public-site-final-truth-hotfix"
+  },
+  {
+    "public_sha": "00f3dafff23eb1b47ddd18b4e45d086d23cb333a",
+    "original_haiec_sha": "dc55fdf08f4633191131ed50b08a319c71b5e248",
+    "original_author_date": "2026-08-24 07:09:27 -0500",
+    "original_commit_date": "2026-08-24 07:09:27 -0500",
+    "subject": "feat(u6): canonical evidence source, action witness samples, comparator fix"
+  },
+  {
+    "public_sha": "56cef6d739605243dec646f445a888e180e42f0c",
+    "original_haiec_sha": "e0315497ae4211d349a11d3d756ee74b5633a8a9",
+    "original_author_date": "2026-09-10 22:22:22 -0500",
+    "original_commit_date": "2026-09-10 22:22:22 -0500",
+    "subject": "OUTPUT-2: add Agentic Production Passport OUTPUT-3: add full assurance report composer OUTPUT-4: add deterministic Constellation SVG export OUTPUT-5: add artifact manifest and machine-readable output OUTPUT-6: repair private PDF cache headers"
+  },
+  {
+    "public_sha": "6c67d75a13788de01829b4f39282b036f836fc1e",
+    "original_haiec_sha": "e1e2f1b374bfb380e6c4a6ba155acedb252fd836",
+    "original_author_date": "2026-09-13 07:12:35 -0500",
+    "original_commit_date": "2026-09-13 07:12:54 -0500",
+    "subject": "AA-BRIDGE-1: canonical downstream-operation bridge + executive assurance hierarchy"
+  },
+  {
+    "public_sha": "dee955d5316fab787098108ea1a8d54660436662",
+    "original_haiec_sha": "e2a8cdacab4a7ee6bee091704d6deb4ce77e20f7",
+    "original_author_date": "2026-09-03 21:13:28 -0500",
+    "original_commit_date": "2026-09-03 21:13:28 -0500",
+    "subject": "UX-2A final truth micro-correction — DEFECTS 1-4"
+  },
+  {
+    "public_sha": "257a53dbf6888358d8670a1ed5786ac3d9b23567",
+    "original_haiec_sha": "e33b6a979c528e7c974f12884834e5599d1c815a",
+    "original_author_date": "2026-09-05 22:17:44 -0500",
+    "original_commit_date": "2026-09-05 22:17:44 -0500",
+    "subject": "WP-AA-CURRENT-1: Current authority read model convergence"
+  },
+  {
+    "public_sha": "f8e46cdd032f099e02e81b018b15c9cf2176cd4c",
+    "original_haiec_sha": "e34fef6bf29281be243c6fe137f634df62cea438",
+    "original_author_date": "2026-08-31 01:13:56 -0500",
+    "original_commit_date": "2026-08-31 01:13:56 -0500",
+    "subject": "Gate 4A: CI repository compatibility and commit identity qualification (#1559)"
+  },
+  {
+    "public_sha": "3294d2415b8e250dffe45d113b3d2b777f9e8dd3",
+    "original_haiec_sha": "e43146c2c9d4b0bd6a1b29298c4b503ece0491a3",
+    "original_author_date": "2026-09-03 20:46:48 -0500",
+    "original_commit_date": "2026-09-03 20:46:48 -0500",
+    "subject": "UX-2A correction pass — DEFECTS A-F"
+  },
+  {
+    "public_sha": "8b569e457243907ab5b47234702d08b764252d92",
+    "original_haiec_sha": "e5550e44ff99ef80c24e4e419ffcf89381715153",
+    "original_author_date": "2026-09-03 10:47:46 -0500",
+    "original_commit_date": "2026-09-03 10:47:46 -0500",
+    "subject": "AA-0 fix: Separate validation from construction, fix control-char regex, revert policy-fact identity change"
+  },
+  {
+    "public_sha": "0cfe089e630ff9f5d6c4080550e32728da943b45",
+    "original_haiec_sha": "e59908d669c2d0dac7892d145b5f20dca18fabdc",
+    "original_author_date": "2026-09-10 08:15:20 -0500",
+    "original_commit_date": "2026-09-10 08:15:20 -0500",
+    "subject": "Merge pull request #1678 from subodhkc/ux/constellation-failsoft-home-preview"
+  },
+  {
+    "public_sha": "c18c14d3fb0c534025a8e294b8c011aa4a628def",
+    "original_haiec_sha": "e7627ff0b4d773cb26154c6f6da9c0ef1b817f9a",
+    "original_author_date": "2026-09-04 04:20:30 -0500",
+    "original_commit_date": "2026-09-04 04:20:30 -0500",
+    "subject": "EG-1 FINAL TRUTH CLOSE: PARTIAL_AWS_AUTHORITY_SOURCE — 16 defects repaired"
+  },
+  {
+    "public_sha": "e557f3e68e7f62eddb8c9773d415c393d62f5cb7",
+    "original_haiec_sha": "e7e70ccb6248d9ef42116551901b626a0631210c",
+    "original_author_date": "2026-09-11 06:43:13 -0500",
+    "original_commit_date": "2026-09-11 06:43:13 -0500",
+    "subject": "feat(assurance): canonical Consequence Delta + Constellation overlay (F-3/EA-2)"
+  },
+  {
+    "public_sha": "9d7897f64d67b710c3d04ed26294ef66fb260266",
+    "original_haiec_sha": "e9d403a5ef59019eb908045505ee3d8afb665957",
+    "original_author_date": "2026-09-06 06:55:48 -0500",
+    "original_commit_date": "2026-09-06 06:55:48 -0500",
+    "subject": "WP-WF-1 Membership Closure - Prior U4 projection controls reuse membership"
+  },
+  {
+    "public_sha": "32c1d7f59067edb9f3e8eb9df3f7873cb84b65f3",
+    "original_haiec_sha": "eb4b7b94afac00f558ae5a0cebae9bd642e9a2a7",
+    "original_author_date": "2026-09-06 02:44:58 -0500",
+    "original_commit_date": "2026-09-06 02:44:58 -0500",
+    "subject": "Merge pull request #1632 from subodhkc/fix/haiec-brand-logo-about-contact"
+  },
+  {
+    "public_sha": "6c62a6a918d0edd574705feacc85f50bbe9119f0",
+    "original_haiec_sha": "ed178fa2ae7213d21dad71816953accde477d433",
+    "original_author_date": "2026-09-11 02:17:02 -0500",
+    "original_commit_date": "2026-09-11 02:17:02 -0500",
+    "subject": "F-3/EA-2: close result-intent gating, provenance dedupe, trusted execution, HTML injection safety"
+  },
+  {
+    "public_sha": "020cf2d10474cc7a9b4a86d47b20e8107525fec5",
+    "original_haiec_sha": "edb33d65f155555f4662623313dff734f36ffc1d",
+    "original_author_date": "2026-09-13 21:30:34 -0500",
+    "original_commit_date": "2026-09-13 21:30:34 -0500",
+    "subject": "AA-RENDERER-2R: evidence-permission gate, U5 decision basis, semantic vocabulary repair, bounded actions/paths, machine contract preservation, PDF route"
+  },
+  {
+    "public_sha": "e31c8dc3e81ef48581a164681e0d8314760724f9",
+    "original_haiec_sha": "ee1cbafb8d8c91dd9a5f212491544f9464175c2f",
+    "original_author_date": "2026-09-14 23:44:51 -0500",
+    "original_commit_date": "2026-09-14 23:44:51 -0500",
+    "subject": "HAIEC-KESTREL-DEMO-HARDENING-QA-1R: manual QA access + consequence truth + report downloads"
+  },
+  {
+    "public_sha": "d9faad4b6e8b13835c93d51b4e4f8635a54d5bce",
+    "original_haiec_sha": "ef5418d3436d16c85549611ecbe5f2f1620038cb",
+    "original_author_date": "2026-08-26 03:04:00 -0500",
+    "original_commit_date": "2026-08-26 03:04:00 -0500",
+    "subject": "PX1.2A-R3: Final database and identity contract correction"
+  },
+  {
+    "public_sha": "f52fc0719f9c03145a87d48f4aff289194cb5a81",
+    "original_haiec_sha": "f05ee07993d7f77ad902f7bdb96da4279812fe24",
+    "original_author_date": "2026-08-26 01:11:32 -0500",
+    "original_commit_date": "2026-08-26 01:11:32 -0500",
+    "subject": "PX1.2A: AI System assurance foundation + system boundary model"
+  },
+  {
+    "public_sha": "6d375d0b5698a5e8b76cb369f526bed156435113",
+    "original_haiec_sha": "f0c57935bb7ba6fdad84021aa8fcf3fbcdb34b3c",
+    "original_author_date": "2026-08-26 02:31:07 -0500",
+    "original_commit_date": "2026-08-26 02:31:07 -0500",
+    "subject": "PX1.2A-R2: Final semantic correction before foundation merge"
+  },
+  {
+    "public_sha": "f98bfae8eb1668714ae1db9d8d24fe6d7d11e7b3",
+    "original_haiec_sha": "f2e87682f6fedc352adab5b0d1b6dae5e425d9a5",
+    "original_author_date": "2026-08-23 22:11:41 -0500",
+    "original_commit_date": "2026-08-23 22:11:41 -0500",
+    "subject": "feat(u5): Control Claims + Control Evidence Sets + Deterministic Assurance State"
+  },
+  {
+    "public_sha": "3406c90d9a94cf5fee54e263cb7c9fe36e6c4fb6",
+    "original_haiec_sha": "f351a0fb1e6c5f1ccba1bc804051b81e3f4efd9b",
+    "original_author_date": "2026-09-08 08:23:29 -0500",
+    "original_commit_date": "2026-09-08 08:23:29 -0500",
+    "subject": "﻿PY-K3: ActionProofTrace read-only projection over rp5 relations"
+  },
+  {
+    "public_sha": "fd19a95b7e3f38cbbdfaecce07b5e8a743811dcc",
+    "original_haiec_sha": "f377cc15d7a8c6e45ca94924de8d09203d275a57",
+    "original_author_date": "2026-09-04 02:44:26 -0500",
+    "original_commit_date": "2026-09-04 02:44:26 -0500",
+    "subject": "EG-1: AWS IAM effective grant observation — first truthful EFFECTIVELY_GRANTED source"
+  },
+  {
+    "public_sha": "11c7c8fc51613bda780e96b5bacd951b7bb31cbe",
+    "original_haiec_sha": "f5985aff6e218c6c8e80663783c611a5acec3473",
+    "original_author_date": "2026-08-24 08:33:41 -0500",
+    "original_commit_date": "2026-08-24 08:33:41 -0500",
+    "subject": "U6 semantic integrity gate: temporal boundary, exact mapping, evidence roundtrip, focused validation."
+  },
+  {
+    "public_sha": "f77dfc4f1971c49e3eecc9d694e1190bc81d5518",
+    "original_haiec_sha": "f5d5b2559a8d583d48835ae09e9e14bb26d8aa97",
+    "original_author_date": "2026-09-06 22:52:48 -0500",
+    "original_commit_date": "2026-09-06 22:52:48 -0500",
+    "subject": "WP-MAP-REPLICA — AI Action & Access Map HTML Visual Replica"
+  },
+  {
+    "public_sha": "f4b81ccc972e4b1b9bbe1c95fbc100b1207a6b60",
+    "original_haiec_sha": "f5d84a4bc80bd32d40e11f06d462c9918bf134d5",
+    "original_author_date": "2026-09-10 01:06:06 -0500",
+    "original_commit_date": "2026-09-10 01:06:06 -0500",
+    "subject": "Merge pull request #1675 from subodhkc/agentic-assurance-s6"
+  },
+  {
+    "public_sha": "f76d006260bbd6aa8354f90f58d3b20232aaac20",
+    "original_haiec_sha": "f6aad271d94a36bbd1ea9680bdea18b82454b4f7",
+    "original_author_date": "2026-09-07 00:44:22 -0500",
+    "original_commit_date": "2026-09-07 00:44:22 -0500",
+    "subject": "WP-MAP-REPLICA — Rebuild sample content to match reference HTML"
+  },
+  {
+    "public_sha": "9a12d7c80e1d2bdfbd575887e8f294fdaf773eec",
+    "original_haiec_sha": "f711a7057b76adab60085820950cb6a9d2479e92",
+    "original_author_date": "2026-09-04 00:25:30 -0500",
+    "original_commit_date": "2026-09-04 00:25:30 -0500",
+    "subject": "UX-2C: OTHER_POLICY_CHANGE summary — no false narrowing/expansion for role-only changes"
+  },
+  {
+    "public_sha": "a7973e1dbc641b0342210e194b4c8b739e39dc88",
+    "original_haiec_sha": "f7a5f1e96fc7f2f8ba442f9bb86419113061ccf2",
+    "original_author_date": "2026-09-08 11:14:36 -0500",
+    "original_commit_date": "2026-09-08 11:14:36 -0500",
+    "subject": "ARI-P0 / EI-1: Agent Reachability, Shared State & Evaluation Integrity"
+  },
+  {
+    "public_sha": "5b8f52a01da9022b19541f877059604cfcf06674",
+    "original_haiec_sha": "f7c110fb6472c476d4cd4897a6111ad0c283d185",
+    "original_author_date": "2026-09-11 01:29:30 -0500",
+    "original_commit_date": "2026-09-11 01:29:30 -0500",
+    "subject": "F-3/EA-2: canonical rule identity bridge and executed framework gating"
+  },
+  {
+    "public_sha": "a0c667765f362758833d27b33b4529e44ba7861e",
+    "original_haiec_sha": "faffa811ed2bcd1de2344a3c7d6fff3d59cd88ac",
+    "original_author_date": "2026-09-04 10:34:48 -0500",
+    "original_commit_date": "2026-09-04 10:34:48 -0500",
+    "subject": "Sample presentation truth close — no Source established, no canonical plane fields, no invented JoinBasis, potential consequence wording, production title fix, sample opens on Action -> Consequence"
+  },
+  {
+    "public_sha": "1d7053ea22141568971873290bb0cefc2015a346",
+    "original_haiec_sha": "fc887901a29c4114c4a4c8685a069934323ba5e1",
+    "original_author_date": "2026-09-13 08:57:03 -0500",
+    "original_commit_date": "2026-09-13 08:57:03 -0500",
+    "subject": "AA-PROJECTION-1: canonical Assurance Evidence Bundle + Report Projection Manifest + reporting consumption contract"
+  }
+]

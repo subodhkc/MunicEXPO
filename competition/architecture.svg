@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="430" viewBox="0 0 760 430" font-family="system-ui,-apple-system,Segoe UI,sans-serif">
+  <rect width="760" height="430" fill="#ffffff"/>
+  <text x="40" y="36" font-size="18" font-weight="700" fill="#0f172a">HAIEC Constellation — assurance pipeline</text>
+
+  <g font-size="12" fill="#0f172a">
+    <rect x="40" y="60" width="150" height="34" rx="6" fill="#f1f5f9" stroke="#cbd5e1"/><text x="115" y="81" text-anchor="middle">Repository / AI System</text>
+    <rect x="40" y="114" width="150" height="34" rx="6" fill="#f1f5f9" stroke="#cbd5e1"/><text x="115" y="135" text-anchor="middle">Source-backed analysis</text>
+    <rect x="40" y="168" width="150" height="34" rx="6" fill="#f1f5f9" stroke="#cbd5e1"/><text x="115" y="189" text-anchor="middle">Canonical evidence</text>
+    <rect x="40" y="222" width="150" height="34" rx="6" fill="#f1f5f9" stroke="#cbd5e1"/><text x="115" y="243" text-anchor="middle">Evidence reconciliation</text>
+    <rect x="40" y="276" width="150" height="34" rx="6" fill="#ecfdf5" stroke="#059669"/><text x="115" y="297" text-anchor="middle" font-weight="600">Assurance Decision</text>
+    <rect x="40" y="330" width="150" height="34" rx="6" fill="#f1f5f9" stroke="#cbd5e1"/><text x="115" y="351" text-anchor="middle">One exact evaluation</text>
+  </g>
+  <g stroke="#94a3b8" stroke-width="1.5" fill="none">
+    <line x1="115" y1="94" x2="115" y2="114"/><line x1="115" y1="148" x2="115" y2="168"/><line x1="115" y1="202" x2="115" y2="222"/><line x1="115" y1="256" x2="115" y2="276"/><line x1="115" y1="310" x2="115" y2="330"/>
+    <line x1="190" y1="347" x2="240" y2="347"/><line x1="240" y1="347" x2="240" y2="120"/><line x1="240" y1="120" x2="285" y2="120"/>
+    <line x1="240" y1="347" x2="240" y2="190"/><line x1="240" y1="190" x2="285" y2="190"/>
+    <line x1="240" y1="347" x2="240" y2="260"/><line x1="240" y1="260" x2="285" y2="260"/>
+    <line x1="240" y1="347" x2="240" y2="330"/><line x1="240" y1="330" x2="285" y2="330"/>
+    <line x1="240" y1="347" x2="285" y2="400"/>
+  </g>
+  <g font-size="12" fill="#0f172a">
+    <rect x="285" y="102" width="180" height="34" rx="6" fill="#f1f5f9" stroke="#cbd5e1"/><text x="375" y="123" text-anchor="middle">Reports (exec / tech / auditor)</text>
+    <rect x="285" y="172" width="180" height="34" rx="6" fill="#f1f5f9" stroke="#cbd5e1"/><text x="375" y="193" text-anchor="middle">System Constellation</text>
+    <rect x="285" y="242" width="180" height="34" rx="6" fill="#f1f5f9" stroke="#cbd5e1"/><text x="375" y="263" text-anchor="middle">Passport / Decision Receipt</text>
+    <rect x="285" y="312" width="180" height="34" rx="6" fill="#f1f5f9" stroke="#cbd5e1"/><text x="375" y="333" text-anchor="middle">Machine evidence</text>
+    <rect x="285" y="382" width="180" height="34" rx="6" fill="#f1f5f9" stroke="#cbd5e1"/><text x="375" y="403" text-anchor="middle">Consequence Delta</text>
+  </g>
+
+  <g font-size="11" fill="#475569">
+    <text x="520" y="115">Five independent evidence questions:</text>
+    <text x="520" y="140">Requested · Policy Authorized ·</text>
+    <text x="520" y="158">Effectively Granted · Code Capable ·</text>
+    <text x="520" y="176">Observed</text>
+    <text x="520" y="210" fill="#94a3b8">Not a causal pipeline — each plane is</text>
+    <text x="520" y="226" fill="#94a3b8">a separate evidence type.</text>
+    <text x="520" y="270">Constellation &amp; reports are projections</text>
+    <text x="520" y="288">over one frozen evaluation.</text>
+  </g>
+</svg>

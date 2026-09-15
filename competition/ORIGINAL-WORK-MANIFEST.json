@@ -1,0 +1,63 @@
+{
+  "manifest": "munichtech-original-work-1",
+  "baseline_sha": "4c999fb86ff8fb6a9283c250511339eac79b1d64",
+  "baseline_date": "2026-08-31T22:02:00-05:00",
+  "baseline_subject": "Capability Core Phase 11: organization-scoped report access truth (#1574)",
+  "submission_sha": "11b2e8b68cdbd974d6ae0b03ede5c1e907700e12",
+  "submission_source_repo": "subodhkc/haiec-website (private)",
+  "public_repo": "subodhkc/MunicEXPO",
+  "window_totals": {
+    "commits": 500,
+    "files_changed": 1039,
+    "files_added": 462,
+    "files_modified": 556,
+    "files_deleted": 21,
+    "lines_added": 370830,
+    "lines_deleted": 20348,
+    "test_files_added_or_changed": 235
+  },
+  "competition_relevant_subset": {
+    "commits": 104,
+    "files_changed": 80,
+    "lines_added": 86153,
+    "lines_deleted": 560
+  },
+  "classification_summary": {
+    "NEW_DURING_MUNICTECH": [
+      "Topology projector (System Constellation core)",
+      "Constellation presentation projection",
+      "Action Assurance five-plane section",
+      "Agentic Production Passport",
+      "Artifact manifest / integrity",
+      "Assurance product adapters (bundle owner)",
+      "Consequence Delta + service + overlay",
+      "Evidence-bound report projection (bundle + profiles)",
+      "Evaluation report API + dashboard report page",
+      "Kestrel public demo pack",
+      "Consequence-label semantic hardening",
+      "Dev-only QA review hub"
+    ],
+    "MATERIALLY_EXTENDED_DURING_MUNICTECH": [
+      "Evidence-bound assurance evaluation (U6 packaging, product adapters, reporting projection)",
+      "System Constellation (presentation projection + delta overlay + evaluation-snapshot basis)"
+    ],
+    "PRE_EXISTING_FOUNDATION": [
+      "Assurance evaluator / types / persistence (2026-08-23)",
+      "Assurance package / receipt service (2026-08-24)",
+      "Action surface (2026-08-30)",
+      "Engine/producer registry (2026-08-23)",
+      "Static AI-security scanner (2026-01-04)",
+      "Legacy decision pipeline (2026-03-21)"
+    ],
+    "PACKAGING_ONLY": [
+      "Kestrel sanitized public JSON/machine JSON/PDF artifacts (projection of frozen evaluation — no new truth)",
+      "This public repository itself"
+    ]
+  },
+  "locks": [
+    "GIT_COMMIT_DATE != FEATURE_CREATED unless diff proves implementation",
+    "FILE_TOUCHED_IN_SEPTEMBER != FEATURE_CREATED_IN_SEPTEMBER",
+    "PRIVATE_SHA != PUBLIC_FILTERED_SHA",
+    "PUBLIC_REPO != FULL_HAIEC_SOURCE"
+  ]
+}
