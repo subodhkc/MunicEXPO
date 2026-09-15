@@ -49,6 +49,15 @@ Agent  →  Tool  →  Service  →  Consequence
 
 **HAIEC follows that chain.**
 
+> **Judging?** → [`JUDGE-START-HERE.md`](JUDGE-START-HERE.md) — a 60-second
+> path: live demo → one consequential path → five planes → where proof stops
+> → `node competition/verify-evidence.mjs`.
+>
+> **Foundation vs. MunichTech work** — the platform, evaluator, receipt layer,
+> and scanner predate the window; the Constellation, Action Assurance planes,
+> Passport, Consequence Delta, report projection, and Kestrel demo were built
+> during it. [`ORIGINALITY.md`](ORIGINALITY.md) has the Git-verified record.
+
 ---
 
 ## Follow the consequence
@@ -140,6 +149,13 @@ Downloadable artifacts (all SHA-256 hashed, see
 - Assurance Evidence Report PDF
 - Machine-readable JSON
 - Sanitized public projection JSON
+- Canonical Decision Receipt + Agentic Production Passport (sanitized)
+
+**Verify the pack yourself** (Node, zero dependencies):
+
+```
+node competition/verify-evidence.mjs
+```
 
 ---
 
