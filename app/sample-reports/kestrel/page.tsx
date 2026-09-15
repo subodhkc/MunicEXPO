@@ -14,20 +14,30 @@ import Link from 'next/link'
 import { AssuranceBundleReport } from '@/components/ai-inventory/AssuranceBundleReport'
 import type { AssuranceEvidenceBundleV1 } from '@/lib/assurance/reporting-projection-bundle'
 import type { AssuranceReportProfile } from '@/lib/assurance/report-profile-projection'
+import { consequenceLabelFor } from '@/data/kestrel-demo/consequence-labels'
 import {
   AlertTriangle,
   ArrowLeft,
   ArrowRight,
+  ChevronDown,
   Download,
   FileJson,
   Loader2,
   Network,
 } from 'lucide-react'
 
-const PROFILES: { id: AssuranceReportProfile; label: string }[] = [
-  { id: 'executive', label: 'Executive' },
-  { id: 'technical', label: 'Technical' },
-  { id: 'auditor', label: 'Auditor' },
+const PROFILES: { id: AssuranceReportProfile; label: string; sub: string }[] = [
+  { id: 'executive', label: 'Executive', sub: 'Decision, consequences and required action' },
+  { id: 'technical', label: 'Technical', sub: 'Action paths, controls and evidence details' },
+  { id: 'auditor', label: 'Auditor', sub: 'Provenance, coverage and sufficiency' },
+]
+
+const DOWNLOADS: { label: string; href: string }[] = [
+  { label: 'Executive PDF', href: '/demo/kestrel/kestrel-assurance-executive.pdf' },
+  { label: 'Technical PDF', href: '/demo/kestrel/kestrel-assurance-technical.pdf' },
+  { label: 'Assurance Evidence PDF', href: '/demo/kestrel/kestrel-assurance-auditor.pdf' },
+  { label: 'Machine JSON', href: '/demo/kestrel/kestrel-assurance.machine.json' },
+  { label: 'Artifact Manifest', href: '/demo/kestrel/manifest.json' },
 ]
 
 type DemoPayload = {
@@ -60,34 +70,29 @@ function planeLabel(state: string) {
   return state === 'ESTABLISHED' ? 'ESTABLISHED' : state === 'NOT_ASSESSED' ? 'NOT ASSESSED' : state
 }
 
-/** Human-readable business action derived from the exact handler + sink. */
+/**
+ * Business action labels come from the audited canonical map
+ * (data/kestrel-demo/consequence-labels.ts) keyed to exact sink target IDs —
+ * never heuristic name matching. Unmapped sinks fail soft to bounded
+ * technical wording.
+ */
 function describePath(p: DemoActionPath): { business: string; technical: string } {
+  const label = consequenceLabelFor(p)
   const handler = String(p.handlerRef || '')
-  const sink = String(p.sinkTargetIds?.[0] || '')
-  const sinkFile = sink.split('/').pop()?.split(':')[0] || 'operation'
-  const op = sink.split(':')[1] || ''
-  const tech = `${handler} → ${sinkFile}${op ? ` (${op})` : ''}`
-  const business =
-    handler.includes('booking')
-      ? 'Create booking / calendar entry'
-      : handler.includes('place_order')
-        ? 'Place order'
-        : handler.includes('menu')
-          ? 'Query menu item'
-          : sinkFile.includes('sms')
-            ? 'Send transactional message'
-            : sinkFile.includes('lifecycle')
-              ? 'Update call lifecycle state'
-              : 'Invocable action'
-  return { business, technical: tech }
+  const sinkFile = String(p.sinkTargetIds?.[0] || '').split('/').pop()?.split(':')[0] || 'operation'
+  return { business: label.label, technical: `${handler} → ${sinkFile} · ${label.technical}` }
 }
 
-/** Pick distinct-business-action paths for executive consequence cards. */
+/** Pick distinct-business-action paths for executive consequence cards.
+ *  Deterministic ordering: mutating effects first, then path order. */
 type TopPath = DemoActionPath & { _desc: { business: string; technical: string } }
 function pickTopPaths(paths: DemoActionPath[]) {
+  const rank = (p: DemoActionPath) =>
+    ['WRITE', 'CREATE', 'SEND', 'DELETE', 'UPDATE'].includes(consequenceLabelFor(p).effect) ? 0 : 1
+  const ordered = [...paths].sort((a, b) => rank(a) - rank(b))
   const seen = new Set<string>()
   const picked: TopPath[] = []
-  for (const p of paths) {
+  for (const p of ordered) {
     const d = describePath(p)
     const key = d.business
     if (!seen.has(key)) {
@@ -104,6 +109,7 @@ export default function KestrelDemoReportPage() {
   const [error, setError] = useState<string | null>(null)
   const [profile, setProfile] = useState<AssuranceReportProfile>('executive')
   const [showAllPaths, setShowAllPaths] = useState(false)
+  const [downloadsOpen, setDownloadsOpen] = useState(false)
 
   useEffect(() => {
     fetch('/demo/kestrel/kestrel-assurance.public.json')
@@ -137,7 +143,7 @@ export default function KestrelDemoReportPage() {
               {data?.publicationLabel ?? 'Sanitized real-repository example'}
             </span>
             <span className="text-[11px] text-slate-500">
-              Source: Kestrel / AI Service Call Agent · commit {String(identity.sourceCommitShort || '5e65843')}
+              Evaluated source repository: Kestrel / AI Service Call Agent · commit {String(identity.sourceCommitShort || '5e65843')}
             </span>
           </div>
           <h1 className="text-3xl sm:text-4xl font-bold text-white tracking-tight">
@@ -212,24 +218,35 @@ export default function KestrelDemoReportPage() {
                 <Network className="w-4 h-4" />
                 Explore System Constellation
               </Link>
-              <a
-                href="/demo/kestrel/kestrel-assurance.machine.json"
-                download
-                className="inline-flex items-center gap-1.5 px-4 py-2 border border-slate-700 text-slate-300 hover:text-white hover:border-slate-500 text-sm font-medium rounded-lg transition-colors"
-                data-testid="download-machine-json"
-              >
-                <FileJson className="w-4 h-4" />
-                Machine Artifact (JSON)
-              </a>
-              <a
-                href="/demo/kestrel/kestrel-assurance-executive.pdf"
-                download
-                className="inline-flex items-center gap-1.5 px-4 py-2 border border-slate-700 text-slate-300 hover:text-white hover:border-slate-500 text-sm font-medium rounded-lg transition-colors"
-                data-testid="download-pdf"
-              >
-                <Download className="w-4 h-4" />
-                Executive PDF
-              </a>
+              <div className="relative">
+                <button
+                  onClick={() => setDownloadsOpen(!downloadsOpen)}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 border border-slate-700 text-slate-300 hover:text-white hover:border-slate-500 text-sm font-medium rounded-lg transition-colors"
+                  aria-expanded={downloadsOpen}
+                  data-testid="downloads-menu-button"
+                >
+                  <Download className="w-4 h-4" />
+                  Download / Evidence
+                  <ChevronDown className={`w-3.5 h-3.5 transition-transform ${downloadsOpen ? 'rotate-180' : ''}`} />
+                </button>
+                {downloadsOpen && (
+                  <div className="absolute left-0 mt-1 w-64 rounded-lg border border-slate-700 bg-slate-900 shadow-xl z-20" role="menu">
+                    {DOWNLOADS.map((d) => (
+                      <a
+                        key={d.href}
+                        href={d.href}
+                        download
+                        role="menuitem"
+                        className="flex items-center gap-2 px-4 py-2.5 text-sm text-slate-300 hover:bg-slate-800 hover:text-white first:rounded-t-lg last:rounded-b-lg"
+                        onClick={() => setDownloadsOpen(false)}
+                      >
+                        <FileJson className="w-3.5 h-3.5 text-slate-500" />
+                        {d.label}
+                      </a>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </section>
 
@@ -327,6 +344,7 @@ export default function KestrelDemoReportPage() {
                   key={p.id}
                   onClick={() => setProfile(p.id)}
                   aria-pressed={profile === p.id}
+                  title={p.sub}
                   className={`px-3 py-1.5 text-xs font-medium ${
                     profile === p.id ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-slate-200'
                   }`}
@@ -337,6 +355,9 @@ export default function KestrelDemoReportPage() {
               ))}
             </div>
           </div>
+          <p className="text-[11px] text-slate-500 mb-3">
+            {PROFILES.find((p) => p.id === profile)?.sub} — same evaluation, different presentation.
+          </p>
           <div className="bg-white rounded-xl overflow-hidden p-4 sm:p-8">
             <AssuranceBundleReport bundle={bundle} profile={profile} aiSystemDisplayName={data?.aiSystemDisplayName} />
           </div>
