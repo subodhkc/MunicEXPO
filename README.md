@@ -1,4 +1,4 @@
-# HAIEC Constellation
+# HAIEC Agentic AI Assurance 
 
 ## What can your AI actually cause?
 
