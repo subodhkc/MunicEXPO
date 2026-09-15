@@ -26,6 +26,7 @@ import {
 
 // Icon mapping by product owner (presentation only, not truth)
 const PRODUCT_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
+  'Evidence-Bound Assurance': Shield,
   'Compliance Wizard': FileText,
   'AI Security Scanner': Shield,
   'NYC Bias Audit': Scale,
@@ -105,6 +106,59 @@ export default function SampleReportsContent() {
           </motion.div>
         </div>
       </section>
+
+      {/* Featured flagship — Kestrel real-repository example */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 pb-8">
+        <div className="rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-slate-900 via-slate-900 to-emerald-950/30 p-6 sm:p-8">
+          <div className="flex flex-wrap items-center gap-2 mb-3">
+            <span className="text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-300">
+              Real repository example
+            </span>
+            <span className="text-[10px] font-semibold uppercase tracking-widest px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">
+              Current generated example
+            </span>
+            <span className="text-[10px] text-slate-500">Sanitized · Kestrel / AI Service Call Agent · commit 5e65843</span>
+          </div>
+          <div className="grid sm:grid-cols-[1fr_auto] gap-6 items-center">
+            <div>
+              <h2 className="text-xl sm:text-2xl font-bold text-white">Kestrel Agentic AI Assurance</h2>
+              <div className="mt-3 flex items-center gap-5">
+                <div>
+                  <div className="text-[10px] uppercase tracking-widest text-slate-500">Decision</div>
+                  <div className="text-2xl font-extrabold text-amber-300">REVIEW</div>
+                </div>
+                <div>
+                  <div className="text-3xl font-extrabold text-white">44</div>
+                  <div className="text-[10px] text-slate-500">code-capable consequential action paths</div>
+                </div>
+              </div>
+              <p className="mt-3 text-sm text-slate-400 max-w-xl leading-relaxed">
+                HAIEC established what the implementation can cause. Policy authority, effective
+                runtime permission and observed execution were not established by the available
+                evidence — shown explicitly, not assumed.
+              </p>
+              <div className="mt-4 flex flex-wrap gap-3">
+                <Link
+                  href="/sample-reports/kestrel"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold rounded-lg transition-colors"
+                >
+                  View Assurance Report <ArrowRight className="w-4 h-4" />
+                </Link>
+                <Link
+                  href="/sample-reports/kestrel/constellation"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 border border-slate-600 text-slate-300 hover:text-white hover:border-slate-500 text-sm font-medium rounded-lg transition-colors"
+                >
+                  Explore System Constellation
+                </Link>
+              </div>
+            </div>
+            <div className="hidden sm:block text-[11px] text-slate-500 max-w-[220px] leading-relaxed border-l border-slate-800 pl-5">
+              Generated from one frozen evaluation — not a synthetic scenario. Digest-bound
+              artifacts and machine export included.
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* Category Filter */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 pb-4">
