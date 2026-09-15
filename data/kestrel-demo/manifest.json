@@ -35,6 +35,18 @@
       "type": "executive-pdf",
       "profile": "executive",
       "sha256": "06cf17662a799305e98564d38f08a891bdc6803fdcacad8648393a553f51bac3"
+    },
+    {
+      "name": "kestrel-assurance-technical.pdf",
+      "type": "technical-pdf",
+      "profile": "technical",
+      "sha256": "1f7a202c3271649db9fe9db2f5c2ebe3b136ccd5f4170a6f6cf1452a4f77ac26"
+    },
+    {
+      "name": "kestrel-assurance-auditor.pdf",
+      "type": "auditor-pdf",
+      "profile": "auditor",
+      "sha256": "7650952ce0831bce3a97ce96360c59466948bc05b425b0192728339de48aa548"
     }
   ]
 }

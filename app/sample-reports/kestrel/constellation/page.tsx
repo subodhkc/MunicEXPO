@@ -18,6 +18,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
+import { consequenceLabelFor, type ConsequenceLabel } from '@/data/kestrel-demo/consequence-labels'
 import { AlertTriangle, ArrowLeft, FileText, Loader2 } from 'lucide-react'
 
 type Plane = 'requested' | 'policyAuthorized' | 'effectivelyGranted' | 'codeCapable' | 'observed'
@@ -43,16 +44,10 @@ const PLANE_LABEL: Record<Plane, string> = {
 }
 const PLANE_ORDER: Plane[] = ['requested', 'policyAuthorized', 'effectivelyGranted', 'codeCapable', 'observed']
 
+// Headline labels come from the audited canonical map keyed to exact sink
+// target IDs — RESOURCE_NAME != EFFECT_VERB. Never heuristic string matching.
 function businessAction(p: ActionPath): string {
-  const h = p.handlerRef || ''
-  const sink = (p.sinkTargetIds?.[0] || '').split('/').pop() || ''
-  if (h.includes('place_order')) return 'PLACE ORDER'
-  if (sink.includes('sms') || sink.includes('message')) return 'CUSTOMER MESSAGE SEND'
-  if (sink.includes('lifecycle')) return 'CALL STATE CHANGE'
-  if (h.includes('booking') || sink.includes('calendar')) return 'CREATE BOOKING'
-  if (h.includes('menu')) return 'QUERY MENU ITEM'
-  if (sink.includes('template')) return 'TEMPLATE WRITE'
-  return 'INVOCABLE ACTION'
+  return consequenceLabelFor(p).label
 }
 
 function sinkLabel(p: ActionPath): string {
@@ -91,7 +86,12 @@ export default function KestrelConstellationPage() {
       const b = businessAction(p)
       m.set(b, [...(m.get(b) ?? []), p])
     }
-    return [...m.entries()].sort((a, b) => b[1].length - a[1].length)
+    // Deterministic presentation ordering: mutating effects (write/send/create)
+    // surface before reads — higher consequence first, then path count.
+    const rank = (l: ConsequenceLabel) => (['WRITE', 'CREATE', 'SEND', 'DELETE', 'UPDATE'].includes(l.effect) ? 0 : 1)
+    return [...m.entries()].sort(
+      (a, b) => rank(consequenceLabelFor(a[1][0])) - rank(consequenceLabelFor(b[1][0])) || b[1].length - a[1].length,
+    )
   }, [paths])
   const selected = paths.find((p) => p.pathId === selectedPathId) ?? null
 
