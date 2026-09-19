@@ -22,15 +22,19 @@ The fastest way to review the MunichTech EXPO submission:
 | Review | Link |
 |---|---|
 | **Watch the 2–3 minute demo** | https://youtu.be/9MZQBOY8RKI |
-| **See the Kestrel assurance result** | https://www.haiec.com/sample-reports/kestrel |
+| **Interactive demo login** | [JUDGE-ACCESS.md](JUDGE-ACCESS.md) |
+| **Kestrel Assurance Report** | https://www.haiec.com/sample-reports/kestrel |
 | **See how Kestrel can act** | https://www.haiec.com/sample-reports/kestrel/constellation |
 | **Compare Release A vs Release B** | https://www.haiec.com/sample-reports/kestrel/compare |
-| **Technical Evaluation Companion** | https://docs.google.com/presentation/d/1r-UUk8P6B-ruWQQJmZOcYz1_WxQI_fvD/edit |
+| **Judge Review & Evidence Index** | https://docs.google.com/document/d/1x0wNPmIrzUUvyohCfohWt563eIjtkYYIDS_NjcoeTxw/edit |
 | **Judge Deck** | https://docs.google.com/presentation/d/1SMUI5CNS6bds3YYZy7jI9FvfDqpCV8BU/edit |
+| **Technical Evaluation Companion** | https://docs.google.com/presentation/d/1r-UUk8P6B-ruWQQJmZOcYz1_WxQI_fvD/edit |
+| **Verify the evidence locally** | `node competition/verify-evidence.mjs` |
+| **Baseline Kestrel Evidence ZIP** | https://drive.google.com/file/d/1blQpcCwEI8Q3NoeHGWBrt-Cr5j3mcZR7/view |
+| **Release A–B Comparison Evidence ZIP** | https://drive.google.com/file/d/1gYKAaABgfkyBp7T5btC0xpkxRFDWykCX/view |
 | **Judge deck & docs (Drive folder)** | https://drive.google.com/drive/folders/1OZzt-FQ5OikApRYyjqi_9vnoEvhsH4Xd |
 | **Judge materials (in this repo)** | [`competition/judge-materials/`](competition/judge-materials/) |
 | **60-second repository guide** | [JUDGE-START-HERE.md](JUDGE-START-HERE.md) |
-| **Verify the evidence locally** | `node competition/verify-evidence.mjs` |
 
 No login is required for the public Kestrel report, consequence view, or
 release comparison.

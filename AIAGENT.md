@@ -21,8 +21,10 @@ It then compared two qualified releases and reported **12 `CONTROL_CHANGED`,
 99 `UNRESOLVED`, overall `INCONCLUSIVE`** — without converting unknowns into
 passes.
 
-Everything a judge needs is reachable without login, and every published
-artifact is SHA-256 verifiable locally with zero dependencies:
+Everything a judge needs is reachable without login. The published Kestrel
+evidence artifacts are SHA-256 verifiable locally through the competition
+verifier; bundled judge materials also carry a separate snapshot SHA-256
+list.
 
 ```bash
 node competition/verify-evidence.mjs
@@ -106,6 +108,10 @@ exact analyzer comparability, repeatability PASS.
 - Release A/B comparison — https://www.haiec.com/sample-reports/kestrel/compare
 - Demo video — https://youtu.be/9MZQBOY8RKI
 - Judge deck & docs — https://drive.google.com/drive/folders/1OZzt-FQ5OikApRYyjqi_9vnoEvhsH4Xd
+
+The MunichTech demo credential is intentionally public and grants access only
+to the designated demonstration workspace; it is not a production/customer
+credential.
 
 ## What this repository does NOT claim
 
