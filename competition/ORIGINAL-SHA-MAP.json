@@ -84,6 +84,13 @@
     "subject": "fix(assurance): Passport U6 lineage envelope + deterministic canonical bytes"
   },
   {
+    "public_sha": "c67cd5855b47fe34f4fb37ca29a72740d2add289",
+    "original_haiec_sha": "055ac6dfab15df8f6ffada4970769eb523acdc6b",
+    "original_author_date": "2026-09-19 06:07:25 -0500",
+    "original_commit_date": "2026-09-19 06:07:25 -0500",
+    "subject": "Merge pull request #1779 from subodhkc/constellation-visual-1-consequence-flow"
+  },
+  {
     "public_sha": "be30b75563066c561c95735d798bcf930edc0264",
     "original_haiec_sha": "05fd64baf55578140a613ebf3f73da219f138a4f",
     "original_author_date": "2026-09-09 08:26:38 -0500",
@@ -273,6 +280,13 @@
     "subject": "Merge pull request #1602 from subodhkc/wave2/eg1-effective-grant-source"
   },
   {
+    "public_sha": "c67cd5855b47fe34f4fb37ca29a72740d2add289",
+    "original_haiec_sha": "27134e30aa37d32b3690f66937927ed6d93cb33e",
+    "original_author_date": "2026-09-19 04:39:23 -0500",
+    "original_commit_date": "2026-09-19 04:39:23 -0500",
+    "subject": "CONSTELLATION-VISUAL-1: consequence-first Constellation presentation"
+  },
+  {
     "public_sha": "69ae6ea07eac20949e944a221daf139ae126af4d",
     "original_haiec_sha": "2927a47912ce77bd207413e38276227f74243f28",
     "original_author_date": "2026-09-09 22:46:35 -0500",
@@ -441,6 +455,13 @@
     "subject": "UX0-R1: complete public website design system + enterprise story"
   },
   {
+    "public_sha": "c67cd5855b47fe34f4fb37ca29a72740d2add289",
+    "original_haiec_sha": "4610db09927b32c8a61a2e85a630a9396d203aea",
+    "original_author_date": "2026-09-17 21:02:08 -0500",
+    "original_commit_date": "2026-09-17 21:02:08 -0500",
+    "subject": "A/B-8 deploy identity: bake APP_VERSION/BUILD_COMMIT/DEPLOY_TIMESTAMP into Modal image env so /health proves the exact deployed build."
+  },
+  {
     "public_sha": "98783a926b07809c03aa2ee3c2e391562391b586",
     "original_haiec_sha": "471d29933bd2475f6a504d5914749e37ec6f9469",
     "original_author_date": "2026-08-25 04:26:23 -0500",
@@ -495,6 +516,13 @@
     "original_author_date": "2026-09-04 22:32:51 -0500",
     "original_commit_date": "2026-09-04 22:32:51 -0500",
     "subject": "Merge pull request #1607 from subodhkc/wave4/public-website-convergence"
+  },
+  {
+    "public_sha": "c67cd5855b47fe34f4fb37ca29a72740d2add289",
+    "original_haiec_sha": "4e8a87f4b0837eca3e1337330d2af5c7bac9478a",
+    "original_author_date": "2026-09-18 23:34:16 -0500",
+    "original_commit_date": "2026-09-18 23:34:16 -0500",
+    "subject": "Merge pull request #1771 from subodhkc/pr5-release-comparison-evidence-continuity"
   },
   {
     "public_sha": "a8b89a44193b6100811653f5a1fefd68c9781663",
@@ -574,6 +602,13 @@
     "subject": "Merge pull request #1594 from subodhkc/wave1h/aa0-canonical-action-resource-identity"
   },
   {
+    "public_sha": "c67cd5855b47fe34f4fb37ca29a72740d2add289",
+    "original_haiec_sha": "58139b78a17a3cac111695f77375856dab30fd15",
+    "original_author_date": "2026-09-17 21:42:04 -0500",
+    "original_commit_date": "2026-09-17 21:42:04 -0500",
+    "subject": "A/B-8: freeze clean-rerun result — INCONCLUSIVE on M1/M2 (honest partial coverage), M3 PASS, M4 PASS_BOUNDED, canonical lifecycle fully evidenced."
+  },
+  {
     "public_sha": "65092d04795c696d011f0ad6f0b7136dd5e58d32",
     "original_haiec_sha": "59a4583ce12d20df6160c8e8c57891c46d0914d1",
     "original_author_date": "2026-08-24 14:13:01 -0500",
@@ -621,6 +656,20 @@
     "original_author_date": "2026-09-13 09:34:54 -0500",
     "original_commit_date": "2026-09-13 09:34:54 -0500",
     "subject": "Merge pull request #1702 from subodhkc/feat/aa-projection-1"
+  },
+  {
+    "public_sha": "c67cd5855b47fe34f4fb37ca29a72740d2add289",
+    "original_haiec_sha": "6203bc0eabd39b6035acde9b03852a52c8dc321a",
+    "original_author_date": "2026-09-17 20:53:12 -0500",
+    "original_commit_date": "2026-09-17 20:53:12 -0500",
+    "subject": "Merge pull request #1763 from subodhkc/A-B-8-PRODUCER-LIFECYCLE-CLOSURE"
+  },
+  {
+    "public_sha": "c67cd5855b47fe34f4fb37ca29a72740d2add289",
+    "original_haiec_sha": "62a79693654f064ab3109bed56c9620daad83217",
+    "original_author_date": "2026-09-17 21:08:44 -0500",
+    "original_commit_date": "2026-09-17 21:08:44 -0500",
+    "subject": "A/B-8 deploy identity fix: .env() must precede add_local_* in Modal image chain."
   },
   {
     "public_sha": "a6632ac508402215049f974459e31cb0bff10503",
@@ -798,6 +847,20 @@
     "subject": "Merge pull request #1694 from subodhkc/fix/five-plane-empty-comparison-semantics"
   },
   {
+    "public_sha": "c67cd5855b47fe34f4fb37ca29a72740d2add289",
+    "original_haiec_sha": "8875bb03087baae07acf4e34abeb8d683a2faaef",
+    "original_author_date": "2026-09-17 20:41:56 -0500",
+    "original_commit_date": "2026-09-17 20:41:56 -0500",
+    "subject": "A/B-8: producer lifecycle ownership closure — Modal cannot write scan status; canonical failure handoff endpoint."
+  },
+  {
+    "public_sha": "c67cd5855b47fe34f4fb37ca29a72740d2add289",
+    "original_haiec_sha": "8a74ac75783da1e0f5d5c794904cbf051375c4bc",
+    "original_author_date": "2026-09-19 05:37:27 -0500",
+    "original_commit_date": "2026-09-19 05:37:27 -0500",
+    "subject": "CV-1 review repairs: consequence families, single edge, honest loading"
+  },
+  {
     "public_sha": "b3a26737c2a239019f2cc2f03e1a78755ee2f3b7",
     "original_haiec_sha": "8dba3e448455db400f1c8400f22ab06e07bb2213",
     "original_author_date": "2026-09-03 23:49:54 -0500",
@@ -917,11 +980,25 @@
     "subject": "ux: evidence-language copy, reason field, and progressive evidence key"
   },
   {
+    "public_sha": "c67cd5855b47fe34f4fb37ca29a72740d2add289",
+    "original_haiec_sha": "9d7151c8a87b07f7569a4e7ea00b8e58d43f051f",
+    "original_author_date": "2026-09-18 22:34:33 -0500",
+    "original_commit_date": "2026-09-18 22:34:33 -0500",
+    "subject": "PR5: Release Comparison evidence continuity"
+  },
+  {
     "public_sha": "18a01c646c3f4f0f18d9b91528795f68e766acf7",
     "original_haiec_sha": "9e1e72db348b5f4278e6718396064f5e774327f9",
     "original_author_date": "2026-08-23 17:53:24 -0500",
     "original_commit_date": "2026-08-23 17:53:24 -0500",
     "subject": "feat(u3-b): AI inventory + wizard + regulatory producer activation — evidence-type boundaries, existing producer reuse, canonical persistence"
+  },
+  {
+    "public_sha": "c67cd5855b47fe34f4fb37ca29a72740d2add289",
+    "original_haiec_sha": "9e3267534608cf7919c6b5f38a246ef8791d47d1",
+    "original_author_date": "2026-09-19 04:44:54 -0500",
+    "original_commit_date": "2026-09-19 04:44:54 -0500",
+    "subject": "CV-1 review pass: question-led headings, technical default, clutter"
   },
   {
     "public_sha": "399f46dd19b0f9e4c6a0aa45888d3838c4c0ab28",
@@ -1190,6 +1267,13 @@
     "subject": "ARI-P0 Phase 3 qualification repair: same-scan composition and canonical identity"
   },
   {
+    "public_sha": "c67cd5855b47fe34f4fb37ca29a72740d2add289",
+    "original_haiec_sha": "c83343e49452aaf88ac4dd9db8a38a66a43a0bf9",
+    "original_author_date": "2026-09-18 10:51:22 -0500",
+    "original_commit_date": "2026-09-18 10:51:22 -0500",
+    "subject": "kestrel: public release-comparison explainer — sanitized A/B-8 projection, judge path links, Drive evidence pointer"
+  },
+  {
     "public_sha": "270166d0a1ae66e47863a7f28c699525846ba891",
     "original_haiec_sha": "cb70427152d6a9c2deb9f69932201001ce0b072f",
     "original_author_date": "2026-09-08 10:32:54 -0500",
@@ -1295,6 +1379,13 @@
     "subject": "feat(u6): canonical evidence source, action witness samples, comparator fix"
   },
   {
+    "public_sha": "c67cd5855b47fe34f4fb37ca29a72740d2add289",
+    "original_haiec_sha": "dd4fc3e11553891ef6f525a35b15d422df90ca02",
+    "original_author_date": "2026-09-17 21:16:23 -0500",
+    "original_commit_date": "2026-09-17 21:16:23 -0500",
+    "subject": "A/B-8: replace stale NYC-audit deploy check with authenticated producer-surface verification on the scanner app."
+  },
+  {
     "public_sha": "56cef6d739605243dec646f445a888e180e42f0c",
     "original_haiec_sha": "e0315497ae4211d349a11d3d756ee74b5633a8a9",
     "original_author_date": "2026-09-10 22:22:22 -0500",
@@ -1342,6 +1433,13 @@
     "original_author_date": "2026-09-03 10:47:46 -0500",
     "original_commit_date": "2026-09-03 10:47:46 -0500",
     "subject": "AA-0 fix: Separate validation from construction, fix control-char regex, revert policy-fact identity change"
+  },
+  {
+    "public_sha": "c67cd5855b47fe34f4fb37ca29a72740d2add289",
+    "original_haiec_sha": "e58cb6c111c72d32b86888a6faafc52f50f8ea42",
+    "original_author_date": "2026-09-18 23:09:36 -0500",
+    "original_commit_date": "2026-09-18 23:09:36 -0500",
+    "subject": "PR5 repair: uniform identity-boundary 404 + no-store + determinism wording"
   },
   {
     "public_sha": "0cfe089e630ff9f5d6c4080550e32728da943b45",
@@ -1475,6 +1573,13 @@
     "original_author_date": "2026-09-04 00:25:30 -0500",
     "original_commit_date": "2026-09-04 00:25:30 -0500",
     "subject": "UX-2C: OTHER_POLICY_CHANGE summary — no false narrowing/expansion for role-only changes"
+  },
+  {
+    "public_sha": "c67cd5855b47fe34f4fb37ca29a72740d2add289",
+    "original_haiec_sha": "f7841e758b4c24cc10e29a113b431f9d70cfcab7",
+    "original_author_date": "2026-09-19 05:56:56 -0500",
+    "original_commit_date": "2026-09-19 05:56:56 -0500",
+    "subject": "CV-1 final review repairs: canonical commit field, unique relations"
   },
   {
     "public_sha": "a7973e1dbc641b0342210e194b4c8b739e39dc88",

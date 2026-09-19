@@ -56,3 +56,23 @@ See [`competition/GIT-DIFF-SUMMARY.md`](competition/GIT-DIFF-SUMMARY.md):
 500 commits / 1,039 files overall in the window; 104 commits / 80 files in the
 competition-relevant subset (assurance, topology, constellation, reports,
 Kestrel demo).
+
+## Final MunichTech work — Sep 18–19
+
+These entries extend the same Git-derived methodology used above and cover
+the final submitted capabilities added after the original provenance package
+was first frozen.
+
+| Capability | First/final implementation | Date | Classification | Evidence |
+|---|---|---|---|---|
+| Qualified Kestrel Release A / Release B comparison (A/B-8) | `58139b78` result freeze + `9d7151c8` evidence-continuity binding | 2026-09-17/18 | NEW_DURING_MUNICTECH | private `docs/experiments/AB-8-RESULT.md`; public `demo/kestrel/evidence/kestrel-compare.public.json` |
+| Public sanitized release-comparison projection | `c83343e4` | 2026-09-18 | NEW_DURING_MUNICTECH | `app/sample-reports/kestrel/compare/`, `data/kestrel-demo/kestrel-compare.public.json` |
+| Consequence-first Kestrel workflow visualization | `27134e30` | 2026-09-19 | NEW_DURING_MUNICTECH | `components/ai-inventory/ConsequenceFlowView.tsx`, `lib/topology/consequence-flow-presentation.ts` |
+| Final consequence-flow semantic hardening — two-level consequence families, single established edge, unique relations | `8a74ac7` / `f7841e7` | 2026-09-19 | NEW_DURING_MUNICTECH | same owner files + `tests/unit/constellation-visual-1-consequence-flow.test.ts` |
+
+The A/B-8 qualified rerun froze privately in `58139b78` after the
+producer-lifecycle closure chain (`8875bb03`–`dd4fc3e1`) and its comparison
+evidence binding reached Main via PR5 merge `4e8a87f4`; the CV-1
+consequence-first work reached Main via merge `055ac6df`. The public
+projection and the consequence-first presentation render already-established
+evidence — they did not create new evaluation truth.

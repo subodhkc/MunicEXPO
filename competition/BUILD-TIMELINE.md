@@ -36,6 +36,8 @@ competition-development boundary — verified chronologically, not assumed.
 | Kestrel public demo pack | `cfa853e8` | 2026-09-14 | 2026-09-14 | NEW_DURING_MUNICTECH |
 | Consequence-label canonical map | `ee1cbafb` | 2026-09-14 | 2026-09-14 | NEW_DURING_MUNICTECH |
 | QA review hub (dev-only) | `ee1cbafb` | 2026-09-14 | 2026-09-14 | NEW_DURING_MUNICTECH |
+| Qualified Kestrel A/B comparison (A/B-8) + public comparison projection | `58139b78` / `9d7151c8` / `c83343e4` | 2026-09-17/18 | 2026-09-18 | NEW_DURING_MUNICTECH |
+| Consequence-first judge-facing workflow visualization + semantic hardening | `27134e30` / `8a74ac7` / `f7841e7` | 2026-09-19 | 2026-09-19 | NEW_DURING_MUNICTECH |
 
 ## Distinction
 

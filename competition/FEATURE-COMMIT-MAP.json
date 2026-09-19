@@ -141,6 +141,38 @@
       "merged_main": "11b2e8b68cdbd974d6ae0b03ede5c1e907700e12 (2026-09-14)",
       "classification": "NEW_DURING_MUNICTECH",
       "owners": ["app/dashboard/assurance/evaluations/[evaluationId]/page.tsx"]
+    },
+    {
+      "capability": "Qualified Kestrel Release A / Release B comparison (A/B-8) + release-comparison evidence binding",
+      "first_impl_sha": "58139b78a17a3cac111695f77375856dab30fd15 / 9d7151c8a87b07f7569a4e7ea00b8e58d43f051f",
+      "first_impl_date": "2026-09-17/18",
+      "merged_main": "direct to Main (2026-09-17) / 4e8a87f4b0837eca3e1337330d2af5c7bac9478a (2026-09-18)",
+      "classification": "NEW_DURING_MUNICTECH",
+      "owners": ["lib/assurance/consequence-delta-service.ts", "demo/kestrel/evidence/kestrel-compare.public.json", "docs/consequence-delta.md"]
+    },
+    {
+      "capability": "Public sanitized release-comparison projection (Kestrel compare surface)",
+      "first_impl_sha": "c83343e49452aaf88ac4dd9db8a38a66a43a0bf9",
+      "first_impl_date": "2026-09-18",
+      "merged_main": "direct to Main (2026-09-18)",
+      "classification": "NEW_DURING_MUNICTECH",
+      "owners": ["app/sample-reports/kestrel/compare/", "data/kestrel-demo/kestrel-compare.public.json", "data/kestrel-demo/judge-evidence.ts", "tests/unit/kestrel-compare-projection.test.ts"]
+    },
+    {
+      "capability": "Consequence-first Kestrel workflow visualization (public constellation presentation)",
+      "first_impl_sha": "27134e30aa37d32b3690f66937927ed6d93cb33e",
+      "first_impl_date": "2026-09-19",
+      "merged_main": "055ac6dfab15df8f6ffada4970769eb523acdc6b (2026-09-19)",
+      "classification": "NEW_DURING_MUNICTECH",
+      "owners": ["components/ai-inventory/ConsequenceFlowView.tsx", "lib/topology/consequence-flow-presentation.ts", "app/sample-reports/kestrel/constellation/page.tsx", "tests/unit/constellation-visual-1-consequence-flow.test.ts"]
+    },
+    {
+      "capability": "Consequence-flow semantic hardening (two-level consequence families, single established edge, unique relations)",
+      "first_impl_sha": "8a74ac75783da1e0f5d5c794904cbf051375c4bc / f7841e758b4c24cc10e29a113b431f9d70cfcab7",
+      "first_impl_date": "2026-09-19",
+      "merged_main": "055ac6dfab15df8f6ffada4970769eb523acdc6b (2026-09-19)",
+      "classification": "NEW_DURING_MUNICTECH",
+      "owners": ["lib/topology/consequence-flow-presentation.ts", "components/ai-inventory/ConsequenceFlowView.tsx", "tests/unit/constellation-visual-1-consequence-flow.test.ts"]
     }
   ]
 }
