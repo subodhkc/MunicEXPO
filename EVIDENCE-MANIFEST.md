@@ -4,11 +4,11 @@ Every claim → code → test → live surface → artifact → originality comm
 
 | Claim | Code | Test | Live surface | Artifact | Originality |
 |---|---|---|---|---|---|
-| 44 code-capable Kestrel paths, decision REVIEW | `lib/assurance/` (evaluator + bundle) | `tests/assurance/` | [Public report](https://www.haiec.com/sample-reports/kestrel) | `demo/kestrel/evidence/kestrel-assurance.machine.json` | frozen eval `e909995b…:assurance:1.1` |
+| 44 code-capable Kestrel paths, decision REVIEW | `lib/assurance/` (evaluator + bundle) | `tests/assurance/` | [Public report](https://www.haiec.com/sample-reports/kestrel) | `demo/kestrel/evidence/kestrel-assurance.machine.json` | frozen eval `HAIEC-KESTREL-EVAL-5e65843` |
 | Five independent evidence planes | `lib/assurance/u6-action-assurance-section.ts`, `lib/assurance/types.ts` | `tests/assurance/` | report Action Assurance section | machine JSON `planes` | `8692943a` (2026-09-09) |
 | System Constellation | `lib/topology/` | `tests/` | [Public constellation](https://www.haiec.com/sample-reports/kestrel/constellation) | screenshot `constellation-*` | `24bf48f1` (2026-09-04) |
 | Agentic Production Passport | `lib/assurance/agentic-production-passport.ts` | `tests/` | evaluation output bundle (passport composed inside `AssuranceOutputBundle`, served by the evaluation report API) | `demo/kestrel/passport/agentic-production-passport.json` — canonical artifact generated via the product adapter | `e0315497` (2026-09-10) |
-| Consequence Delta (implemented, tested; no Kestrel A/B pair exists → not demonstrated on this evaluation) | `lib/assurance/consequence-delta*.ts`, `lib/topology/constellation-delta-overlay.ts` | `tests/` | constellation delta overlay (qualified-pair comparisons) | docs + tests | `e7e70ccb` (2026-09-11) |
+| Consequence Delta — qualified A/B-8 Kestrel comparison: 12 CONTROL_CHANGED, 99 UNRESOLVED, overall INCONCLUSIVE | `lib/assurance/consequence-delta*.ts`, `lib/topology/constellation-delta-overlay.ts` | `tests/` | [Public Release A/B comparison](https://www.haiec.com/sample-reports/kestrel/compare) | `demo/kestrel/evidence/kestrel-compare.public.json` | `e7e70ccb` (2026-09-11); A/B-8 comparison 2026-09-18 |
 | Artifact integrity | `lib/assurance/assurance-artifact-manifest.ts` | `tests/` | Download / Evidence menu | `demo/kestrel/evidence/manifest.json` (SHA-256) | `e0315497` (2026-09-10) |
 | Report projection (exec/tech/auditor) | `lib/assurance/reporting-projection-bundle.ts`, `report-profile-projection.ts` | `tests/` | report profile tabs | 3 PDFs in `demo/kestrel/reports/` | `fc887901`/`ae48c964` (2026-09-13) |
 | Kestrel sanitized public demo | `scripts/kestrel-demo-export.ts`, `app/sample-reports/kestrel/` | export reconciliation gate | public demo routes | `demo/kestrel/` | `cfa853e8` (2026-09-14) |
@@ -19,6 +19,7 @@ Every claim → code → test → live surface → artifact → originality comm
 - Decision: **REVIEW** · Action paths: **44** · Code Capable: **44/44**
 - Requested / Policy Authorized / Effectively Granted / Observed: **NOT_ASSESSED**
 - Source: `5e65843fddfe5f907485b798e464ad37b3b3b2c7`
-- Evaluation: `e909995b-6d40-44ee-b949-c3c5373abc47:assurance:1.1`
+- Evaluation: `HAIEC-KESTREL-EVAL-5e65843` (public ref)
 - Bundle digest: `3e21e47c0fdfa89d7dc0a7516d680b578b4051d923c47c731aee411c47e50901`
 - Supporting evidence traces: 1,322 · Evidence frontier items: 555 · Tenant relations: 31
+- Release comparison (A/B-8): `HAIEC-KESTREL-EVAL-5e65843` vs `HAIEC-KESTREL-EVAL-27c56a9` — 12 CONTROL_CHANGED, 99 UNRESOLVED, overall INCONCLUSIVE

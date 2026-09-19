@@ -2,7 +2,7 @@
 
 ## Project name
 
-HAIEC Constellation
+AI Action Path Assurance by HAIEC
 
 ## One-line description
 
@@ -103,7 +103,9 @@ Built during MunichTech (Git-verified): topology/Constellation projection
 (Sep 4–9), five-plane Action Assurance (Sep 9), Passport + artifact manifest
 + product adapters (Sep 10), Consequence Delta (Sep 11), evidence-bound
 report projection + report API/page (Sep 13), Kestrel real-repository demo
-pack + consequence-label audit (Sep 14).
+pack + consequence-label audit (Sep 14), qualified Kestrel Release A/B
+comparison + public comparison projection (Sep 18), consequence-first
+workflow visualization (Sep 19).
 
 ## What was built during MunichTech
 
@@ -116,8 +118,14 @@ the private development history.
 - Public report: https://www.haiec.com/sample-reports/kestrel
 - Public constellation:
   https://www.haiec.com/sample-reports/kestrel/constellation
-- Interactive workspace: https://www.haiec.com/login (credentials in the
-  private judging instructions)
+- Public Release A / Release B comparison:
+  https://www.haiec.com/sample-reports/kestrel/compare
+- Demo video: https://youtu.be/9MZQBOY8RKI
+- Narrated judge-deck walkthrough: https://youtu.be/5Eb2XnLJ8UE
+- Interactive workspace: https://www.haiec.com/login —
+  `munich-judge@haiec.com` / `Kestrel-Judge-2026` — after login open
+  **Judge Review** at the top of the Munich Tech sidebar group for the
+  guided proof.
 
 ## Repository
 
@@ -134,9 +142,10 @@ Kestrel evidence pack, and a zero-dependency verifier:
 - `CODE_CAPABLE` is not observed execution; `NOT_ASSESSED` is neither failure
   nor safety. The Kestrel evaluation honestly reports the four
   authority/runtime planes as not assessed.
-- Consequence Delta is implemented and tested, but no qualified Kestrel A/B
-  pair exists, so it is not demonstrated on this evaluation — we show the
-  capability and its tests, not a fabricated comparison.
+- Consequence Delta is demonstrated on a qualified Kestrel A/B pair (A/B-8):
+  12 CONTROL_CHANGED, 99 UNRESOLVED, overall INCONCLUSIVE. INCONCLUSIVE is a
+  bounded answer — unresolved evidence is preserved, not converted into a
+  pass or an absence claim.
 - The Agentic Production Passport is a portable assurance record, not a
   certification.
 

@@ -63,7 +63,7 @@
     }
   ],
   "notIncluded": {
-    "DELTA_SCREENSHOT": "No qualified Kestrel A/B evaluation pair exists; capability documented and tested instead",
+    "DELTA_SCREENSHOT": "Release comparison is demonstrated live (/sample-reports/kestrel/compare, A/B-8: 12 CONTROL_CHANGED / 99 UNRESOLVED / INCONCLUSIVE); no static Delta screenshot is included in this baseline evidence pack",
     "PASSPORT_SCREENSHOT": "Passport is exported as canonical JSON (demo/kestrel/passport/) rather than presented as a rendered screenshot"
   }
 }

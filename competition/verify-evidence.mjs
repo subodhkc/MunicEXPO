@@ -36,6 +36,9 @@ check('machine JSON parses', !!machine);
 const pubJson = loadJSON(D('demo/kestrel/evidence/kestrel-assurance.public.json'));
 check('public JSON parses', !!pubJson);
 
+const compare = loadJSON(D('demo/kestrel/evidence/kestrel-compare.public.json'));
+check('compare projection parses', !!compare);
+
 const passport = loadJSON(D('demo/kestrel/passport/agentic-production-passport.json'));
 check('passport parses', !!passport);
 
@@ -54,6 +57,7 @@ for (const f of [
 const nameMap = {
   'demo/kestrel/evidence/kestrel-assurance.public.json': 'kestrel-assurance.public.json',
   'demo/kestrel/evidence/kestrel-assurance.machine.json': 'kestrel-assurance.machine.json',
+  'demo/kestrel/evidence/kestrel-compare.public.json': 'kestrel-compare.public.json',
 };
 if (manifest?.artifacts) {
   for (const [local, mname] of Object.entries(nameMap)) {
@@ -85,6 +89,20 @@ check('receipt bound to same source commit',
   receipt?.buildIdentity?.gitCommit === '5e65843fddfe5f907485b798e464ad37b3b3b2c7');
 check('receipt bound to same public eval',
   (receipt?.receiptId ?? '').includes('HAIEC-KESTREL-EVAL-5e65843'));
+
+// 5. A/B-8 release-comparison projection facts
+const cmp = compare?.comparison ?? {};
+check('compare: baseline commit = 5e65843…', cmp?.baseline?.commitSha === '5e65843fddfe5f907485b798e464ad37b3b3b2c7');
+check('compare: candidate commit = 27c56a9…', cmp?.candidate?.commitSha === '27c56a9fdb21e7af6b91df9e61e8841129ed9ad9');
+check('compare: baseline eval ref', cmp?.baseline?.evaluationRef === 'HAIEC-KESTREL-EVAL-5e65843');
+check('compare: candidate eval ref', cmp?.candidate?.evaluationRef === 'HAIEC-KESTREL-EVAL-27c56a9');
+check('compare: overallResult = INCONCLUSIVE', cmp?.overallResult === 'INCONCLUSIVE');
+check('compare: establishedControlChanges = 12', cmp?.summary?.establishedControlChanges === 12);
+check('compare: unresolvedFacts = 99', cmp?.summary?.unresolvedFacts === 99);
+check('compare: analyzer comparability = EXACT', cmp?.comparability?.analyzer === 'EXACT');
+check('compare: release perimeter = SAME', cmp?.comparability?.releasePerimeter === 'SAME');
+check('compare: ORDER RECORD WRITE deep link present',
+  (compare?.navigation?.orderRecordWrite ?? '').includes('/sample-reports/kestrel/constellation?path='));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

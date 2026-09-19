@@ -1,0 +1,152 @@
+{
+  "projectionVersion": "kestrel-compare-public-1.0.0",
+  "publicationProfile": "sanitized-public-comparison-projection",
+  "generatedBy": "consequence-delta-service -> kestrel-compare-export",
+  "generatedAt": "2026-09-18T15:07:31.769Z",
+  "system": {
+    "displayName": "Kestrel — AI Service Call Agent",
+    "publicRef": "kestrel-ai-service-call-agent"
+  },
+  "comparison": {
+    "comparisonDigest": "2fbd8e9aa6afa0b5b29d4579d09886080a66dede13e9536506c7e7a5159ba4aa",
+    "overallResult": "INCONCLUSIVE",
+    "baseline": {
+      "label": "Release A",
+      "evaluationRef": "HAIEC-KESTREL-EVAL-5e65843",
+      "commitSha": "5e65843fddfe5f907485b798e464ad37b3b3b2c7",
+      "snapshotAt": "2026-09-18T02:32:39.667Z"
+    },
+    "candidate": {
+      "label": "Release B",
+      "evaluationRef": "HAIEC-KESTREL-EVAL-27c56a9",
+      "commitSha": "27c56a9fdb21e7af6b91df9e61e8841129ed9ad9",
+      "snapshotAt": "2026-09-18T02:33:31.116Z"
+    },
+    "comparability": {
+      "releasePerimeter": "SAME",
+      "analyzer": "EXACT",
+      "scopeState": "CHANGED",
+      "scopeNote": "Evaluated scope digests differ because the source release differs; absence and addition claims are gated to comparable coverage.",
+      "repeatability": "PASS"
+    },
+    "summary": {
+      "totalComparedFacts": 111,
+      "establishedControlChanges": 12,
+      "unresolvedFacts": 99,
+      "unexpectedEstablishedChanges": 0
+    },
+    "transition": {
+      "label": "Confirmation control",
+      "before": "DECLARED",
+      "after": "DECLARED + PATH_BOUND",
+      "count": 12
+    },
+    "establishedItems": [
+      {
+        "handler": "python:hvac_agent/app/utils/tool_handlers.py:handle_create_booking",
+        "access": "db_read",
+        "operation": "db.select",
+        "surface": "ai_agent_configs"
+      },
+      {
+        "handler": "python:hvac_agent/app/utils/tool_handlers.py:handle_create_booking",
+        "access": "db_read",
+        "operation": "db.select",
+        "surface": "ai_config_templates"
+      },
+      {
+        "handler": "python:hvac_agent/app/utils/tool_handlers.py:handle_create_booking",
+        "access": "db_read",
+        "operation": "db.select",
+        "surface": "call_lifecycle"
+      },
+      {
+        "handler": "python:hvac_agent/app/utils/tool_handlers.py:handle_create_booking",
+        "access": "db_read",
+        "operation": "db.select",
+        "surface": "locations"
+      },
+      {
+        "handler": "python:hvac_agent/app/utils/tool_handlers.py:handle_create_booking",
+        "access": "db_read",
+        "operation": "db.select",
+        "surface": "sms_messages"
+      },
+      {
+        "handler": "python:hvac_agent/app/utils/tool_handlers.py:handle_create_booking",
+        "access": "db_write",
+        "operation": "db.insert",
+        "surface": "call_lifecycle"
+      },
+      {
+        "handler": "python:hvac_agent/app/utils/tool_handlers.py:handle_generic_booking",
+        "access": "db_read",
+        "operation": "db.select",
+        "surface": "ai_agent_configs"
+      },
+      {
+        "handler": "python:hvac_agent/app/utils/tool_handlers.py:handle_generic_booking",
+        "access": "db_read",
+        "operation": "db.select",
+        "surface": "ai_config_templates"
+      },
+      {
+        "handler": "python:hvac_agent/app/utils/tool_handlers.py:handle_generic_booking",
+        "access": "db_read",
+        "operation": "db.select",
+        "surface": "call_lifecycle"
+      },
+      {
+        "handler": "python:hvac_agent/app/utils/tool_handlers.py:handle_generic_booking",
+        "access": "db_read",
+        "operation": "db.select",
+        "surface": "locations"
+      },
+      {
+        "handler": "python:hvac_agent/app/utils/tool_handlers.py:handle_generic_booking",
+        "access": "db_read",
+        "operation": "db.select",
+        "surface": "sms_messages"
+      },
+      {
+        "handler": "python:hvac_agent/app/utils/tool_handlers.py:handle_generic_booking",
+        "access": "db_write",
+        "operation": "db.insert",
+        "surface": "call_lifecycle"
+      }
+    ],
+    "mutations": [
+      {
+        "id": "M1",
+        "label": "Expected added path",
+        "result": "INCONCLUSIVE"
+      },
+      {
+        "id": "M2",
+        "label": "Expected removed path",
+        "result": "INCONCLUSIVE"
+      },
+      {
+        "id": "M3",
+        "label": "Control change",
+        "result": "ESTABLISHED"
+      },
+      {
+        "id": "M4",
+        "label": "Unexpected established structural changes",
+        "result": "0"
+      }
+    ],
+    "notes": [
+      "UNRESOLVED != ABSENT — partial dispatch-site coverage cannot establish absence.",
+      "CONTROL_CHANGED is a qualified evidence claim — not a claim that every mutation was detected or that the candidate is universally safer.",
+      "No claim that the Hugging Face incident was analyzed by or would have been prevented by this product."
+    ]
+  },
+  "navigation": {
+    "baselineReport": "/sample-reports/kestrel",
+    "consequenceMap": "/sample-reports/kestrel/constellation",
+    "orderRecordWrite": "/sample-reports/kestrel/constellation?path=99a1e018d6e45a2f25cc013039d876a64afe87394f7d17c03c50d99a0547993d",
+    "judgeLogin": "/login"
+  }
+}

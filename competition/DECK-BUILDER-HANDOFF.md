@@ -22,8 +22,7 @@ portable evidence/report outputs.
 ## Frozen Kestrel facts (exact)
 
 - Source commit: `5e65843fddfe5f907485b798e464ad37b3b3b2c7`
-- Evaluation: `HAIEC-KESTREL-EVAL-5e65843` (public ref; canonical
-  `e909995b-6d40-44ee-b949-c3c5373abc47:assurance:1.1`)
+- Evaluation: `HAIEC-KESTREL-EVAL-5e65843` (public ref)
 - Disposition: **REVIEW**
 - Consequential action paths: **44**
 - Code Capable: **44/44**
@@ -83,8 +82,9 @@ Do not use the mobile screenshot for the main pitch (layout check only).
 - Provider/IAM effective authority is not established unless corresponding
   evidence exists — for Kestrel it does not.
 - Knight Capital was not an AI incident.
-- No qualified Kestrel A/B pair exists — do not present a fabricated
-  Consequence Delta demonstration.
+- A qualified Kestrel A/B-8 comparison exists — 12 CONTROL_CHANGED,
+  99 UNRESOLVED, overall INCONCLUSIVE. Present only those qualified claims;
+  do not turn INCONCLUSIVE into a pass or a score.
 - Passport is a portable evidence record, not certification.
 - The public Kestrel demo is a frozen evaluation projection, not a fresh
   rescan.

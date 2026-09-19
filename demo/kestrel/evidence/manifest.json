@@ -47,6 +47,25 @@
       "type": "auditor-pdf",
       "profile": "auditor",
       "sha256": "7650952ce0831bce3a97ce96360c59466948bc05b425b0192728339de48aa548"
+    },
+    {
+      "name": "kestrel-compare.public.json",
+      "type": "release-comparison-public-projection",
+      "schemaVersion": "kestrel-compare-public-1.0.0",
+      "sha256": "5e118c522fd3d4ff4d26f23b167106861f147ca4c7e6d042ac95f55fcbd7d417"
+    }
+  ],
+  "comparisons": [
+    {
+      "name": "A/B-8 Release A vs Release B",
+      "baselineEvaluationRef": "HAIEC-KESTREL-EVAL-5e65843",
+      "baselineCommitSha": "5e65843fddfe5f907485b798e464ad37b3b3b2c7",
+      "candidateEvaluationRef": "HAIEC-KESTREL-EVAL-27c56a9",
+      "candidateCommitSha": "27c56a9fdb21e7af6b91df9e61e8841129ed9ad9",
+      "overallResult": "INCONCLUSIVE",
+      "establishedControlChanges": 12,
+      "unresolvedFacts": 99,
+      "artifact": "kestrel-compare.public.json"
     }
   ]
 }

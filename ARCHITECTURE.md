@@ -1,6 +1,7 @@
 # Architecture
 
-HAIEC Constellation — source-backed assurance for consequential AI actions.
+AI Action Path Assurance by HAIEC — source-backed assurance for
+consequential AI actions.
 
 ![Architecture](competition/architecture.svg)
 

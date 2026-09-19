@@ -1,5 +1,12 @@
 # Demo Video Script — ~2:30
 
+> **ARCHIVED PRE-A/B SCRIPT — the submitted demo video
+> (https://youtu.be/9MZQBOY8RKI) supersedes this file.** This script predates
+> the qualified A/B-8 Release A / Release B comparison (12 CONTROL_CHANGED,
+> 99 UNRESOLVED, overall INCONCLUSIVE), which is demonstrated live at
+> https://www.haiec.com/sample-reports/kestrel/compare and in the Judge
+> Review guided flow.
+
 All screens are the **live production site** (https://www.haiec.com) or the
 public repo. Record at 1440p viewport. Do NOT show the judge password,
 internal UUIDs beyond what the public demo already shows, or any logged-in
@@ -84,7 +91,8 @@ Show what changed."
 - Judge password / any credentials
 - Internal org/scan/run UUIDs beyond what the sanitized public demo shows
 - Customer/production data in the logged-in workspace
-- Consequence Delta presented as demonstrated on Kestrel (no A/B pair exists)
+- Consequence Delta claims beyond the established A/B-8 result (12
+  CONTROL_CHANGED, 99 UNRESOLVED, INCONCLUSIVE — qualified, bounded)
 
 ## If you show the logged-in workspace
 

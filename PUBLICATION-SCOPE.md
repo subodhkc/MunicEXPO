@@ -14,12 +14,21 @@ Filtered Git history preserves genuine engineering progression for:
   projections, types
 - `lib/engine-registry/` — canonical producer/engine identity
 - `components/ai-inventory/AssuranceBundleReport.tsx` — report renderer
-- `app/sample-reports/` — public demo surfaces (incl. Kestrel demo)
+- `components/ai-inventory/ConsequenceFlowView.tsx` — consequence-first flow presentation
+- `app/sample-reports/` — public demo surfaces (incl. Kestrel demo +
+  Release A/B comparison page)
 - `app/dev/qa-review/` — dev-only QA review hub (404s outside dev)
-- `data/kestrel-demo/` — sanitized public projection + consequence labels
+- `data/kestrel-demo/` — sanitized public projections (assurance,
+  constellation, release comparison) + consequence labels + judge-evidence
+  link manifest
+- `lib/kestrel-demo/path-binding.ts` — exact path↔consequence identity binding
+- `lib/topology/consequence-flow-presentation.ts` — consequence-family
+  grouping/presentation logic
+- `public/demo/kestrel/` — served sanitized projection artifacts
 - `data/sample-reports.ts` — sample manifest
 - `scripts/kestrel-demo-export.ts` — sanitized export with fail-closed gate
-- `tests/assurance/`, `tests/security/` — deterministic assurance tests
+- `tests/assurance/`, `tests/security/`, `tests/unit/` — deterministic
+  assurance, security, and presentation-lock tests
 
 ## Sanitized (PUBLIC_SANITIZED)
 
