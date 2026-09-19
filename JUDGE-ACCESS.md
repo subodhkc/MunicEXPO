@@ -29,6 +29,9 @@ This environment contains demonstration data only.
 
 ## Judge & technical references
 
+All materials below are also bundled in this repository under
+[`competition/judge-materials/`](competition/judge-materials/).
+
 - **Judge deck & docs (Drive folder):** https://drive.google.com/drive/folders/1OZzt-FQ5OikApRYyjqi_9vnoEvhsH4Xd
 - **Judge Deck:** https://docs.google.com/presentation/d/1SMUI5CNS6bds3YYZy7jI9FvfDqpCV8BU/edit
 - **Technical Evaluation Companion:** https://docs.google.com/presentation/d/1r-UUk8P6B-ruWQQJmZOcYz1_WxQI_fvD/edit

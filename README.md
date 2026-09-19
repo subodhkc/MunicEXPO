@@ -28,6 +28,7 @@ The fastest way to review the MunichTech EXPO submission:
 | **Technical Evaluation Companion** | https://docs.google.com/presentation/d/1r-UUk8P6B-ruWQQJmZOcYz1_WxQI_fvD/edit |
 | **Judge Deck** | https://docs.google.com/presentation/d/1SMUI5CNS6bds3YYZy7jI9FvfDqpCV8BU/edit |
 | **Judge deck & docs (Drive folder)** | https://drive.google.com/drive/folders/1OZzt-FQ5OikApRYyjqi_9vnoEvhsH4Xd |
+| **Judge materials (in this repo)** | [`competition/judge-materials/`](competition/judge-materials/) |
 | **60-second repository guide** | [JUDGE-START-HERE.md](JUDGE-START-HERE.md) |
 | **Verify the evidence locally** | `node competition/verify-evidence.mjs` |
 
