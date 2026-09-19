@@ -46,5 +46,5 @@ final packed bundle — see bottom row.
 | demo/kestrel/screenshots/report-mobile-390.png | same | PNG | PUBLIC | 04 EVIDENCE | Mobile width check |
 | demo/kestrel/SCREENSHOT-MANIFEST.json | same | JSON | PUBLIC | 04 EVIDENCE | What each screenshot proves |
 | docs/ | 6 markdown files | docs | PUBLIC | 02 TECHNICAL | Capability explainers |
-| — | HAIEC-MunichTech-EXPO-2026-Evidence-Pack.zip | ZIP | PUBLIC | 01 SUBMISSION | Bundle — SHA-256 recorded in final Devin response |
-| — | PRIVATE JUDGE ACCESS DOCUMENT | doc | **PRIVATE** | 01 SUBMISSION / Judge Access | Source = Devin final response; NOT in Git |
+| — | HAIEC-MunichTech-EXPO-2026-Evidence-Pack.zip | ZIP | PUBLIC | 01 SUBMISSION | Bundle — SHA-256 recorded in the submission record |
+| — | PRIVATE JUDGE ACCESS DOCUMENT | doc | **PRIVATE** | 01 SUBMISSION / Judge Access | Not committed to Git |
