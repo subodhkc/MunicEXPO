@@ -22,12 +22,16 @@ Evidence reconciliation  (one evaluation binds one source snapshot)
 Assurance Decision  (ALLOW / REVIEW / BLOCK — bounded to evaluated scope)
         │
         ▼
-One exact evaluation ────────────────────────────────┐
-        │                                           │
-        ▼                                           ▼
-Reports            System Constellation            Passport / Decision Receipt
-(exec/tech/audit)  (evaluation snapshot vs current)  Machine evidence
-                                                     Consequence Delta
+ONE EXACT EVALUATION
+        ├── Reports (exec / technical / audit profiles)
+        ├── Consequence view / System Map
+        ├── Passport
+        ├── Decision Receipt
+        └── Machine evidence
+
+TWO QUALIFIED EVALUATIONS (same system, comparable snapshots)
+        └── Consequence Delta
+              └── Release Comparison
 ```
 
 ## The five planes are questions, not stages

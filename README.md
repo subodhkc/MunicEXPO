@@ -1,256 +1,363 @@
-# HAIEC Agentic AI Assurance 
+# AI Action Path Assurance by HAIEC
 
 ## What can your AI actually cause?
 
-In 2012, Knight Capital deployed a trading-software update.
+HAIEC is an evidence-bound assurance system for consequential AI and agentic
+software.
 
-Eight production servers were supposed to receive the new code.
+It traces evaluated AI-facing capabilities into application code and
+consequential effects, shows what the evidence establishes, preserves where
+proof stops, and compares qualified releases without turning unknown evidence
+into a pass.
 
-Seven did.
-
-One did not.
-
-On that server, old dormant trading functionality remained callable.
-
-For roughly 45 minutes, Knight's system kept acting.
-
-It sent millions of orders into the market. It traded nearly 400 million
-shares. It accumulated billions of dollars of unintended positions.
-
-By the time the incident was stopped, Knight had lost more than $460 million.
-
-The system wasn't externally hacked.
-
-It was Knight's own production software operating through legitimate market
-access.
-
-The software could act.
-
-The surrounding controls did not adequately bound what that software could
-cause.
-
-Now we are giving AI agents tools, credentials, APIs, memory, shared state,
-queues, MCP servers, and permission to act.
-
-And we are asking a dangerous question too late:
-
-## What can this AI actually cause?
-
-That's why we built HAIEC.
-
-> *Knight Capital was not an AI incident. We use it as a historical example of
-> why consequential software needs controls and evidence around what it can
-> cause — not as proof that our product would have prevented it.*
-> — [SEC Release No. 34-70694](https://www.sec.gov/files/litigation/admin/2013/34-70694.pdf)
-
-```
-Agent  →  Tool  →  Service  →  Consequence
-```
-
-**HAIEC follows that chain.**
-
-> **Judging?** → [`JUDGE-START-HERE.md`](JUDGE-START-HERE.md) — a 60-second
-> path: live demo → one consequential path → five planes → where proof stops
-> → `node competition/verify-evidence.mjs`.
->
-> **Foundation vs. MunichTech work** — the platform, evaluator, receipt layer,
-> and scanner predate the window; the Constellation, Action Assurance planes,
-> Passport, Consequence Delta, report projection, and Kestrel demo were built
-> during it. [`ORIGINALITY.md`](ORIGINALITY.md) has the Git-verified record.
+> **Permission is not delegation. Capability is not authorization.
+> Code Capable is not Observed.**
 
 ---
 
-## Follow the consequence
+## Judge — start here
 
-A permission tells you what an identity may be allowed to do.
+The fastest way to review the MunichTech EXPO submission:
 
-A tool registry tells you what tools exist.
-
-Neither necessarily tells you the complete path an AI system can reach.
-
-HAIEC reconstructs source-backed paths through the system:
-
-```
-Source Context → Capability Exposure → Dispatch → Implementation
-      → Handler → Service / Resource → Consequence
-```
-
-Then it asks five separate evidence questions — independently, not as a
-pipeline:
-
-| Question | Customer-facing name |
+| Review | Link |
 |---|---|
-| What was requested? | Requested |
-| What did policy authorize? | Policy Authorized |
-| What authority was effectively established? | Effectively Granted |
-| What can the code actually do? | Code Capable |
-| What was actually observed? | Observed |
+| **Watch the 2–3 minute demo** | https://youtu.be/9MZQBOY8RKI |
+| **See the Kestrel assurance result** | https://www.haiec.com/sample-reports/kestrel |
+| **See how Kestrel can act** | https://www.haiec.com/sample-reports/kestrel/constellation |
+| **Compare Release A vs Release B** | https://www.haiec.com/sample-reports/kestrel/compare |
+| **Technical Evaluation Companion** | https://docs.google.com/presentation/d/1r-UUk8P6B-ruWQQJmZOcYz1_WxQI_fvD/edit |
+| **Judge Deck** | https://docs.google.com/presentation/d/1SMUI5CNS6bds3YYZy7jI9FvfDqpCV8BU/edit |
+| **Judge deck & docs (Drive folder)** | https://drive.google.com/drive/folders/1OZzt-FQ5OikApRYyjqi_9vnoEvhsH4Xd |
+| **60-second repository guide** | [JUDGE-START-HERE.md](JUDGE-START-HERE.md) |
+| **Verify the evidence locally** | `node competition/verify-evidence.mjs` |
 
-HAIEC is useful not only because it shows what it can prove.
-
-**It is useful because it shows where the proof stops.**
-
-That boundary is the Evidence Frontier — the explicit record of what the
-evaluation could not establish.
+No login is required for the public Kestrel report, consequence view, or
+release comparison.
 
 ---
 
-## Real application — Kestrel
+## What we tested
 
-We evaluated a real repository: **Kestrel**, an AI service call agent
-(Python/FastAPI, tool-dispatched voice ordering and booking flows).
+We evaluated **Kestrel**, a real AI service-call application, against a frozen
+source snapshot.
 
-**Frozen source:** `5e65843fddfe5f907485b798e464ad37b3b3b2c7`
-**Frozen evaluation:** `e909995b-6d40-44ee-b949-c3c5373abc47:assurance:1.1`
+**Baseline source**
 
-| Fact | Result |
-|---|---|
+`5e65843fddfe5f907485b798e464ad37b3b3b2c7`
+
+**Public evaluation reference**
+
+`HAIEC-KESTREL-EVAL-5e65843`
+
+This is a sanitized publication projection of the real evaluation. It is not
+a synthetic result and it is not a new evaluation created for the public
+demo.
+
+---
+
+## What HAIEC found
+
+| Evidence | Result |
+|---|---:|
 | Assurance Decision | **REVIEW** |
 | Consequential action paths | **44** |
-| Code Capable | **44 / 44** |
+| Code Capable | **44 / 44 ESTABLISHED** |
+| Supporting Action Path evidence traces | **1,322** |
+| Evidence Frontier items | **555** |
 | Requested | NOT ASSESSED |
 | Policy Authorized | NOT ASSESSED |
 | Effectively Granted | NOT ASSESSED |
 | Observed | NOT ASSESSED |
 
-Top consequential actions (exact established effects):
+The important part is not simply that HAIEC found paths.
 
-- **ORDER RECORD WRITE** — `orders` table insert
-- **CALL LIFECYCLE RECORD WRITE** — `call_lifecycle` insert
-- **CUSTOMER MESSAGE RECORDS READ** — `sms_messages` query
-- **TENANT TIMEZONE CONFIG READ** — `ai_agent_configs` query
-
-HAIEC found the path.
-
-**It did not invent the execution.**
-
-A source-backed Code Capable path reaching an order-record write does **not**
-mean the organization authorized it, that runtime permission was established,
-that the path executed, or that an order transaction completed. Each of those
-is a separate evidence question — and HAIEC shows exactly which ones remain
-open.
+It kept five different evidence questions separate instead of turning
+technical capability into an authorization or runtime claim.
 
 ---
 
-## Public flagship demo
+## One example: ORDER RECORD WRITE
 
-No login required:
+The strongest Kestrel example is an evaluated path reaching an order-record
+write.
 
-- **[Kestrel Assurance Report](https://www.haiec.com/sample-reports/kestrel)** —
-  executive / technical / auditor profiles, Inspect Proof, download pack
-- **[Kestrel System Constellation](https://www.haiec.com/sample-reports/kestrel/constellation)** —
-  consequence-first view of the same frozen evaluation
+The presentation intentionally distinguishes established evidence from
+frontier:
 
-Downloadable artifacts (all SHA-256 hashed, see
-[`demo/kestrel/evidence/manifest.json`](demo/kestrel/evidence/manifest.json)):
-
-- Executive Assurance Report PDF
-- Technical Assurance Report PDF
-- Assurance Evidence Report PDF
-- Machine-readable JSON
-- Sanitized public projection JSON
-- Canonical Decision Receipt + Agentic Production Passport (sanitized)
-
-**Verify the pack yourself** (Node, zero dependencies):
-
+```text
+Kestrel system
+      · · · evidence frontier · · ·
+Evaluated capability
+      · · · evidence frontier · · ·
+handle_place_order
+      ── established consequence relation ──▶
+ORDER RECORD WRITE
+      WRITE · target: orders
 ```
+
+HAIEC established that application code can reach this consequential
+operation.
+
+It did **not** claim that:
+
+* the organization authorized the action,
+* effective runtime authority was established,
+* the path executed in production, or
+* an order transaction was observed.
+
+Those are separate evidence questions.
+
+That is why the result remains **REVIEW**.
+
+---
+
+## The consequence view
+
+The live Kestrel experience does not begin with hundreds of topology objects.
+
+It begins with **8 understandable consequence families**, while preserving all
+**44 exact evaluated paths and consequence identities** underneath:
+
+* ORDER RECORD WRITE
+* CALL LIFECYCLE RECORD WRITE
+* MENU ITEMS READ
+* CALL LIFECYCLE TABLE READ
+* CUSTOMER MESSAGE RECORDS READ
+* TENANT TIMEZONE CONFIG READ
+* TENANT LOCATIONS READ
+* AI CONFIG TEMPLATE READ
+
+The interface then lets a reviewer move through:
+
+**Overview → Action Paths → Authority → Proof → System Map**
+
+The full System Map remains available for advanced exploration, but it is not
+used as a substitute for evidence.
+
+[Explore how Kestrel can act →](https://www.haiec.com/sample-reports/kestrel/constellation)
+
+---
+
+## What changed between releases?
+
+HAIEC also compared two qualified evaluations of the same Kestrel system.
+
+**Release A**
+
+`5e65843fddfe5f907485b798e464ad37b3b3b2c7` — public ref `HAIEC-KESTREL-EVAL-5e65843`
+
+**Release B**
+
+`27c56a9fdb21e7af6b91df9e61e8841129ed9ad9` — public ref `HAIEC-KESTREL-EVAL-27c56a9`
+
+### Result
+
+| Comparison evidence                       |           Result |
+| ----------------------------------------- | ---------------: |
+| Overall comparison                        | **INCONCLUSIVE** |
+| Established `CONTROL_CHANGED`             |           **12** |
+| `UNRESOLVED` positional facts             |           **99** |
+| Unexpected established structural changes |            **0** |
+| Release perimeter                         |             SAME |
+| Analyzer comparability                    |            EXACT |
+| Repeatability                             |             PASS |
+
+The established change was a confirmation-control transition from:
+
+`DECLARED`
+
+to:
+
+`DECLARED + PATH_BOUND`
+
+across 12 qualified consequence facts.
+
+The comparison deliberately did **not** convert partial absence coverage into
+a removal claim.
+
+> **UNRESOLVED ≠ ABSENT**
+
+Git can tell you which files changed.
+
+HAIEC asks a different question:
+
+> **What changed in the evidence around consequential behavior?**
+
+[Open the public Release A / Release B comparison →](https://www.haiec.com/sample-reports/kestrel/compare)
+
+---
+
+## Evidence you can inspect yourself
+
+This repository includes a sanitized evidence pack tied to the frozen Kestrel
+baseline evaluation.
+
+### Reports
+
+* [Executive Assurance Report](demo/kestrel/reports/HAIEC-Kestrel-Executive-Assurance-Report.pdf)
+* [Technical Assurance Report](demo/kestrel/reports/HAIEC-Kestrel-Technical-Assurance-Report.pdf)
+* [Assurance Evidence Report](demo/kestrel/reports/HAIEC-Kestrel-Assurance-Evidence-Report.pdf)
+
+### Portable evidence
+
+* [Agentic Production Passport](demo/kestrel/passport/agentic-production-passport.json)
+* [Decision Receipt](demo/kestrel/receipts/decision-receipt.json)
+* [Machine-readable evidence](demo/kestrel/evidence/kestrel-assurance.machine.json)
+* [Sanitized report projection](demo/kestrel/evidence/kestrel-assurance.public.json)
+* [Sanitized A/B-8 release-comparison projection](demo/kestrel/evidence/kestrel-compare.public.json)
+* [SHA-256 evidence manifest](demo/kestrel/evidence/manifest.json)
+
+### Verify locally
+
+Requires Node.js and no third-party dependencies:
+
+```bash
 node competition/verify-evidence.mjs
 ```
 
----
-
-## What changed in what the system can reach
-
-Git shows what changed in code.
-
-HAIEC compares qualified evaluations to determine what changed in the
-source-backed consequence/evidence surface — **Consequence Delta**: added,
-removed, expanded, narrowed, control-changed, dependency-changed, or
-evidence-changed paths. An unresolved delta stays unresolved.
-
-## The record travels with the release
-
-The **Agentic Production Passport** binds the evidence and decision context to
-the exact evaluated system/version — a portable assurance record, not a
-certification.
-
-## The system around the model
-
-**System Constellation** shows what the AI system can reach and cause: the
-evidence-backed paths around the agent, which controls sit on those paths, and
-where the evidence ends — evaluation snapshot vs. current view are never
-blurred.
+The verifier checks artifact integrity, source/evaluation binding, assurance
+decision, action-path counts, evidence-plane states, Passport and Decision
+Receipt continuity.
 
 ---
 
-## What we built during MunichTech
+## What HAIEC is doing differently
 
-| Capability | First implementation | Merged to Main | Public code | Live evidence |
-|---|---|---|---|---|
-| Topology / Constellation projection | 2026-09-04 | 2026-09-09 | `src/lib/topology/` | [Constellation](https://www.haiec.com/sample-reports/kestrel/constellation) |
-| Action Assurance (five-plane section) | 2026-09-09 | 2026-09-09 | `src/lib/assurance/` | [Report](https://www.haiec.com/sample-reports/kestrel) |
-| Agentic Production Passport | 2026-09-10 | 2026-09-12 | `src/lib/assurance/agentic-production-passport.ts` | `demo/kestrel/passport/` |
-| Consequence Delta | 2026-09-11 | 2026-09-12 | `src/lib/assurance/consequence-delta*.ts` | docs |
-| Artifact manifest / integrity | 2026-09-10 | 2026-09-12 | `src/lib/assurance/assurance-artifact-manifest.ts` | `demo/kestrel/evidence/manifest.json` |
-| Report projection (bundle + profiles) | 2026-09-13 | 2026-09-13 | `src/lib/assurance/reporting-projection-bundle.ts` | live report |
-| Kestrel real-repository qualification | 2026-09-13/14 | 2026-09-14 | `scripts/kestrel-demo-export.ts` | live demo |
-| Consequence-first public demo pack | 2026-09-14 | 2026-09-14 | `src/app/sample-reports/kestrel/` | live demo |
-| Consequence-label semantic hardening | 2026-09-14 | 2026-09-14 | `src/data/kestrel-demo/consequence-labels.ts` | corrected labels |
+Traditional tools each answer useful but narrower questions.
 
-We don't ask judges to take our build timeline on faith. The public repository
-preserves the competition-period implementation history, and
-[`ORIGINALITY.md`](ORIGINALITY.md) maps each capability to its source commit,
-tests, and live evidence.
+IAM can tell you what an identity is permitted to access.
 
----
+Static security analysis can identify code-level weaknesses.
 
-## What HAIEC is — and is not
+Runtime controls can observe or constrain execution.
 
-HAIEC is not another generic SAST scanner. It is not IAM. It is not a runtime
-firewall. It is not a governance checklist. It complements all of them.
+Governance systems can document policies and obligations.
 
-The core question:
+HAIEC is designed to connect another layer:
 
-> What source-backed path can lead from AI capability to consequence, under
-> what authority/control context — and exactly where does the proof stop?
+> **What consequential action is source-reachable in the evaluated system,
+> under what evidence of authority and control, and exactly where does the
+> proof stop?**
 
-Production AI needs inspectable technical accountability. HAIEC gives teams
-source-backed evidence about what agentic systems can reach, which controls
-are on the path, and where assurance remains incomplete — built for
-environments where consequential AI must be reviewable before automation is
-trusted.
+HAIEC complements AppSec, IAM, runtime security, observability and governance.
+It does not replace them.
 
 ---
 
-## Interactive judging access
+## Why consequential software matters
 
-See [`JUDGE-ACCESS.md`](JUDGE-ACCESS.md) — a live MunichTech Demo workspace is
-available for optional interactive review. Password is provided in the private
-judging instructions (never committed here).
+In 2012, Knight Capital lost more than $460 million in roughly 45 minutes
+after a software deployment failure left old functionality active on one
+production server.
+
+Knight Capital was **not an AI incident**. We use it as a historical example
+of why consequential software requires strong control and evidence around what
+it can cause — not as a claim that HAIEC would have prevented the incident.
+
+Source:
+[SEC Release No. 34-70694](https://www.sec.gov/files/litigation/admin/2013/34-70694.pdf)
+
+Agentic AI raises the same structural question in a new setting: systems now
+have tools, credentials, APIs and the ability to create real-world effects.
+
+---
+
+## What was built during MunichTech
+
+HAIEC existed before the competition. We do not present the entire company or
+platform as MunichTech work.
+
+The pre-existing foundation included the HAIEC SaaS platform, earlier
+assurance evaluator/types, package/receipt infrastructure, scanner
+foundations and commercial infrastructure.
+
+Competition-period engineering added and materially advanced the
+judge-visible action-assurance layer, including:
+
+| Capability                                          | Competition-period milestone |
+| --------------------------------------------------- | ---------------------------- |
+| System topology / Constellation core                | Sep 4–9                      |
+| Five-plane Action Assurance                         | Sep 9                        |
+| Agentic Production Passport + artifact integrity    | Sep 10–12                    |
+| Consequence Delta                                   | Sep 11–12                    |
+| Evidence-bound report projections                   | Sep 13                       |
+| Real-repository Kestrel public assurance experience | Sep 14                       |
+| Qualified Kestrel Release A / Release B comparison  | Sep 18                       |
+| Public release-comparison projection                | Sep 18                       |
+| Consequence-first workflow visualization            | Sep 19                       |
+
+See:
+
+* [ORIGINALITY.md](ORIGINALITY.md)
+* [Competition build timeline](competition/BUILD-TIMELINE.md)
+* [Feature / commit map](competition/FEATURE-COMMIT-MAP.json)
+* [Publication scope](PUBLICATION-SCOPE.md)
+
+The public record distinguishes **pre-existing foundation** from
+**competition-period work** rather than relabeling earlier HAIEC code as new.
+
+---
+
+## Claim boundaries
+
+HAIEC intentionally preserves bounded answers.
+
+`CODE_CAPABLE != AUTHORIZED`
+
+`CODE_CAPABLE != OBSERVED`
+
+`NOT_ASSESSED != PASS`
+
+`NOT_ASSESSED != FAILURE`
+
+`UNRESOLVED != ABSENT`
+
+`SOURCE_REACHABLE != RUNTIME_EXECUTED`
+
+`PASSPORT != CERTIFICATION`
+
+A strong assurance system should not become more confident than its evidence.
+
+---
+
+## Interactive judge review
+
+An authenticated MunichTech demo workspace is available for optional deeper
+review.
+
+See [JUDGE-ACCESS.md](JUDGE-ACCESS.md).
+
+The public report, consequence view and Release Comparison do not require
+credentials.
+
+---
+
+## Want to try HAIEC on your own system?
+
+Email **[subodhkc@subodhkc.com](mailto:subodhkc@subodhkc.com)**
+
+Subject:
+
+**MUNIC TECH EXPO TRIAL Request**
+
+Tell us whether you want a guided walkthrough or want to evaluate your own
+repository/system.
+
+---
 
 ## Repository scope
 
-This repository contains the MunichTech implementation/evidence slice of
-HAIEC. The production SaaS contains additional proprietary infrastructure
-(auth, billing, org management, deployment). See
-[`PUBLICATION-SCOPE.md`](PUBLICATION-SCOPE.md) for exactly what was published,
-sanitized, or excluded — and why.
+This repository is the public MunichTech implementation and evidence slice of
+HAIEC.
 
-## Evidence limitations
+It intentionally excludes unrelated or sensitive production SaaS
+infrastructure such as customer data, production secrets, billing and
+private deployment configuration.
 
-- The public demo is a **sanitized projection** of a real frozen evaluation —
-  not a new evaluation, and not a customer deployment.
-- `NOT_ASSESSED` is not failure and not safety. `CODE_CAPABLE` is not observed
-  execution. A static path is not a runtime event.
-- No qualified Kestrel A/B pair exists, so no Consequence Delta screenshot is
-  presented — we document the capability and its tests instead.
-- All artifact digests are SHA-256 and verifiable independently.
-
-## References
-
-- [SEC Release No. 34-70694 — Knight Capital](https://www.sec.gov/files/litigation/admin/2013/34-70694.pdf)
-- [SEC — Equity Market Structure literature review](https://www.sec.gov/marketstructure/research/hft_lit_review_march_2014.pdf) (Knight incident discussed)
+See [PUBLICATION-SCOPE.md](PUBLICATION-SCOPE.md) for the exact boundary.
 
 ---
 
-*HAIEC — Human AI Evidence Company. High assurance in every consequence.*
+**HAIEC — Human AI Evidence Company**
+
+*High assurance in every consequence.*

@@ -17,8 +17,8 @@ names, not file names:
 - `lifecycle_tracker.py:43` — `call_lifecycle.select(*).limit(1)` → **CALL LIFECYCLE TABLE READ**
 - `transactional_sms.py:190` — `sms_messages.select("id","created_at")` → **CUSTOMER MESSAGE RECORDS READ** (rate-limit read — not a send)
 - `calendar_service.py:50` — `ai_agent_configs.select("timezone")` → **TENANT TIMEZONE CONFIG READ**
-- `template_schema.py:1140` — `locations.select(...)` → **LOCATION CONFIG READ**
-- `template_schema.py:1294` — `ai_config_templates.select(...)` → **TEMPLATE CONFIG READ**
+- `template_schema.py:1140` — `locations.select(...)` → **TENANT LOCATIONS READ**
+- `template_schema.py:1294` — `ai_config_templates.select(...)` → **AI CONFIG TEMPLATE READ**
 - `tool_handlers.py:252` — `menu_items.select(...)` → **MENU ITEMS READ**
 
 `RESOURCE_NAME != EFFECT_VERB`. `MESSAGE_RESOURCE != MESSAGE_SEND`.
